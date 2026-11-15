@@ -1,0 +1,1251 @@
+import {
+  generateId,
+  generateSecretKey,
+  hashSecret,
+  verifySecret,
+} from '@/lib/crypto/tokens';
+import { sanitizePlainText, sanitizeRichHtml } from '@/lib/sanitizeServer';
+import {
+  deletePath,
+  deletePrefix,
+  getBinary,
+  getJson,
+  listPrefix,
+  putBinary,
+  putJson,
+} from '@/lib/storage/adapter';
+import {
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from '@/lib/storage/errors';
+import { validateCoverImage } from '@/lib/storage/media';
+import type {
+  AmbientEffectId,
+  CommentRecord,
+  CoverLayout,
+  EventDetailResponse,
+  EventMeta,
+  FontPairingId,
+  InviteStyleConfig,
+  RsvpRecord,
+  RsvpStatus,
+  StoredEventMeta,
+  StoredRsvpRecord,
+} from '@/types/invite';
+
+export const ALLOWED_REACTION_EMOJIS = [
+  '🎉',
+  '❤️',
+  '🍽️',
+  '🥂',
+  '🔥',
+  '👏',
+] as const;
+
+const VALID_FONT_IDS = new Set<FontPairingId>([
+  'editorial-serif',
+  'modern-sans',
+  'expressive-display',
+  'sacred-classic',
+  'playful-rounded',
+  'studio-mono',
+]);
+
+const VALID_EFFECT_IDS = new Set<AmbientEffectId>([
+  'aurora',
+  'snowfall',
+  'christmas-lights',
+  'starlight-radiance',
+  'halloween-bats',
+  'autumn-leaves',
+  'fireworks',
+  'confetti',
+  'botanical-petals',
+  'lullaby-stars',
+  'floating-hearts',
+  'champagne-sparkle',
+  'warm-bokeh',
+  'none',
+]);
+
+const VALID_COVER_LAYOUTS = new Set<CoverLayout>(['square', 'banner', 'none']);
+
+const SAFE_ID_RE = /^[a-zA-Z0-9_-]{1,80}$/;
+const HEX_COLOR_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+export interface PushSubscriptionPayload {
+  endpoint: string;
+  expirationTime?: number | null;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+}
+
+export interface SubscriberRecord {
+  id: string;
+  eventId: string;
+  kind: 'webpush' | 'email';
+  subscription?: PushSubscriptionPayload;
+  email?: string;
+  label?: string;
+  createdAt: string;
+}
+
+export interface CreateEventInput {
+  title: string;
+  descriptionHtml?: string;
+  startIso: string;
+  endIso?: string;
+  timeZone?: string;
+  locationName?: string;
+  locationAddress?: string;
+  virtualUrl?: string;
+  hostName?: string;
+  rsvpNotePrompt?: string;
+  invitedNames?: string[];
+  hideGuestList?: boolean;
+  style?: Partial<InviteStyleConfig>;
+}
+
+export type UpdateEventPatch = Partial<
+  Omit<CreateEventInput, 'endIso' | 'locationName' | 'locationAddress' | 'virtualUrl' | 'hostName' | 'rsvpNotePrompt'>
+> & {
+  endIso?: string | null;
+  locationName?: string | null;
+  locationAddress?: string | null;
+  virtualUrl?: string | null;
+  hostName?: string | null;
+  rsvpNotePrompt?: string | null;
+};
+
+interface CoverMetaSidecar {
+  contentType: string;
+  filename: string;
+  size: number;
+  createdAt: string;
+}
+
+function assertValidId(value: string, label = 'ID'): string {
+  if (!value || typeof value !== 'string' || !SAFE_ID_RE.test(value)) {
+    throw new ValidationError(`Invalid ${label}`);
+  }
+  return value;
+}
+
+function eventMetaKey(id: string): string {
+  return `events/${id}/meta.json`;
+}
+
+function rsvpKey(id: string, rsvpId: string): string {
+  return `events/${id}/rsvps/${rsvpId}.json`;
+}
+
+function commentKey(id: string, sortableTs: string, commentId: string): string {
+  return `events/${id}/comments/${sortableTs}-${commentId}.json`;
+}
+
+function subscriberKey(id: string, subId: string): string {
+  return `events/${id}/subscribers/${subId}.json`;
+}
+
+function mediaFileKey(id: string, filename: string): string {
+  return `events/${id}/media/${filename}`;
+}
+
+function tempCoverKey(filename: string): string {
+  return `uploads/covers/${filename}`;
+}
+
+function stripEventSecret(stored: StoredEventMeta): EventMeta {
+  const { editKeyHash: _omit, ...publicMeta } = stored;
+  void _omit;
+  return publicMeta;
+}
+
+function stripRsvpSecret(stored: StoredRsvpRecord): RsvpRecord {
+  const { guestTokenHash: _omit, ...publicRsvp } = stored;
+  void _omit;
+  return publicRsvp;
+}
+
+function validateIsoDateTime(value: unknown, fieldName: string): string {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new ValidationError(`${fieldName} is required`);
+  }
+  const trimmed = value.trim();
+  const isoPattern =
+    /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?(?:\[[^\]]+\])?)?$/;
+  if (!isoPattern.test(trimmed)) {
+    throw new ValidationError(`${fieldName} must be a valid ISO date/time`);
+  }
+  const parsed = Date.parse(trimmed.replace(/\[[^\]]+\]$/, ''));
+  if (Number.isNaN(parsed)) {
+    throw new ValidationError(`${fieldName} is not a valid calendar date/time`);
+  }
+  return trimmed;
+}
+
+function validateTimeZone(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) {
+    return 'UTC';
+  }
+  const trimmed = value.trim();
+  try {
+    Intl.DateTimeFormat('en-US', { timeZone: trimmed });
+    return trimmed;
+  } catch {
+    throw new ValidationError(`Invalid IANA time zone: ${trimmed}`);
+  }
+}
+
+function validateOptionalHttpUrl(
+  value: unknown,
+  fieldName: string,
+): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== 'string') {
+    throw new ValidationError(`${fieldName} must be a string`);
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new ValidationError(`${fieldName} must use http:// or https://`);
+    }
+    return parsed.toString();
+  } catch (err) {
+    if (err instanceof ValidationError) throw err;
+    throw new ValidationError(`${fieldName} is not a valid URL`);
+  }
+}
+
+function validateOptionalCustomCoverUrl(value: unknown): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== 'string') {
+    throw new ValidationError('customCoverUrl must be a string');
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  if (trimmed.startsWith('/api/')) {
+    return trimmed;
+  }
+  return validateOptionalHttpUrl(trimmed, 'customCoverUrl');
+}
+
+function normalizeOptionalText(
+  value: unknown,
+  maxLen: number,
+): string | undefined {
+  if (value === undefined || value === null || typeof value !== 'string') {
+    return undefined;
+  }
+  const cleaned = sanitizePlainText(value, maxLen, { singleLine: true });
+  return cleaned || undefined;
+}
+
+function normalizeInvitedNames(input: unknown): string[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const item of input) {
+    if (typeof item !== 'string') continue;
+    const cleaned = sanitizePlainText(item, 100, { singleLine: true });
+    if (!cleaned) continue;
+    const key = cleaned.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      names.push(cleaned);
+    }
+    if (names.length >= 500) break;
+  }
+  return names;
+}
+
+function normalizeStyle(
+  incoming?: Partial<InviteStyleConfig>,
+  existing?: InviteStyleConfig,
+): InviteStyleConfig {
+  const base: InviteStyleConfig = existing ?? {
+    themeId: 'aurora-midnight',
+    fontId: 'editorial-serif',
+    effectId: 'aurora',
+    coverPresetId: 'aurora-midnight',
+    coverLayout: 'square',
+  };
+
+  if (!incoming) {
+    return { ...base };
+  }
+
+  const themeId =
+    typeof incoming.themeId === 'string' && incoming.themeId.trim()
+      ? sanitizePlainText(incoming.themeId, 64, { singleLine: true })
+      : base.themeId;
+
+  const fontId =
+    incoming.fontId && VALID_FONT_IDS.has(incoming.fontId)
+      ? incoming.fontId
+      : base.fontId;
+
+  const effectId =
+    incoming.effectId && VALID_EFFECT_IDS.has(incoming.effectId)
+      ? incoming.effectId
+      : base.effectId;
+
+  const coverPresetId =
+    typeof incoming.coverPresetId === 'string' && incoming.coverPresetId.trim()
+      ? sanitizePlainText(incoming.coverPresetId, 64, { singleLine: true })
+      : base.coverPresetId;
+
+  const coverLayout =
+    incoming.coverLayout && VALID_COVER_LAYOUTS.has(incoming.coverLayout)
+      ? incoming.coverLayout
+      : base.coverLayout;
+
+  const isFullStyleReplacement =
+    existing !== undefined && typeof incoming.themeId === 'string';
+
+  const customCoverUrl =
+    incoming.customCoverUrl !== undefined
+      ? validateOptionalCustomCoverUrl(incoming.customCoverUrl)
+      : isFullStyleReplacement
+        ? undefined
+        : base.customCoverUrl;
+
+  const customSurfaceHex =
+    incoming.customSurfaceHex !== undefined
+      ? validateOptionalHexColor(incoming.customSurfaceHex)
+      : isFullStyleReplacement
+        ? undefined
+        : base.customSurfaceHex;
+
+  const customAccentHex =
+    incoming.customAccentHex !== undefined
+      ? validateOptionalHexColor(incoming.customAccentHex)
+      : isFullStyleReplacement
+        ? undefined
+        : base.customAccentHex;
+
+  const colorMode =
+    incoming.colorMode === 'dark' || incoming.colorMode === 'light'
+      ? incoming.colorMode
+      : isFullStyleReplacement
+        ? undefined
+        : base.colorMode;
+
+  return {
+    themeId,
+    fontId,
+    effectId,
+    coverPresetId,
+    coverLayout,
+    ...(customCoverUrl ? { customCoverUrl } : {}),
+    ...(customSurfaceHex ? { customSurfaceHex } : {}),
+    ...(customAccentHex ? { customAccentHex } : {}),
+    ...(colorMode ? { colorMode } : {}),
+  };
+}
+
+function validateOptionalHexColor(value: unknown): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  if (!HEX_COLOR_RE.test(trimmed)) {
+    throw new ValidationError(`Invalid hex color: ${trimmed}`);
+  }
+  return trimmed;
+}
+
+async function loadStoredEventOrThrow(id: string): Promise<StoredEventMeta> {
+  assertValidId(id, 'event ID');
+  const stored = await getJson<StoredEventMeta>(eventMetaKey(id));
+  if (!stored) {
+    throw new NotFoundError('Event not found');
+  }
+  return stored;
+}
+
+function assertHostAuth(
+  editKey: string | null | undefined,
+  stored: StoredEventMeta,
+): void {
+  if (!verifySecret(editKey, stored.editKeyHash)) {
+    throw new ForbiddenError('Invalid or missing host edit key');
+  }
+}
+
+async function findCommentKeyById(
+  id: string,
+  commentId: string,
+): Promise<string | null> {
+  assertValidId(commentId, 'comment ID');
+  const keys = await listPrefix(`events/${id}/comments/`);
+  const suffix = `-${commentId}.json`;
+  return keys.find((k) => k.endsWith(suffix)) ?? null;
+}
+
+/**
+ * Creates a new event and returns its public metadata alongside the one-time secret `editKey`.
+ */
+export async function createEvent(
+  input: CreateEventInput,
+): Promise<{ event: EventMeta; editKey: string }> {
+  const title = sanitizePlainText(input?.title ?? '', 160, {
+    singleLine: true,
+  });
+  if (!title) {
+    throw new ValidationError('Event title is required');
+  }
+
+  const startIso = validateIsoDateTime(input?.startIso, 'startIso');
+  const endIso =
+    input?.endIso !== undefined && input.endIso !== ''
+      ? validateIsoDateTime(input.endIso, 'endIso')
+      : undefined;
+  const timeZone = validateTimeZone(input?.timeZone);
+  const descriptionHtml = sanitizeRichHtml(input?.descriptionHtml ?? '');
+
+  const locationName = normalizeOptionalText(input?.locationName, 160);
+  const locationAddress = normalizeOptionalText(input?.locationAddress, 240);
+  const virtualUrl = validateOptionalHttpUrl(input?.virtualUrl, 'virtualUrl');
+  const hostName = normalizeOptionalText(input?.hostName, 100);
+  const rsvpNotePrompt = normalizeOptionalText(input?.rsvpNotePrompt, 180);
+  const invitedNames = normalizeInvitedNames(input?.invitedNames);
+  const hideGuestList = Boolean(input?.hideGuestList);
+  const style = normalizeStyle(input?.style);
+
+  const id = generateId(12);
+  const editKey = generateSecretKey();
+  const editKeyHash = hashSecret(editKey);
+  const now = new Date().toISOString();
+
+  const stored: StoredEventMeta = {
+    id,
+    title,
+    descriptionHtml,
+    startIso,
+    ...(endIso ? { endIso } : {}),
+    timeZone,
+    ...(locationName ? { locationName } : {}),
+    ...(locationAddress ? { locationAddress } : {}),
+    ...(virtualUrl ? { virtualUrl } : {}),
+    ...(hostName ? { hostName } : {}),
+    ...(rsvpNotePrompt ? { rsvpNotePrompt } : {}),
+    invitedNames,
+    hideGuestList,
+    style,
+    createdAt: now,
+    updatedAt: now,
+    editKeyHash,
+  };
+
+  await putJson(eventMetaKey(id), stored);
+  return { event: stripEventSecret(stored), editKey };
+}
+
+/**
+ * Fetches full event details including RSVPs, comments, and subscriber count
+ * while ensuring private hashes and subscriber contact details are never leaked.
+ */
+export async function getEventDetail(
+  id: string,
+  options?: { editKey?: string | null; guestToken?: string | null },
+): Promise<EventDetailResponse | null> {
+  if (!id || typeof id !== 'string' || !SAFE_ID_RE.test(id)) {
+    return null;
+  }
+
+  const storedMeta = await getJson<StoredEventMeta>(eventMetaKey(id));
+  if (!storedMeta) {
+    return null;
+  }
+
+  const [rsvpKeys, commentKeys, subscriberKeys] = await Promise.all([
+    listPrefix(`events/${id}/rsvps/`),
+    listPrefix(`events/${id}/comments/`),
+    listPrefix(`events/${id}/subscribers/`),
+  ]);
+
+  const [rawRsvps, rawComments] = await Promise.all([
+    Promise.all(rsvpKeys.map((k) => getJson<StoredRsvpRecord>(k))),
+    Promise.all(commentKeys.map((k) => getJson<CommentRecord>(k))),
+  ]);
+
+  const storedRsvps = rawRsvps.filter(
+    (r): r is StoredRsvpRecord => r !== null,
+  );
+  storedRsvps.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  const comments = rawComments.filter((c): c is CommentRecord => c !== null);
+  comments.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  const isHost = verifySecret(options?.editKey, storedMeta.editKeyHash);
+
+  let viewerRsvp: RsvpRecord | undefined;
+  if (options?.guestToken) {
+    const matched = storedRsvps.find((r) =>
+      verifySecret(options.guestToken, r.guestTokenHash),
+    );
+    if (matched) {
+      viewerRsvp = stripRsvpSecret(matched);
+    }
+  }
+
+  const yesAll: RsvpRecord[] = [];
+  const noAll: RsvpRecord[] = [];
+  const respondedLower = new Set<string>();
+  let totalHeadcount = 0;
+
+  for (const record of storedRsvps) {
+    const clean = stripRsvpSecret(record);
+    respondedLower.add(clean.guestName.trim().toLowerCase());
+    if (clean.status === 'yes') {
+      yesAll.push(clean);
+      totalHeadcount += 1 + Math.max(0, clean.plusOnes || 0);
+    } else {
+      noAll.push(clean);
+    }
+  }
+
+  const awaitingAll = storedMeta.invitedNames.filter(
+    (name) => !respondedLower.has(name.trim().toLowerCase()),
+  );
+
+  const hideListForViewer = storedMeta.hideGuestList && !isHost;
+
+  return {
+    event: stripEventSecret(storedMeta),
+    rsvps: {
+      yes: hideListForViewer ? [] : yesAll,
+      no: hideListForViewer ? [] : noAll,
+      totalHeadcount,
+      awaitingNames: hideListForViewer ? [] : awaitingAll,
+    },
+    comments,
+    subscriberCount: subscriberKeys.length,
+    ...(viewerRsvp ? { viewerRsvp } : {}),
+    isHost,
+  };
+}
+
+/**
+ * Updates mutable event fields after verifying the host capability key.
+ */
+export async function updateEvent(
+  id: string,
+  editKey: string | null | undefined,
+  patch: UpdateEventPatch,
+): Promise<EventMeta> {
+  const existing = await loadStoredEventOrThrow(id);
+  assertHostAuth(editKey, existing);
+
+  const nextTitle =
+    patch.title !== undefined
+      ? sanitizePlainText(patch.title, 160, { singleLine: true })
+      : existing.title;
+  if (!nextTitle) {
+    throw new ValidationError('Event title cannot be empty');
+  }
+
+  const nextDescriptionHtml =
+    patch.descriptionHtml !== undefined
+      ? sanitizeRichHtml(patch.descriptionHtml)
+      : existing.descriptionHtml;
+
+  const nextStartIso =
+    patch.startIso !== undefined
+      ? validateIsoDateTime(patch.startIso, 'startIso')
+      : existing.startIso;
+
+  let nextEndIso = existing.endIso;
+  if (patch.endIso !== undefined) {
+    nextEndIso =
+      patch.endIso === null || patch.endIso === ''
+        ? undefined
+        : validateIsoDateTime(patch.endIso, 'endIso');
+  }
+
+  const nextTimeZone =
+    patch.timeZone !== undefined
+      ? validateTimeZone(patch.timeZone)
+      : existing.timeZone;
+
+  const nextLocationName =
+    patch.locationName !== undefined
+      ? normalizeOptionalText(patch.locationName, 160)
+      : existing.locationName;
+
+  const nextLocationAddress =
+    patch.locationAddress !== undefined
+      ? normalizeOptionalText(patch.locationAddress, 240)
+      : existing.locationAddress;
+
+  const nextVirtualUrl =
+    patch.virtualUrl !== undefined
+      ? validateOptionalHttpUrl(patch.virtualUrl, 'virtualUrl')
+      : existing.virtualUrl;
+
+  const nextHostName =
+    patch.hostName !== undefined
+      ? normalizeOptionalText(patch.hostName, 100)
+      : existing.hostName;
+
+  const nextPrompt =
+    patch.rsvpNotePrompt !== undefined
+      ? normalizeOptionalText(patch.rsvpNotePrompt, 180)
+      : existing.rsvpNotePrompt;
+
+  const nextInvitedNames =
+    patch.invitedNames !== undefined
+      ? normalizeInvitedNames(patch.invitedNames)
+      : existing.invitedNames;
+
+  const nextHideGuestList =
+    patch.hideGuestList !== undefined
+      ? Boolean(patch.hideGuestList)
+      : existing.hideGuestList;
+
+  const nextStyle =
+    patch.style !== undefined
+      ? normalizeStyle(patch.style, existing.style)
+      : existing.style;
+
+  const updated: StoredEventMeta = {
+    id: existing.id,
+    title: nextTitle,
+    descriptionHtml: nextDescriptionHtml,
+    startIso: nextStartIso,
+    ...(nextEndIso ? { endIso: nextEndIso } : {}),
+    timeZone: nextTimeZone,
+    ...(nextLocationName ? { locationName: nextLocationName } : {}),
+    ...(nextLocationAddress ? { locationAddress: nextLocationAddress } : {}),
+    ...(nextVirtualUrl ? { virtualUrl: nextVirtualUrl } : {}),
+    ...(nextHostName ? { hostName: nextHostName } : {}),
+    ...(nextPrompt ? { rsvpNotePrompt: nextPrompt } : {}),
+    invitedNames: nextInvitedNames,
+    hideGuestList: nextHideGuestList,
+    style: nextStyle,
+    createdAt: existing.createdAt,
+    updatedAt: new Date().toISOString(),
+    editKeyHash: existing.editKeyHash,
+  };
+
+  await putJson(eventMetaKey(id), updated);
+  return stripEventSecret(updated);
+}
+
+/**
+ * Deletes an event and all its sharded RSVPs, comments, subscribers, and media.
+ */
+export async function deleteEvent(
+  id: string,
+  editKey: string | null | undefined,
+): Promise<void> {
+  const existing = await loadStoredEventOrThrow(id);
+  assertHostAuth(editKey, existing);
+  await deletePrefix(`events/${id}/`);
+}
+
+/**
+ * Creates or updates a strictly binary ('yes' | 'no') guest RSVP in a sharded file.
+ */
+export async function upsertRsvp(
+  id: string,
+  payload: {
+    guestName: string;
+    status: string;
+    plusOnes?: number;
+    bringingNote?: string;
+    guestToken?: string | null;
+    postToWall?: boolean;
+  },
+): Promise<{
+  rsvp: RsvpRecord;
+  guestToken: string;
+  wallComment?: CommentRecord;
+}> {
+  await loadStoredEventOrThrow(id);
+
+  if (payload?.status !== 'yes' && payload?.status !== 'no') {
+    throw new ValidationError("RSVP status must be strictly 'yes' or 'no'");
+  }
+  const status: RsvpStatus = payload.status;
+
+  const guestName = sanitizePlainText(payload.guestName ?? '', 100, {
+    singleLine: true,
+  });
+  if (!guestName) {
+    throw new ValidationError('Guest name is required');
+  }
+
+  let plusOnes = 0;
+  if (status === 'yes') {
+    const parsed = Number(payload.plusOnes ?? 0);
+    plusOnes = Number.isFinite(parsed)
+      ? Math.max(0, Math.min(20, Math.trunc(parsed)))
+      : 0;
+  }
+
+  const bringingNote =
+    sanitizePlainText(payload.bringingNote ?? '', 500) || undefined;
+
+  let existingMatch: StoredRsvpRecord | null = null;
+  if (payload.guestToken) {
+    const rsvpKeys = await listPrefix(`events/${id}/rsvps/`);
+    const candidates = await Promise.all(
+      rsvpKeys.map((k) => getJson<StoredRsvpRecord>(k)),
+    );
+    existingMatch =
+      candidates.find(
+        (r) => r !== null && verifySecret(payload.guestToken, r.guestTokenHash),
+      ) ?? null;
+  }
+
+  const now = new Date().toISOString();
+  const rsvpId = existingMatch ? existingMatch.id : generateId(12);
+  const guestToken =
+    existingMatch && payload.guestToken
+      ? payload.guestToken.trim()
+      : generateSecretKey();
+  const guestTokenHash = existingMatch
+    ? existingMatch.guestTokenHash
+    : hashSecret(guestToken);
+
+  const storedRsvp: StoredRsvpRecord = {
+    id: rsvpId,
+    eventId: id,
+    guestName,
+    status,
+    plusOnes,
+    ...(bringingNote ? { bringingNote } : {}),
+    createdAt: existingMatch ? existingMatch.createdAt : now,
+    updatedAt: now,
+    guestTokenHash,
+  };
+
+  await putJson(rsvpKey(id, rsvpId), storedRsvp);
+
+  let wallComment: CommentRecord | undefined;
+  if (payload.postToWall === true && bringingNote) {
+    wallComment = await createComment(id, {
+      authorName: guestName,
+      body: bringingNote,
+      rsvpStatus: status,
+      guestToken,
+    });
+  }
+
+  return {
+    rsvp: stripRsvpSecret(storedRsvp),
+    guestToken,
+    ...(wallComment ? { wallComment } : {}),
+  };
+}
+
+/**
+ * Deletes an RSVP when authorized by either the host edit key or the guest's token.
+ */
+export async function deleteRsvp(
+  id: string,
+  rsvpId: string,
+  auth: { editKey?: string | null; guestToken?: string | null },
+): Promise<void> {
+  const event = await loadStoredEventOrThrow(id);
+  assertValidId(rsvpId, 'RSVP ID');
+
+  const key = rsvpKey(id, rsvpId);
+  const existing = await getJson<StoredRsvpRecord>(key);
+  if (!existing) {
+    throw new NotFoundError('RSVP not found');
+  }
+
+  const isHost = verifySecret(auth?.editKey, event.editKeyHash);
+  const isOwner = verifySecret(auth?.guestToken, existing.guestTokenHash);
+  if (!isHost && !isOwner) {
+    throw new ForbiddenError('Not authorized to remove this RSVP');
+  }
+
+  await deletePath(key);
+}
+
+/**
+ * Creates a wall comment stored in its own sortable timestamp shard.
+ */
+export async function createComment(
+  id: string,
+  payload: {
+    authorName: string;
+    body: string;
+    editKey?: string | null;
+    guestToken?: string | null;
+    rsvpStatus?: RsvpStatus;
+  },
+): Promise<CommentRecord> {
+  const event = await loadStoredEventOrThrow(id);
+
+  const authorName = sanitizePlainText(payload?.authorName ?? '', 80, {
+    singleLine: true,
+  });
+  if (!authorName) {
+    throw new ValidationError('Author name is required');
+  }
+
+  const body = sanitizePlainText(payload?.body ?? '', 1500);
+  if (!body) {
+    throw new ValidationError('Comment body is required');
+  }
+
+  const isHost = verifySecret(payload?.editKey, event.editKeyHash);
+  let rsvpStatus: RsvpStatus | undefined =
+    payload?.rsvpStatus === 'yes' || payload?.rsvpStatus === 'no'
+      ? payload.rsvpStatus
+      : undefined;
+
+  if (!rsvpStatus && payload?.guestToken) {
+    const rsvpKeys = await listPrefix(`events/${id}/rsvps/`);
+    const rsvps = await Promise.all(
+      rsvpKeys.map((k) => getJson<StoredRsvpRecord>(k)),
+    );
+    const matching = rsvps.find(
+      (r) => r !== null && verifySecret(payload.guestToken, r.guestTokenHash),
+    );
+    if (matching) {
+      rsvpStatus = matching.status;
+    }
+  }
+
+  const commentId = generateId(10);
+  const sortableTs = String(Date.now()).padStart(15, '0');
+  const record: CommentRecord = {
+    id: commentId,
+    eventId: id,
+    authorName,
+    body,
+    isHost,
+    ...(rsvpStatus ? { rsvpStatus } : {}),
+    reactions: {},
+    createdAt: new Date().toISOString(),
+  };
+
+  await putJson(commentKey(id, sortableTs, commentId), record);
+  return record;
+}
+
+/**
+ * Increments or decrements an allowlisted emoji reaction on a wall comment.
+ */
+export async function toggleReaction(
+  id: string,
+  commentId: string,
+  emoji: string,
+  options?: { delta?: 1 | -1 },
+): Promise<CommentRecord> {
+  await loadStoredEventOrThrow(id);
+
+  if (
+    !ALLOWED_REACTION_EMOJIS.includes(
+      emoji as (typeof ALLOWED_REACTION_EMOJIS)[number],
+    )
+  ) {
+    throw new ValidationError('Unsupported reaction emoji');
+  }
+
+  const key = await findCommentKeyById(id, commentId);
+  if (!key) {
+    throw new NotFoundError('Comment not found');
+  }
+
+  const existing = await getJson<CommentRecord>(key);
+  if (!existing) {
+    throw new NotFoundError('Comment not found');
+  }
+
+  const delta = options?.delta === -1 ? -1 : 1;
+  const reactions: Record<string, number> = { ...(existing.reactions ?? {}) };
+  const nextCount = (reactions[emoji] ?? 0) + delta;
+
+  if (nextCount <= 0) {
+    delete reactions[emoji];
+  } else {
+    reactions[emoji] = nextCount;
+  }
+
+  const updated: CommentRecord = {
+    ...existing,
+    reactions,
+  };
+
+  await putJson(key, updated);
+  return updated;
+}
+
+/**
+ * Deletes a wall comment after verifying the host edit key.
+ */
+export async function deleteComment(
+  id: string,
+  commentId: string,
+  editKey: string | null | undefined,
+): Promise<void> {
+  const event = await loadStoredEventOrThrow(id);
+  assertHostAuth(editKey, event);
+
+  const key = await findCommentKeyById(id, commentId);
+  if (!key) {
+    throw new NotFoundError('Comment not found');
+  }
+
+  await deletePath(key);
+}
+
+/**
+ * Registers a private Web Push or email subscriber for an event (with endpoint/email deduplication).
+ */
+export async function addSubscriber(
+  id: string,
+  payload:
+    | {
+        kind: 'webpush';
+        subscription: PushSubscriptionPayload;
+        label?: string;
+      }
+    | {
+        kind: 'email';
+        email: string;
+        label?: string;
+      },
+): Promise<{
+  id: string;
+  eventId: string;
+  kind: 'webpush' | 'email';
+  createdAt: string;
+}> {
+  await loadStoredEventOrThrow(id);
+
+  const existingKeys = await listPrefix(`events/${id}/subscribers/`);
+  const existingRecords = (
+    await Promise.all(existingKeys.map((k) => getJson<SubscriberRecord>(k)))
+  ).filter((r): r is SubscriberRecord => r !== null);
+
+  const label = normalizeOptionalText(payload?.label, 80);
+
+  if (payload?.kind === 'webpush') {
+    const sub = payload.subscription;
+    if (
+      !sub ||
+      typeof sub.endpoint !== 'string' ||
+      !sub.endpoint.trim() ||
+      !sub.keys ||
+      typeof sub.keys.p256dh !== 'string' ||
+      !sub.keys.p256dh.trim() ||
+      typeof sub.keys.auth !== 'string' ||
+      !sub.keys.auth.trim()
+    ) {
+      throw new ValidationError('Invalid Web Push subscription payload');
+    }
+
+    let endpointUrl: string;
+    try {
+      const parsed = new URL(sub.endpoint.trim());
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+        throw new Error('Unsupported scheme');
+      }
+      endpointUrl = parsed.toString();
+    } catch {
+      throw new ValidationError('Invalid Web Push endpoint URL');
+    }
+
+    const duplicate = existingRecords.find(
+      (r) =>
+        r.kind === 'webpush' && r.subscription?.endpoint === endpointUrl,
+    );
+
+    const subId = duplicate ? duplicate.id : generateId(12);
+    const createdAt = duplicate
+      ? duplicate.createdAt
+      : new Date().toISOString();
+
+    const record: SubscriberRecord = {
+      id: subId,
+      eventId: id,
+      kind: 'webpush',
+      subscription: {
+        endpoint: endpointUrl,
+        expirationTime: sub.expirationTime ?? null,
+        keys: {
+          p256dh: sub.keys.p256dh.trim(),
+          auth: sub.keys.auth.trim(),
+        },
+      },
+      ...(label ? { label } : {}),
+      createdAt,
+    };
+
+    await putJson(subscriberKey(id, subId), record);
+    return { id: subId, eventId: id, kind: 'webpush', createdAt };
+  }
+
+  if (payload?.kind === 'email') {
+    const rawEmail =
+      typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';
+    if (!rawEmail || rawEmail.length > 254 || !EMAIL_RE.test(rawEmail)) {
+      throw new ValidationError('Valid email address is required');
+    }
+
+    const duplicate = existingRecords.find(
+      (r) => r.kind === 'email' && r.email === rawEmail,
+    );
+
+    const subId = duplicate ? duplicate.id : generateId(12);
+    const createdAt = duplicate
+      ? duplicate.createdAt
+      : new Date().toISOString();
+
+    const record: SubscriberRecord = {
+      id: subId,
+      eventId: id,
+      kind: 'email',
+      email: rawEmail,
+      ...(label ? { label } : {}),
+      createdAt,
+    };
+
+    await putJson(subscriberKey(id, subId), record);
+    return { id: subId, eventId: id, kind: 'email', createdAt };
+  }
+
+  throw new ValidationError("Subscriber kind must be 'webpush' or 'email'");
+}
+
+/**
+ * Removes a subscriber record by ID.
+ */
+export async function removeSubscriber(id: string, subId: string): Promise<void> {
+  assertValidId(id, 'event ID');
+  assertValidId(subId, 'subscriber ID');
+  await deletePath(subscriberKey(id, subId));
+}
+
+/**
+ * Removes a subscriber matching an ID, Web Push endpoint, or email address.
+ */
+export async function removeSubscriberByTarget(
+  id: string,
+  target: { subId?: string; endpoint?: string; email?: string },
+): Promise<boolean> {
+  await loadStoredEventOrThrow(id);
+
+  if (target.subId) {
+    assertValidId(target.subId, 'subscriber ID');
+    await deletePath(subscriberKey(id, target.subId));
+    return true;
+  }
+
+  const endpoint = target.endpoint?.trim();
+  const email = target.email?.trim().toLowerCase();
+  if (!endpoint && !email) {
+    throw new ValidationError(
+      'Provide subId, endpoint, or email to unsubscribe',
+    );
+  }
+
+  const keys = await listPrefix(`events/${id}/subscribers/`);
+  const records = await Promise.all(
+    keys.map(async (k) => ({ key: k, rec: await getJson<SubscriberRecord>(k) })),
+  );
+
+  const matching = records.filter(({ rec }) => {
+    if (!rec) return false;
+    if (endpoint && rec.kind === 'webpush' && rec.subscription?.endpoint === endpoint) {
+      return true;
+    }
+    if (email && rec.kind === 'email' && rec.email === email) {
+      return true;
+    }
+    return false;
+  });
+
+  await Promise.all(matching.map((m) => deletePath(m.key)));
+  return matching.length > 0;
+}
+
+/**
+ * Internal-only helper for server-side push notification dispatch.
+ */
+export async function listEventSubscribers(
+  id: string,
+): Promise<SubscriberRecord[]> {
+  assertValidId(id, 'event ID');
+  const keys = await listPrefix(`events/${id}/subscribers/`);
+  const records = await Promise.all(
+    keys.map((k) => getJson<SubscriberRecord>(k)),
+  );
+  return records.filter((r): r is SubscriberRecord => r !== null);
+}
+
+/**
+ * Saves a validated cover image for an existing event after host authorization.
+ */
+export async function saveEventCover(
+  id: string,
+  editKey: string | null | undefined,
+  rawBuffer: Buffer,
+  declaredMime?: string | null,
+): Promise<{ url: string; contentType: string; size: number; event: EventMeta }> {
+  const existing = await loadStoredEventOrThrow(id);
+  assertHostAuth(editKey, existing);
+
+  const validated = validateCoverImage(rawBuffer, declaredMime);
+  const filename = `cover-${generateId(8)}.${validated.extension}`;
+  const pathKey = mediaFileKey(id, filename);
+  const sidecar: CoverMetaSidecar = {
+    contentType: validated.contentType,
+    filename,
+    size: validated.buffer.length,
+    createdAt: new Date().toISOString(),
+  };
+
+  await deletePrefix(`events/${id}/media/`);
+  await putBinary(pathKey, validated.buffer, validated.contentType);
+  await putJson(`${pathKey}.meta.json`, sidecar);
+
+  const url = `/api/events/${id}/cover?file=${encodeURIComponent(filename)}`;
+  const updated: StoredEventMeta = {
+    ...existing,
+    style: {
+      ...existing.style,
+      customCoverUrl: url,
+    },
+    updatedAt: new Date().toISOString(),
+  };
+
+  await putJson(eventMetaKey(id), updated);
+
+  return {
+    url,
+    contentType: validated.contentType,
+    size: validated.buffer.length,
+    event: stripEventSecret(updated),
+  };
+}
+
+/**
+ * Loads an event's uploaded cover image bytes and MIME type.
+ */
+export async function getEventCover(
+  id: string,
+  filename?: string | null,
+): Promise<{ data: Buffer; contentType: string } | null> {
+  if (!id || !SAFE_ID_RE.test(id)) {
+    return null;
+  }
+
+  let targetFile = filename?.trim() || '';
+  if (targetFile) {
+    if (!/^[a-zA-Z0-9_-]{4,64}\.(png|jpg|jpeg|webp|gif)$/.test(targetFile)) {
+      return null;
+    }
+  } else {
+    const keys = await listPrefix(`events/${id}/media/`);
+    const binaryKeys = keys.filter((k) => !k.endsWith('.meta.json'));
+    if (binaryKeys.length === 0) {
+      return null;
+    }
+    const latest = binaryKeys[binaryKeys.length - 1];
+    targetFile = latest.slice(`events/${id}/media/`.length);
+  }
+
+  const key = mediaFileKey(id, targetFile);
+  const [binary, sidecar] = await Promise.all([
+    getBinary(key),
+    getJson<CoverMetaSidecar>(`${key}.meta.json`),
+  ]);
+
+  if (!binary) {
+    return null;
+  }
+
+  return {
+    data: binary.data,
+    contentType: sidecar?.contentType || binary.contentType,
+  };
+}
+
+/**
+ * Stores a pre-publish cover image upload for use during Studio creation.
+ */
+export async function saveTempCoverUpload(
+  rawBuffer: Buffer,
+  declaredMime?: string | null,
+): Promise<{ url: string; path: string; contentType: string; size: number }> {
+  const validated = validateCoverImage(rawBuffer, declaredMime);
+  const filename = `${generateId(16)}.${validated.extension}`;
+  const key = tempCoverKey(filename);
+  const sidecar: CoverMetaSidecar = {
+    contentType: validated.contentType,
+    filename,
+    size: validated.buffer.length,
+    createdAt: new Date().toISOString(),
+  };
+
+  await putBinary(key, validated.buffer, validated.contentType);
+  await putJson(`${key}.meta.json`, sidecar);
+
+  return {
+    url: `/api/uploads/cover?path=${encodeURIComponent(filename)}`,
+    path: filename,
+    contentType: validated.contentType,
+    size: validated.buffer.length,
+  };
+}
+
+/**
+ * Loads a pre-publish cover upload safely by validated filename.
+ */
+export async function getTempCoverUpload(
+  filename: string | null | undefined,
+): Promise<{ data: Buffer; contentType: string } | null> {
+  if (
+    !filename ||
+    typeof filename !== 'string' ||
+    !/^[a-zA-Z0-9_-]{8,32}\.(png|jpg|jpeg|webp|gif)$/.test(filename.trim())
+  ) {
+    return null;
+  }
+
+  const key = tempCoverKey(filename.trim());
+  const [binary, sidecar] = await Promise.all([
+    getBinary(key),
+    getJson<CoverMetaSidecar>(`${key}.meta.json`),
+  ]);
+
+  if (!binary) {
+    return null;
+  }
+
+  return {
+    data: binary.data,
+    contentType: sidecar?.contentType || binary.contentType,
+  };
+}
