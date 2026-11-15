@@ -30,6 +30,7 @@ import {
   isSafeExternalHttpUrl,
 } from '@/components/invite/calendarLinks';
 import { formatEventDateTime, type FormattedEventDateTime } from '@/lib/polyfills/temporal';
+import { rememberHostEvent, rememberVisitedEvent } from '@/lib/client/recentEvents';
 import { getThemePreset, resolveThemeCssVars } from '@/lib/themes/presets';
 import type { CommentRecord, EventDetailResponse, RsvpRecord } from '@/types/invite';
 
@@ -137,7 +138,7 @@ export function InviteView({
     [event.id, editKey, guestToken],
   );
 
-  // Hydrate viewer-local timezone, external calendar URLs, and saved host/guest tokens
+  // Hydrate viewer-local timezone and external calendar URLs
   useEffect(() => {
     let cancelled = false;
 
@@ -157,34 +158,73 @@ export function InviteView({
       }
     });
 
+    return () => {
+      cancelled = true;
+    };
+  }, [event]);
+
+  // Hydrate saved host/guest tokens and record the visit in My Events
+  useEffect(() => {
+    let cancelled = false;
+
     const hydrateTokens = async () => {
+      const baseEvent = initialDetail.event;
       if (initialEditKey && initialDetail.isHost) {
-        writeStoredHostKey(event.id, initialEditKey);
+        writeStoredHostKey(baseEvent.id, initialEditKey);
       }
-      const storedHostKey = initialEditKey || readStoredHostKey(event.id);
-      const storedGuestToken = readStoredGuestToken(event.id);
+      const storedHostKey = initialEditKey || readStoredHostKey(baseEvent.id);
+      const storedGuestToken = readStoredGuestToken(baseEvent.id);
 
       if (!cancelled) {
         if (storedHostKey) setEditKey(storedHostKey);
         if (storedGuestToken) setGuestToken(storedGuestToken);
       }
 
+      let resolvedEvent = baseEvent;
+      let resolvedIsHost = initialDetail.isHost;
+
       if (storedGuestToken || (storedHostKey && !initialDetail.isHost)) {
         const headers: Record<string, string> = {};
         if (storedHostKey) headers['x-edit-key'] = storedHostKey;
         if (storedGuestToken) headers['x-guest-token'] = storedGuestToken;
 
-        const res = await fetch(`/api/events/${encodeURIComponent(event.id)}`, {
+        const res = await fetch(`/api/events/${encodeURIComponent(baseEvent.id)}`, {
           cache: 'no-store',
           headers,
         });
-        if (!res.ok || cancelled) return;
-        const next = (await res.json()) as EventDetailResponse;
         if (cancelled) return;
-        setDetail(next);
-        if (next.viewerRsvp?.guestName) {
-          setRsvpGuestName((curr) => curr || next.viewerRsvp?.guestName || '');
+        if (res.ok) {
+          const next = (await res.json()) as EventDetailResponse;
+          if (cancelled) return;
+          resolvedEvent = next.event;
+          resolvedIsHost = next.isHost;
+          setDetail(next);
+          if (next.viewerRsvp?.guestName) {
+            setRsvpGuestName((curr) => curr || next.viewerRsvp?.guestName || '');
+          }
         }
+      }
+
+      if (cancelled) return;
+      if (resolvedIsHost && storedHostKey) {
+        rememberHostEvent({
+          id: resolvedEvent.id,
+          title: resolvedEvent.title,
+          startIso: resolvedEvent.startIso,
+          timeZone: resolvedEvent.timeZone,
+          locationName: resolvedEvent.locationName,
+          themeId: resolvedEvent.style.themeId,
+          editKey: storedHostKey,
+        });
+      } else {
+        rememberVisitedEvent({
+          id: resolvedEvent.id,
+          title: resolvedEvent.title,
+          startIso: resolvedEvent.startIso,
+          timeZone: resolvedEvent.timeZone,
+          locationName: resolvedEvent.locationName,
+          themeId: resolvedEvent.style.themeId,
+        });
       }
     };
 
@@ -193,7 +233,7 @@ export function InviteView({
     return () => {
       cancelled = true;
     };
-  }, [event, initialDetail.isHost, initialEditKey]);
+  }, [initialDetail, initialEditKey]);
 
   useEffect(() => {
     return () => {
@@ -305,8 +345,9 @@ export function InviteView({
   const hasLocationCard = Boolean(
     event.locationName || event.locationAddress || hasVirtualLink,
   );
-  const editHref = initialEditKey
-    ? `/e/${encodeURIComponent(event.id)}/edit?key=${encodeURIComponent(initialEditKey)}`
+  const activeHostKey = editKey || initialEditKey;
+  const editHref = activeHostKey
+    ? `/e/${encodeURIComponent(event.id)}/edit?key=${encodeURIComponent(activeHostKey)}`
     : `/e/${encodeURIComponent(event.id)}/edit`;
 
   return (

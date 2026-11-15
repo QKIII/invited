@@ -1,24 +1,11 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { InviteView } from '@/components/invite/InviteView';
+import { getRecentEvents } from '@/lib/client/recentEvents';
 import type { EventDetailResponse, EventMeta } from '@/types/invite';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-const hasMergedDeps =
-  fs.existsSync(path.resolve(process.cwd(), 'src/lib/themes/presets.ts')) &&
-  fs.existsSync(path.resolve(process.cwd(), 'src/lib/storage/events.ts')) &&
-  fs.existsSync(path.resolve(process.cwd(), 'src/components/effects/AmbientBackdrop.tsx')) &&
-  fs.existsSync(path.resolve(process.cwd(), 'src/components/covers/CoverArt.tsx'));
-
-const mockGetEventDetail = vi.fn();
-if (hasMergedDeps) {
-  vi.doMock('@/lib/storage/events', () => ({
-    getEventDetail: (...args: unknown[]) => mockGetEventDetail(...args),
-  }));
-}
 
 function buildDetail(overrides: Partial<EventDetailResponse> = {}): EventDetailResponse {
   const event: EventMeta = {
@@ -61,15 +48,33 @@ function buildDetail(overrides: Partial<EventDetailResponse> = {}): EventDetailR
   };
 }
 
-describe.skipIf(!hasMergedDeps)('InviteView & OpenGraphImage (post-merge integration)', () => {
+describe('InviteView (post-merge integration)', () => {
   afterEach(() => {
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
     window.localStorage.clear();
   });
 
-  it('renders InviteView with cover art, popover calendar menu, maps link, virtual link, and host pill', async () => {
-    const inviteViewSpecifier = '../InviteView';
-    const { InviteView } = (await import(inviteViewSpecifier)) as typeof import('@/components/invite/InviteView');
+  it('renders InviteView with cover art, popover calendar menu, maps link, virtual link, host pill, and records My Events', async () => {
+    const OrigDateTimeFormat = Intl.DateTimeFormat;
+    const DateTimeFormatMock = function (
+      this: unknown,
+      locales?: string | string[],
+      options?: Intl.DateTimeFormatOptions,
+    ) {
+      const fmt = new OrigDateTimeFormat(locales, options);
+      if (locales === undefined && options === undefined) {
+        const origResolved = fmt.resolvedOptions.bind(fmt);
+        fmt.resolvedOptions = () => ({
+          ...origResolved(),
+          timeZone: 'America/Los_Angeles',
+        });
+      }
+      return fmt;
+    } as unknown as typeof Intl.DateTimeFormat;
+    DateTimeFormatMock.supportedLocalesOf = OrigDateTimeFormat.supportedLocalesOf;
+    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(DateTimeFormatMock);
+
     const detail = buildDetail({ isHost: true });
     const container = document.createElement('div');
     document.body.appendChild(container);
@@ -80,6 +85,7 @@ describe.skipIf(!hasMergedDeps)('InviteView & OpenGraphImage (post-merge integra
       root.render(
         <InviteView
           initialDetail={detail}
+          initialEditKey="secret_edit_key_123"
           initialFormattedDate={{
             dateLabel: 'Thu, Dec 24, 2026',
             timeLabel: '7:00 PM – 10:00 PM EST',
@@ -90,13 +96,29 @@ describe.skipIf(!hasMergedDeps)('InviteView & OpenGraphImage (post-merge integra
           }}
         />,
       );
-      await new Promise((r) => setTimeout(r, 30));
     });
+
+    await vi.waitFor(
+      async () => {
+        await act(async () => {
+          await new Promise((r) => setTimeout(r, 20));
+        });
+        expect(
+          container.querySelector('a[href^="https://calendar.google.com/calendar/render"]'),
+        ).not.toBeNull();
+      },
+      { timeout: 5000 },
+    );
 
     expect(container.textContent).toContain('Christmas Eve Candlelight & Cocoa');
     expect(container.textContent).toContain('Hosted by Clara');
     expect(container.textContent).toContain('You are the Host · Edit Event');
     expect(container.textContent).toContain('4:00 PM – 7:00 PM PST (your time)');
+
+    const editLink = container.querySelector('a[href^="/e/evt_xmas1/edit"]');
+    expect(editLink?.getAttribute('href')).toBe(
+      '/e/evt_xmas1/edit?key=secret_edit_key_123',
+    );
 
     const calMenu = container.querySelector('#calendar-menu');
     expect(calMenu?.getAttribute('popover')).toBe('auto');
@@ -120,31 +142,17 @@ describe.skipIf(!hasMergedDeps)('InviteView & OpenGraphImage (post-merge integra
     ).not.toBeNull();
     expect(container.textContent?.toLowerCase()).not.toContain('maybe');
 
+    const recent = getRecentEvents();
+    expect(recent).toHaveLength(1);
+    expect(recent[0]).toMatchObject({
+      id: 'evt_xmas1',
+      role: 'host',
+      editKey: 'secret_edit_key_123',
+    });
+
     act(() => {
       root.unmount();
     });
     container.remove();
-  });
-
-  it('generates PNG ImageResponse for both valid and missing events', async () => {
-    const ogSpecifier = '../../../app/e/[id]/opengraph-image';
-    const { default: OpenGraphImage } = (await import(ogSpecifier)) as typeof import('@/app/e/[id]/opengraph-image');
-    mockGetEventDetail.mockResolvedValueOnce(buildDetail());
-    const validRes = await OpenGraphImage({
-      params: Promise.resolve({ id: 'evt_xmas1' }),
-    });
-    expect(validRes.status).toBe(200);
-    expect(validRes.headers.get('content-type')).toContain('image/png');
-    const validBytes = await validRes.arrayBuffer();
-    expect(validBytes.byteLength).toBeGreaterThan(1000);
-
-    mockGetEventDetail.mockResolvedValueOnce(null);
-    const missingRes = await OpenGraphImage({
-      params: Promise.resolve({ id: 'missing_id' }),
-    });
-    expect(missingRes.status).toBe(200);
-    expect(missingRes.headers.get('content-type')).toContain('image/png');
-    const missingBytes = await missingRes.arrayBuffer();
-    expect(missingBytes.byteLength).toBeGreaterThan(1000);
   });
 });

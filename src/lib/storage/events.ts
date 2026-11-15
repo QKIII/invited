@@ -283,7 +283,7 @@ function normalizeStyle(
     themeId: 'aurora-midnight',
     fontId: 'editorial-serif',
     effectId: 'aurora',
-    coverPresetId: 'aurora-midnight',
+    coverPresetId: 'aurora-ridge',
     coverLayout: 'square',
   };
 

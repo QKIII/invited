@@ -449,21 +449,23 @@ export function InviteStudio({
       return;
     }
 
+    const optionalValue = (val: string | undefined): string | null | undefined => {
+      const trimmed = val?.trim();
+      if (trimmed) return trimmed;
+      return mode === 'edit' ? null : undefined;
+    };
+
     const payload = {
       title: cleanTitle,
       descriptionHtml,
       startIso: startRes.iso,
-      ...(finalEndIso ? { endIso: finalEndIso } : {}),
+      endIso: finalEndIso ?? (mode === 'edit' ? null : undefined),
       timeZone,
-      ...(locationName.trim() ? { locationName: locationName.trim() } : {}),
-      ...(locationAddress.trim()
-        ? { locationAddress: locationAddress.trim() }
-        : {}),
-      ...(cleanVirtual ? { virtualUrl: cleanVirtual } : {}),
-      ...(hostName.trim() ? { hostName: hostName.trim() } : {}),
-      ...(rsvpNotePrompt.trim()
-        ? { rsvpNotePrompt: rsvpNotePrompt.trim() }
-        : {}),
+      locationName: optionalValue(locationName),
+      locationAddress: optionalValue(locationAddress),
+      virtualUrl: optionalValue(cleanVirtual),
+      hostName: optionalValue(hostName),
+      rsvpNotePrompt: optionalValue(rsvpNotePrompt),
       invitedNames,
       hideGuestList,
       style,
