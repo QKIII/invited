@@ -904,6 +904,26 @@ function splitVenueAndAddress(rawPlace: string): {
   return { locationName: trimmed };
 }
 
+const ABBREVIATION_DOT_SENTINEL = '\uE000';
+
+const WORD_ABBREVIATION_DOT_RE =
+  /\b(St|Mt|Ft|Dr|Ave|Blvd|Rd|Ln|Ct|Pl|Pkwy|Ste|Apt|Mr|Mrs|Ms|Rev|Fr|Sr|Jr)\./gi;
+
+const INITIALISM_DOT_RE = /\b(a\.m\.|p\.m\.|u\.s\.)/gi;
+
+const COMPASS_ABBREVIATION_DOT_RE = /\b([NSEW])\.(?=\s+[A-Za-z0-9])/g;
+
+function protectAbbreviationDots(text: string): string {
+  return text
+    .replace(INITIALISM_DOT_RE, (m) => m.replace(/\./g, ABBREVIATION_DOT_SENTINEL))
+    .replace(WORD_ABBREVIATION_DOT_RE, `$1${ABBREVIATION_DOT_SENTINEL}`)
+    .replace(COMPASS_ABBREVIATION_DOT_RE, `$1${ABBREVIATION_DOT_SENTINEL}`);
+}
+
+function restoreAbbreviationDots(text: string): string {
+  return text.replaceAll(ABBREVIATION_DOT_SENTINEL, '.');
+}
+
 function extractLocation(
   maskedPrompt: string,
 ): {
@@ -911,12 +931,14 @@ function extractLocation(
   locationAddress?: string;
   span?: [number, number];
 } {
+  const safePrompt = protectAbbreviationDots(maskedPrompt);
+
   const atPattern =
     /(?:^|\s)(?:at|@)\s+([^.!?\n;—–]+?)(?=\s+(?:hosted|organized|thrown|bringing|bring|for\s+my|to\s+celebrate|https?:)\b|[.!?\n;—–]|$)/gi;
 
   let match: RegExpExecArray | null;
-  while ((match = atPattern.exec(maskedPrompt)) !== null) {
-    const candidate = match[1].trim();
+  while ((match = atPattern.exec(safePrompt)) !== null) {
+    const candidate = restoreAbbreviationDots(match[1]).trim();
     if (!candidate || NON_LOCATION_AT_RE.test(candidate)) {
       continue;
     }
@@ -933,8 +955,8 @@ function extractLocation(
 
   const inPattern =
     /(?:^|\s)in\s+([^,.!?\n;—–]+?)(?=\s+(?:hosted|organized|thrown|bringing|bring|https?:)\b|[,.!?\n;—–]|$)/gi;
-  while ((match = inPattern.exec(maskedPrompt)) !== null) {
-    const candidate = match[1].trim();
+  while ((match = inPattern.exec(safePrompt)) !== null) {
+    const candidate = restoreAbbreviationDots(match[1]).trim();
     if (!candidate || NON_LOCATION_IN_RE.test(candidate)) {
       continue;
     }
@@ -989,9 +1011,11 @@ function extractTitleAndExtraNote(
   }
 
   // Split trailing sentence / em-dash note so extra details feed the starter description.
+  // Protect abbreviation periods (e.g., St., Dr., a.m.) from triggering a sentence break.
   let extraNote: string | undefined;
   let primaryEnd = trimmed.length;
-  const sentenceBreak = /(?<=[.!?])\s+|\s+[—–]\s+/.exec(trimmed);
+  const protectedTrimmed = protectAbbreviationDots(trimmed);
+  const sentenceBreak = /(?<=[.!?])\s+|\s+[—–]\s+/.exec(protectedTrimmed);
   if (sentenceBreak && sentenceBreak.index > 4) {
     primaryEnd = sentenceBreak.index;
     const remainder = trimmed.slice(sentenceBreak.index + sentenceBreak[0].length).trim();

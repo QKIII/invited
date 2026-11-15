@@ -115,6 +115,9 @@ describe('InviteView (post-merge integration)', () => {
     expect(container.textContent).toContain('You are the Host · Edit Event');
     expect(container.textContent).toContain('4:00 PM – 7:00 PM PST (your time)');
 
+    const dateTile = container.querySelector('[data-testid="calendar-date-tile"]');
+    expect(dateTile?.textContent).toBe('DEC24');
+
     const editLink = container.querySelector('a[href^="/e/evt_xmas1/edit"]');
     expect(editLink?.getAttribute('href')).toBe(
       '/e/evt_xmas1/edit?key=secret_edit_key_123',
@@ -149,6 +152,57 @@ describe('InviteView (post-merge integration)', () => {
       role: 'host',
       editKey: 'secret_edit_key_123',
     });
+
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it('collapses duplicate locationAddress when identical to locationName', async () => {
+    const base = buildDetail();
+    const detail = buildDetail({
+      event: {
+        ...base.event,
+        locationName: '42 Maple St',
+        locationAddress: '42 Maple St',
+        virtualUrl: undefined,
+      },
+    });
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    let root: Root;
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(
+        <InviteView
+          initialDetail={detail}
+          initialFormattedDate={{
+            dateLabel: 'Thu, Dec 24, 2026',
+            timeLabel: '7:00 PM – 10:00 PM EST',
+            fullLabel: 'Thu, Dec 24, 2026 · 7:00 PM – 10:00 PM EST',
+            timeZoneName: 'EST',
+            isMultiDay: false,
+          }}
+        />,
+      );
+    });
+
+    await vi.waitFor(
+      async () => {
+        await act(async () => {
+          await new Promise((r) => setTimeout(r, 20));
+        });
+        expect(
+          container.querySelector('a[href^="https://calendar.google.com/calendar/render"]'),
+        ).not.toBeNull();
+      },
+      { timeout: 3000 },
+    );
+
+    const matches = container.textContent?.match(/42 Maple St/g) ?? [];
+    expect(matches).toHaveLength(1);
 
     act(() => {
       root.unmount();

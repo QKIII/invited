@@ -2,7 +2,6 @@
 
 import { useEffect, useState, type CSSProperties } from 'react';
 import {
-  Calendar,
   Check,
   EyeOff,
   MapPin,
@@ -15,6 +14,10 @@ import {
 import { CoverArt } from '@/components/covers/CoverArt';
 import { AmbientBackdrop } from '@/components/effects/AmbientBackdrop';
 import { SafePreviewHtml } from '@/components/editor/SafePreviewHtml';
+import {
+  CalendarDateTile,
+  formatDistinctLocation,
+} from '@/components/invite/CalendarDateTile';
 import { formatEventDateTime } from '@/lib/polyfills/temporal';
 import {
   getThemePreset,
@@ -93,6 +96,10 @@ export function InvitePreviewCard({
     startIso && formattedDate?.key === formatKey ? formattedDate.timeLabel : '';
 
   const displayTitle = title.trim() || 'Your Event Title';
+  const { primaryLocation, secondaryAddress } = formatDistinctLocation(
+    locationName,
+    locationAddress,
+  );
   const isBanner = style.coverLayout === 'banner';
   const isSquare = style.coverLayout === 'square';
   const isLight = colorMode === 'light';
@@ -202,10 +209,10 @@ export function InvitePreviewCard({
                 className="rounded-xl border p-3.5 space-y-2.5 text-sm"
               >
                 <div className="flex items-start gap-2.5">
-                  <Calendar
-                    className="h-4 w-4 mt-0.5 shrink-0"
-                    style={{ color: 'var(--theme-accent)' }}
-                    aria-hidden="true"
+                  <CalendarDateTile
+                    startIso={startIso}
+                    timeZone={timeZone}
+                    size="sm"
                   />
                   <div className="min-w-0">
                     <p className="font-semibold leading-snug">{dateLabel}</p>
@@ -220,7 +227,7 @@ export function InvitePreviewCard({
                   </div>
                 </div>
 
-                {(locationName?.trim() || locationAddress?.trim()) ? (
+                {primaryLocation ? (
                   <div className="flex items-start gap-2.5">
                     <MapPin
                       className="h-4 w-4 mt-0.5 shrink-0"
@@ -228,17 +235,15 @@ export function InvitePreviewCard({
                       aria-hidden="true"
                     />
                     <div className="min-w-0">
-                      {locationName?.trim() ? (
-                        <p className="font-semibold leading-snug">
-                          {locationName.trim()}
-                        </p>
-                      ) : null}
-                      {locationAddress?.trim() ? (
+                      <p className="font-semibold leading-snug">
+                        {primaryLocation}
+                      </p>
+                      {secondaryAddress ? (
                         <p
                           style={{ color: 'var(--theme-text-muted)' }}
                           className="text-xs mt-0.5"
                         >
-                          {locationAddress.trim()}
+                          {secondaryAddress}
                         </p>
                       ) : null}
                     </div>

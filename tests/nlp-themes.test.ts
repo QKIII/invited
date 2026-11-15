@@ -372,6 +372,29 @@ describe('deterministic NLP event prompt parser', () => {
     expect(draft.confidenceChips.some((c) => c.label === 'Host' && c.value === 'Alex')).toBe(true);
   });
 
+  it('preserves period abbreviations (St., Ave., Mt., Dr., Rev., p.m.) in locations and sentences', () => {
+    const nativity = parseEventPrompt(
+      'Jesus nativity service Dec 24 at 7pm at St. Luke Chapel',
+      REF_DATE,
+      NY_TZ,
+    );
+    expect(nativity.title).toBe('Jesus Nativity Service');
+    expect(nativity.locationName).toBe('St. Luke Chapel');
+    expect(nativity.style.themeId).toBe('sacred-nativity');
+    expect(nativity.descriptionHtml).not.toContain('Note from the host');
+    expect(nativity.descriptionHtml).not.toContain('Luke Chapel');
+
+    const withNote = parseEventPrompt(
+      'Candlelight vigil Dec 24 at 7:30 p.m. at Mt. Olive Chapel hosted by Rev. Thomas. Candles provided!',
+      REF_DATE,
+      NY_TZ,
+    );
+    expect(withNote.locationName).toBe('Mt. Olive Chapel');
+    expect(withNote.hostName).toBe('Rev. Thomas');
+    expect(withNote.descriptionHtml).toContain('Note from the host:');
+    expect(withNote.descriptionHtml).toContain('Candles provided!');
+  });
+
   it('provides 6 valid starter prompts in EXAMPLE_EVENT_PROMPTS', () => {
     expect(EXAMPLE_EVENT_PROMPTS).toHaveLength(6);
     for (const sample of EXAMPLE_EVENT_PROMPTS) {

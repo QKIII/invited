@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
-  Calendar,
   CalendarPlus,
   Check,
   ChevronDown,
@@ -19,6 +18,10 @@ import {
 } from 'lucide-react';
 import { CoverArt } from '@/components/covers/CoverArt';
 import { AmbientBackdrop } from '@/components/effects/AmbientBackdrop';
+import {
+  CalendarDateTile,
+  formatDistinctLocation,
+} from '@/components/invite/CalendarDateTile';
 import { EventWall } from '@/components/invite/EventWall';
 import { GuestList } from '@/components/invite/GuestList';
 import { getGuestTokenStorageKey, RsvpPanel } from '@/components/invite/RsvpPanel';
@@ -341,9 +344,13 @@ export function InviteView({
   };
 
   const mapsUrl = buildMapsSearchUrl(event.locationName, event.locationAddress);
+  const { primaryLocation, secondaryAddress } = formatDistinctLocation(
+    event.locationName,
+    event.locationAddress,
+  );
   const hasVirtualLink = isSafeExternalHttpUrl(event.virtualUrl);
   const hasLocationCard = Boolean(
-    event.locationName || event.locationAddress || hasVirtualLink,
+    primaryLocation || secondaryAddress || hasVirtualLink,
   );
   const activeHostKey = editKey || initialEditKey;
   const editHref = activeHostKey
@@ -555,13 +562,11 @@ export function InviteView({
                 }}
               >
                 <div className="flex items-start gap-3.5">
-                  <div
-                    className="invite-on-accent inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
-                    style={{ backgroundColor: 'var(--theme-accent)' }}
-                    aria-hidden="true"
-                  >
-                    <Calendar className="h-5 w-5" />
-                  </div>
+                  <CalendarDateTile
+                    startIso={event.startIso}
+                    timeZone={event.timeZone}
+                    size="md"
+                  />
                   <div className="min-w-0 space-y-1">
                     <p className="font-semibold text-base leading-snug">
                       {formattedDate.dateLabel}
@@ -698,15 +703,15 @@ export function InviteView({
                     </div>
                     <div className="min-w-0 space-y-1">
                       <p className="font-semibold text-base leading-snug break-words">
-                        {event.locationName ||
+                        {primaryLocation ||
                           (hasVirtualLink ? 'Virtual Event' : 'Location Details')}
                       </p>
-                      {event.locationAddress && (
+                      {secondaryAddress && (
                         <p
                           className="text-sm break-words"
                           style={{ color: 'var(--theme-text-muted)' }}
                         >
-                          {event.locationAddress}
+                          {secondaryAddress}
                         </p>
                       )}
                     </div>
