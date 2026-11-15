@@ -1,40 +1,38 @@
 'use client';
 
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-  type KeyboardEvent,
-} from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import {
-  AlertTriangle,
+  ArrowUpRight,
   Calendar,
   Check,
+  ChevronDown,
   Clock,
-  ExternalLink,
-  Eye,
   Globe,
-  Link2,
+  Image as ImageIcon,
+  Lock,
   MapPin,
-  Plus,
+  Palette,
+  Sliders,
   Sparkles,
-  Trash2,
   User,
-  Users,
-  Wand2,
-  X,
 } from 'lucide-react';
+import { CoverArt } from '@/components/covers/CoverArt';
 import { RichTextEditor } from '@/components/editor/RichTextEditor';
-import { InvitePreviewCard } from '@/components/studio/InvitePreviewCard';
 import {
-  PublishSuccessDialog,
-  type PublishedEventResult,
-} from '@/components/studio/PublishSuccessDialog';
-import { StyleStudioDrawer } from '@/components/studio/StyleStudioDrawer';
+  getDeviceProfile,
+  getDeviceProfileServerSnapshot,
+  saveDeviceProfile,
+  subscribeDeviceProfile,
+} from '@/lib/client/deviceProfile';
+import { rememberHostEvent } from '@/lib/client/recentEvents';
+import {
+  EXAMPLE_EVENT_PROMPTS,
+  parseEventPrompt,
+  type ParsedEventDraft,
+} from '@/lib/nlp/parseEventPrompt';
+import { getThemePreset } from '@/lib/themes/presets';
+import type { EventMeta, InviteStyleConfig } from '@/types/invite';
 import {
   getBrowserTimeZone,
   getSupportedTimeZones,
@@ -42,18 +40,12 @@ import {
   parseInvitedNames,
   validateAndBuildZonedIso,
   type DstConflictInfo,
-} from '@/components/studio/dateTimeUtils';
+} from './dateTimeUtils';
 import {
-  rememberHostEvent,
-  removeRecentEvent,
-} from '@/lib/client/recentEvents';
-import {
-  parseEventPrompt,
-  type ParsedEventDraft,
-} from '@/lib/nlp/parseEventPrompt';
-import { setupDialogLightDismiss } from '@/lib/polyfills/ui';
-import { getThemePreset } from '@/lib/themes/presets';
-import type { EventMeta, InviteStyleConfig } from '@/types/invite';
+  PublishSuccessDialog,
+  type PublishedEventResult,
+} from './PublishSuccessDialog';
+import { StyleStudioDrawer } from './StyleStudioDrawer';
 
 interface InviteStudioProps {
   mode: 'create' | 'edit';
@@ -62,10 +54,13 @@ interface InviteStudioProps {
   eventId?: string;
   editKey?: string;
   onSaved?: (updated: EventMeta) => void;
+  onStyleChange?: (style: InviteStyleConfig) => void;
 }
 
+type ActivePanel = 'covers' | 'themes' | 'customize' | null;
+
 function getDefaultStyle(): InviteStyleConfig {
-  const preset = getThemePreset('aurora-midnight');
+  const preset = getThemePreset('winter-snowfall');
   return {
     themeId: preset.id,
     fontId: preset.defaultFontId,
@@ -76,12 +71,12 @@ function getDefaultStyle(): InviteStyleConfig {
   };
 }
 
-function getDefaultDateSevenDaysOut(): string {
-  const d = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+function getDefaultDateString(): string {
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const yyyy = tomorrow.getFullYear();
+  const mm = String(tomorrow.getMonth() + 1).padStart(2, '0');
+  const dd = String(tomorrow.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 export function InviteStudio({
@@ -91,310 +86,217 @@ export function InviteStudio({
   eventId,
   editKey,
   onSaved,
+  onStyleChange,
 }: InviteStudioProps) {
-  const router = useRouter();
-
-  const [quickPrompt, setQuickPrompt] = useState('');
-  const [quickFillFeedback, setQuickFillFeedback] = useState<string | null>(
-    null,
+  const titleId = useId();
+  const deviceProfile = useSyncExternalStore(
+    subscribeDeviceProfile,
+    getDeviceProfile,
+    getDeviceProfileServerSnapshot,
   );
 
-  const [title, setTitle] = useState(
-    initialEvent?.title ?? initialDraft?.title ?? '',
-  );
-  const [timeZone, setTimeZone] = useState(
-    initialEvent?.timeZone ?? initialDraft?.timeZone ?? 'America/New_York',
-  );
-  const [startDate, setStartDate] = useState('');
-  const [startTime, setStartTime] = useState('18:00');
-  const [showEndTime, setShowEndTime] = useState(
-    Boolean(initialEvent?.endIso ?? initialDraft?.endIso),
-  );
-  const [endDate, setEndDate] = useState('');
-  const [endTime, setEndTime] = useState('21:00');
+  const initialSource = initialEvent ?? initialDraft;
+  const initialStyle: InviteStyleConfig = initialSource?.style ?? getDefaultStyle();
 
-  const [startDisambiguation, setStartDisambiguation] = useState<
-    'earlier' | 'later' | undefined
-  >(undefined);
-  const [endDisambiguation, setEndDisambiguation] = useState<
-    'earlier' | 'later' | undefined
-  >(undefined);
-
-  const [startDstState, setStartDstState] = useState<{
-    key: string;
-    conflict: DstConflictInfo | null;
-    iso?: string;
-  } | null>(null);
-  const [endDstState, setEndDstState] = useState<{
-    key: string;
-    conflict: DstConflictInfo | null;
-    iso?: string;
-  } | null>(null);
-  const [submitDstError, setSubmitDstError] = useState<{
-    target: 'start' | 'end';
-    conflict: DstConflictInfo;
-  } | null>(null);
-
-  const [locationName, setLocationName] = useState(
-    initialEvent?.locationName ?? initialDraft?.locationName ?? '',
-  );
-  const [locationAddress, setLocationAddress] = useState(
-    initialEvent?.locationAddress ?? initialDraft?.locationAddress ?? '',
-  );
-  const [virtualUrl, setVirtualUrl] = useState(
-    initialEvent?.virtualUrl ?? initialDraft?.virtualUrl ?? '',
-  );
-  const [hostName, setHostName] = useState(
-    initialEvent?.hostName ?? initialDraft?.hostName ?? '',
+  const [quickPrompt, setQuickPrompt] = useState<string>('');
+  const [autofillNote, setAutofillNote] = useState<string | null>(
+    initialDraft?.detectedOccasionLabel
+      ? `Autofilled for ${initialDraft.detectedOccasionLabel}`
+      : null,
   );
 
-  const [descriptionHtml, setDescriptionHtml] = useState(
-    initialEvent?.descriptionHtml ?? initialDraft?.descriptionHtml ?? '',
+  const [title, setTitle] = useState<string>(initialSource?.title ?? '');
+  const [startDate, setStartDate] = useState<string>(() => {
+    const raw = initialSource?.startIso?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1];
+    return raw || getDefaultDateString();
+  });
+  const [startTime, setStartTime] = useState<string>(() => {
+    const raw = initialSource?.startIso?.match(/T(\d{2}:\d{2})/)?.[1];
+    return raw || '18:00';
+  });
+  const [hasEndTime, setHasEndTime] = useState<boolean>(
+    Boolean(initialSource?.endIso),
   );
-  const [rsvpNotePrompt, setRsvpNotePrompt] = useState(
-    initialEvent?.rsvpNotePrompt ??
-      initialDraft?.rsvpNotePrompt ??
-      'What dish, drink, or note would you like to share?',
+  const [endDate, setEndDate] = useState<string>(() => {
+    const raw = initialSource?.endIso?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1];
+    return raw || getDefaultDateString();
+  });
+  const [endTime, setEndTime] = useState<string>(() => {
+    const raw = initialSource?.endIso?.match(/T(\d{2}:\d{2})/)?.[1];
+    return raw || '21:00';
+  });
+  const [timeZone, setTimeZone] = useState<string>(
+    initialSource?.timeZone || 'America/New_York',
   );
-  const [invitedNamesRaw, setInvitedNamesRaw] = useState(
+
+  const [locationName, setLocationName] = useState<string>(
+    initialSource?.locationName ?? '',
+  );
+  const [locationAddress, setLocationAddress] = useState<string>(
+    initialSource?.locationAddress ?? '',
+  );
+  const [virtualUrl, setVirtualUrl] = useState<string>(
+    initialSource?.virtualUrl ?? '',
+  );
+  const [showLocationDetails, setShowLocationDetails] = useState<boolean>(
+    Boolean(
+      initialSource?.locationAddress?.trim() ||
+        (initialSource?.locationName?.trim() && initialSource?.virtualUrl?.trim()),
+    ),
+  );
+
+  const [descriptionHtml, setDescriptionHtml] = useState<string>(
+    initialSource?.descriptionHtml ?? '',
+  );
+  const [hostName, setHostName] = useState<string>(
+    initialSource?.hostName ?? '',
+  );
+  const [hostTouched, setHostTouched] = useState<boolean>(false);
+  const effectiveHostName = hostTouched
+    ? hostName
+    : hostName || (mode === 'create' ? (deviceProfile?.name ?? '') : '');
+  const [rsvpNotePrompt, setRsvpNotePrompt] = useState<string>(
+    initialSource?.rsvpNotePrompt ?? '',
+  );
+  const [invitedNamesRaw, setInvitedNamesRaw] = useState<string>(
     initialEvent?.invitedNames?.join(', ') ?? '',
   );
-  const [hideGuestList, setHideGuestList] = useState(
+  const [hideGuestList, setHideGuestList] = useState<boolean>(
     initialEvent?.hideGuestList ?? false,
   );
+  const [style, setStyle] = useState<InviteStyleConfig>(initialStyle);
+  const [openPanel, setOpenPanel] = useState<ActivePanel>(null);
 
-  const [style, setStyle] = useState<InviteStyleConfig>(
-    initialEvent?.style ?? initialDraft?.style ?? getDefaultStyle(),
-  );
+  const [startDstConflict, setStartDstConflict] = useState<DstConflictInfo | null>(null);
+  const [startDisambiguation, setStartDisambiguation] = useState<'earlier' | 'later' | undefined>();
+  const [endDstConflict, setEndDstConflict] = useState<DstConflictInfo | null>(null);
+  const [endDisambiguation, setEndDisambiguation] = useState<'earlier' | 'later' | undefined>();
 
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [publishedResult, setPublishedResult] =
-    useState<PublishedEventResult | null>(null);
+  const [submitting, setSubmitting] = useState<boolean>(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [savedNotice, setSavedNotice] = useState<boolean>(false);
+  const [publishedResult, setPublishedResult] = useState<PublishedEventResult | null>(null);
 
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const titleTextareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const deleteDialogRef = useRef<HTMLDialogElement>(null);
-  const previewSectionRef = useRef<HTMLDivElement>(null);
-  const titleInputRef = useRef<HTMLInputElement>(null);
+  // Sync live style up to client page wrapper
+  useEffect(() => {
+    onStyleChange?.(style);
+  }, [style, onStyleChange]);
+
+  // Pre-fill browser timezone & ISO local fields accurately using Temporal
+  useEffect(() => {
+    let active = true;
+    queueMicrotask(() => {
+      if (active && !initialSource?.timeZone) {
+        setTimeZone(getBrowserTimeZone());
+      }
+    });
+    if (initialSource?.startIso) {
+      const tz = initialSource.timeZone || getBrowserTimeZone();
+      void isoToLocalFields(initialSource.startIso, tz).then(({ date, time }) => {
+        if (active && date) setStartDate(date);
+        if (active && time) setStartTime(time);
+      });
+    }
+    if (initialSource?.endIso) {
+      const tz = initialSource.timeZone || getBrowserTimeZone();
+      void isoToLocalFields(initialSource.endIso, tz).then(({ date, time }) => {
+        if (active && date) setEndDate(date);
+        if (active && time) setEndTime(time);
+      });
+    }
+    return () => {
+      active = false;
+    };
+  }, [initialSource?.endIso, initialSource?.startIso, initialSource?.timeZone]);
+
+  // Auto-size title textarea when content wraps
+  useEffect(() => {
+    const el = titleTextareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.max(el.scrollHeight, 40)}px`;
+  }, [title]);
 
   const timeZones = useMemo(() => getSupportedTimeZones(timeZone), [timeZone]);
-  const invitedNames = useMemo(
-    () => parseInvitedNames(invitedNamesRaw),
-    [invitedNamesRaw],
-  );
+  const activePreset = getThemePreset(style.themeId);
+  const isLightTheme =
+    style.colorMode === 'light' || (!style.colorMode && activePreset.colorMode === 'light');
 
-  // Initialize timezone and local date/time fields cleanly
-  useEffect(() => {
-    let cancelled = false;
-    const initDates = async () => {
-      const targetTz =
-        initialEvent?.timeZone ??
-        initialDraft?.timeZone ??
-        getBrowserTimeZone();
-      if (!cancelled) {
-        setTimeZone(targetTz);
-      }
+  const primaryCtaStyle: React.CSSProperties = isLightTheme
+    ? { backgroundColor: '#0f172a', color: '#ffffff' }
+    : { backgroundColor: '#ffffff', color: '#0f172a' };
 
-      const sourceStart = initialEvent?.startIso ?? initialDraft?.startIso;
-      if (sourceStart) {
-        const localStart = await isoToLocalFields(sourceStart, targetTz);
-        if (!cancelled) {
-          setStartDate(localStart.date || getDefaultDateSevenDaysOut());
-          setStartTime(localStart.time || '18:00');
-        }
-      } else if (!cancelled) {
-        setStartDate(getDefaultDateSevenDaysOut());
-        setStartTime('18:00');
-      }
+  function handleAutofillPrompt(rawInput?: string) {
+    const sourcePrompt = (rawInput ?? quickPrompt).trim();
+    if (!sourcePrompt) return;
 
-      const sourceEnd = initialEvent?.endIso ?? initialDraft?.endIso;
-      if (sourceEnd) {
-        const localEnd = await isoToLocalFields(sourceEnd, targetTz);
-        if (!cancelled) {
-          setShowEndTime(true);
-          setEndDate(localEnd.date || getDefaultDateSevenDaysOut());
-          setEndTime(localEnd.time || '21:00');
-        }
-      }
-    };
-
-    void initDates();
-    return () => {
-      cancelled = true;
-    };
-  }, [initialEvent, initialDraft]);
-
-  const startCheckKey =
-    startDate && startTime
-      ? `${startDate}|${startTime}|${timeZone}|${startDisambiguation ?? ''}`
-      : '';
-  const endEffectiveDate = endDate || startDate;
-  const endCheckKey =
-    showEndTime && endEffectiveDate && endTime
-      ? `${endEffectiveDate}|${endTime}|${timeZone}|${endDisambiguation ?? ''}`
-      : '';
-
-  // Live Temporal.ZonedDateTime DST validation for start date/time
-  useEffect(() => {
-    if (!startCheckKey) return;
-    let cancelled = false;
-    void validateAndBuildZonedIso(
-      startDate,
-      startTime,
-      timeZone,
-      startDisambiguation,
-    ).then((res) => {
-      if (cancelled) return;
-      setStartDstState({
-        key: startCheckKey,
-        conflict: res.dstConflict ?? null,
-        iso: res.iso,
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [startCheckKey, startDate, startTime, timeZone, startDisambiguation]);
-
-  // Live Temporal.ZonedDateTime DST validation for optional end date/time
-  useEffect(() => {
-    if (!endCheckKey) return;
-    let cancelled = false;
-    void validateAndBuildZonedIso(
-      endEffectiveDate,
-      endTime,
-      timeZone,
-      endDisambiguation,
-    ).then((res) => {
-      if (cancelled) return;
-      setEndDstState({
-        key: endCheckKey,
-        conflict: res.dstConflict ?? null,
-        iso: res.iso,
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [endCheckKey, endEffectiveDate, endTime, timeZone, endDisambiguation]);
-
-  const startDstConflict =
-    submitDstError?.target === 'start'
-      ? submitDstError.conflict
-      : startCheckKey && startDstState?.key === startCheckKey
-        ? startDstState.conflict
-        : null;
-  const resolvedStartIso =
-    startCheckKey && startDstState?.key === startCheckKey
-      ? startDstState.iso
-      : initialEvent?.startIso ?? initialDraft?.startIso;
-
-  const endDstConflict =
-    submitDstError?.target === 'end'
-      ? submitDstError.conflict
-      : endCheckKey && endDstState?.key === endCheckKey
-        ? endDstState.conflict
-        : null;
-  const resolvedEndIso = showEndTime
-    ? endCheckKey && endDstState?.key === endCheckKey
-      ? endDstState.iso
-      : initialEvent?.endIso ?? initialDraft?.endIso
-    : undefined;
-
-  // Wire Delete confirmation <dialog> light-dismiss
-  useEffect(() => {
-    const dialog = deleteDialogRef.current;
-    if (!dialog) return;
-    const cleanup = setupDialogLightDismiss(dialog);
-    const handleClose = () => {
-      setDeleteDialogOpen(false);
-    };
-    dialog.addEventListener('close', handleClose);
-    return () => {
-      cleanup();
-      dialog.removeEventListener('close', handleClose);
-    };
-  }, []);
-
-  useEffect(() => {
-    const dialog = deleteDialogRef.current;
-    if (!dialog) return;
-    if (deleteDialogOpen && !dialog.open) {
-      dialog.showModal();
-    } else if (!deleteDialogOpen && dialog.open) {
-      dialog.close();
-    }
-  }, [deleteDialogOpen]);
-
-  const applyQuickFill = async () => {
-    const trimmed = quickPrompt.trim();
-    if (!trimmed) {
-      setQuickFillFeedback('Write a short description first to autofill.');
-      return;
-    }
-
-    const parsed = parseEventPrompt(trimmed, new Date(), timeZone);
+    const parsed = parseEventPrompt(
+      sourcePrompt,
+      new Date(),
+      timeZone || getBrowserTimeZone(),
+    );
     setTitle(parsed.title);
-    setTimeZone(parsed.timeZone || timeZone);
-    setLocationName(parsed.locationName ?? '');
-    setLocationAddress(parsed.locationAddress ?? '');
-    setVirtualUrl(parsed.virtualUrl ?? '');
-    setHostName(parsed.hostName ?? '');
-    setDescriptionHtml(parsed.descriptionHtml);
-    setRsvpNotePrompt(parsed.rsvpNotePrompt);
+    if (parsed.timeZone) setTimeZone(parsed.timeZone);
+    if (parsed.locationName !== undefined) setLocationName(parsed.locationName);
+    if (parsed.locationAddress !== undefined) setLocationAddress(parsed.locationAddress);
+    if (parsed.virtualUrl !== undefined) setVirtualUrl(parsed.virtualUrl);
+    if (parsed.locationAddress || (parsed.locationName && parsed.virtualUrl)) {
+      setShowLocationDetails(true);
+    }
+    if (parsed.hostName && !effectiveHostName.trim()) {
+      setHostTouched(true);
+      setHostName(parsed.hostName);
+    }
+    if (parsed.descriptionHtml) setDescriptionHtml(parsed.descriptionHtml);
+    if (parsed.rsvpNotePrompt) setRsvpNotePrompt(parsed.rsvpNotePrompt);
     setStyle(parsed.style);
-    setStartDisambiguation(undefined);
-    setEndDisambiguation(undefined);
 
-    const startFields = await isoToLocalFields(
-      parsed.startIso,
-      parsed.timeZone || timeZone,
-    );
-    if (startFields.date) setStartDate(startFields.date);
-    if (startFields.time) setStartTime(startFields.time);
-
+    void isoToLocalFields(parsed.startIso, parsed.timeZone).then(({ date, time }) => {
+      if (date) setStartDate(date);
+      if (time) setStartTime(time);
+    });
     if (parsed.endIso) {
-      const endFields = await isoToLocalFields(
-        parsed.endIso,
-        parsed.timeZone || timeZone,
-      );
-      setShowEndTime(true);
-      if (endFields.date) setEndDate(endFields.date);
-      if (endFields.time) setEndTime(endFields.time);
+      setHasEndTime(true);
+      void isoToLocalFields(parsed.endIso, parsed.timeZone).then(({ date, time }) => {
+        if (date) setEndDate(date);
+        if (time) setEndTime(time);
+      });
     } else {
-      setShowEndTime(false);
+      setHasEndTime(false);
     }
 
-    setQuickFillFeedback(
-      `Autofilled "${parsed.title}" with the ${getThemePreset(parsed.style.themeId).name} theme.`,
-    );
-    setSubmitError(null);
-  };
+    setAutofillNote(`Autofilled (${parsed.detectedOccasionLabel})`);
+    setErrorMsg(null);
+  }
 
-  const handleQuickPromptKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.nativeEvent.isComposing) return;
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      void applyQuickFill();
+  // Unified single-field location handler when details drawer isn't expanded
+  const singleLocationValue =
+    !showLocationDetails && virtualUrl && !locationName ? virtualUrl : locationName;
+
+  function handleSingleLocationChange(val: string) {
+    const trimmed = val.trim();
+    if (/^https?:\/\//i.test(trimmed)) {
+      setVirtualUrl(val);
+      setLocationName('');
+    } else {
+      setLocationName(val);
+      if (/^https?:\/\//i.test(virtualUrl)) {
+        setVirtualUrl('');
+      }
     }
-  };
+  }
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (isSubmitting) return;
+    setErrorMsg(null);
+    setSavedNotice(false);
 
-    setSubmitError(null);
-    setSaveSuccessMsg(null);
-    setSubmitDstError(null);
-
-    const cleanTitle = title.trim();
-    if (!cleanTitle) {
-      setSubmitError('Please enter an event title.');
-      titleInputRef.current?.focus();
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
+      setErrorMsg('Please enter an event name.');
+      titleTextareaRef.current?.focus();
       return;
     }
 
@@ -405,73 +307,58 @@ export function InviteStudio({
       startDisambiguation,
     );
     if (startRes.dstConflict) {
-      setSubmitDstError({ target: 'start', conflict: startRes.dstConflict });
-      setSubmitError(
-        'Please resolve the Daylight Saving Time conflict on your start time before continuing.',
-      );
+      setStartDstConflict(startRes.dstConflict);
+      setErrorMsg(startRes.dstConflict.message);
       return;
     }
+    setStartDstConflict(null);
     if (startRes.error || !startRes.iso) {
-      setSubmitError(startRes.error || 'Please pick a valid start date and time.');
+      setErrorMsg(startRes.error || 'Invalid start date or time.');
       return;
     }
 
     let finalEndIso: string | undefined;
-    if (showEndTime && endTime) {
-      const effectiveEndDate = endDate || startDate;
+    if (hasEndTime && endDate && endTime) {
       const endRes = await validateAndBuildZonedIso(
-        effectiveEndDate,
+        endDate,
         endTime,
         timeZone,
         endDisambiguation,
       );
       if (endRes.dstConflict) {
-        setSubmitDstError({ target: 'end', conflict: endRes.dstConflict });
-        setSubmitError(
-          'Please resolve the Daylight Saving Time conflict on your end time before continuing.',
-        );
+        setEndDstConflict(endRes.dstConflict);
+        setErrorMsg(endRes.dstConflict.message);
         return;
       }
+      setEndDstConflict(null);
       if (endRes.error || !endRes.iso) {
-        setSubmitError(endRes.error || 'Please pick a valid end date and time.');
+        setErrorMsg(endRes.error || 'Invalid end date or time.');
         return;
       }
-      if (Date.parse(endRes.iso) <= Date.parse(startRes.iso)) {
-        setSubmitError('End date & time must be after the start date & time.');
+      if (new Date(endRes.iso).getTime() < new Date(startRes.iso).getTime()) {
+        setErrorMsg('End time must be after start time.');
         return;
       }
       finalEndIso = endRes.iso;
     }
 
-    const cleanVirtual = virtualUrl.trim();
-    if (cleanVirtual && !/^https?:\/\//i.test(cleanVirtual)) {
-      setSubmitError('Virtual event link must start with https:// or http://.');
-      return;
-    }
-
-    const optionalValue = (val: string | undefined): string | null | undefined => {
-      const trimmed = val?.trim();
-      if (trimmed) return trimmed;
-      return mode === 'edit' ? null : undefined;
-    };
-
     const payload = {
-      title: cleanTitle,
+      title: trimmedTitle,
       descriptionHtml,
       startIso: startRes.iso,
-      endIso: finalEndIso ?? (mode === 'edit' ? null : undefined),
+      endIso: finalEndIso,
       timeZone,
-      locationName: optionalValue(locationName),
-      locationAddress: optionalValue(locationAddress),
-      virtualUrl: optionalValue(cleanVirtual),
-      hostName: optionalValue(hostName),
-      rsvpNotePrompt: optionalValue(rsvpNotePrompt),
-      invitedNames,
+      locationName: locationName.trim() || undefined,
+      locationAddress: locationAddress.trim() || undefined,
+      virtualUrl: virtualUrl.trim() || undefined,
+      hostName: effectiveHostName.trim() || undefined,
+      rsvpNotePrompt: rsvpNotePrompt.trim() || undefined,
+      invitedNames: parseInvitedNames(invitedNamesRaw),
       hideGuestList,
       style,
     };
 
-    setIsSubmitting(true);
+    setSubmitting(true);
     try {
       if (mode === 'create') {
         const res = await fetch('/api/events', {
@@ -485,839 +372,795 @@ export function InviteStudio({
           event?: EventMeta;
           error?: string;
         };
-        if (!res.ok) {
-          throw new Error(data.error || 'Failed to publish invite.');
+        if (!res.ok || !data.id || !data.editKey || !data.event) {
+          setErrorMsg(data.error || 'Could not create invite. Please check required fields.');
+          return;
         }
 
-        const createdId = data.id ?? data.event?.id;
-        const createdKey = data.editKey;
-        if (!createdId || !createdKey) {
-          throw new Error('Server did not return event links.');
+        if (payload.hostName) {
+          saveDeviceProfile({ name: payload.hostName });
         }
+
+        rememberHostEvent({
+          id: data.id,
+          title: data.event.title,
+          startIso: data.event.startIso,
+          timeZone: data.event.timeZone,
+          locationName: data.event.locationName,
+          themeId: data.event.style.themeId,
+          editKey: data.editKey,
+        });
 
         setPublishedResult({
-          id: createdId,
-          editKey: createdKey,
-          title: data.event?.title ?? cleanTitle,
-          startIso: data.event?.startIso ?? startRes.iso,
-          timeZone: data.event?.timeZone ?? timeZone,
-          locationName: data.event?.locationName ?? (locationName.trim() || undefined),
-          themeId: style.themeId,
+          id: data.id,
+          editKey: data.editKey,
+          title: data.event.title,
+          startIso: data.event.startIso,
+          timeZone: data.event.timeZone,
+          locationName: data.event.locationName,
+          themeId: data.event.style.themeId,
         });
-      } else {
-        if (!eventId || !editKey) {
-          throw new Error('Missing event ID or host edit key.');
-        }
+      } else if (eventId && editKey) {
         const res = await fetch(`/api/events/${encodeURIComponent(eventId)}`, {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
             'x-edit-key': editKey,
           },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({
+            ...payload,
+            endIso: hasEndTime ? finalEndIso : null,
+            locationName: locationName.trim() || null,
+            locationAddress: locationAddress.trim() || null,
+            virtualUrl: virtualUrl.trim() || null,
+            hostName: effectiveHostName.trim() || null,
+            rsvpNotePrompt: rsvpNotePrompt.trim() || null,
+          }),
         });
-        const data = (await res.json().catch(() => ({}))) as
-          | EventMeta
-          | { event?: EventMeta; error?: string };
-
-        if (!res.ok) {
-          const errObj = data as { error?: string };
-          throw new Error(errObj.error || 'Failed to save event changes.');
+        const updated = (await res.json().catch(() => ({}))) as EventMeta & {
+          error?: string;
+        };
+        if (!res.ok || !updated.id) {
+          setErrorMsg(updated.error || 'Could not save event updates.');
+          return;
         }
 
-        const updatedEvent =
-          'event' in data && data.event
-            ? data.event
-            : (data as EventMeta);
+        if (updated.hostName) {
+          saveDeviceProfile({ name: updated.hostName });
+        }
 
         rememberHostEvent({
-          id: eventId,
-          title: updatedEvent.title ?? cleanTitle,
-          startIso: updatedEvent.startIso ?? startRes.iso,
-          timeZone: updatedEvent.timeZone ?? timeZone,
-          locationName:
-            updatedEvent.locationName ?? (locationName.trim() || undefined),
-          themeId: updatedEvent.style?.themeId ?? style.themeId,
+          id: updated.id,
+          title: updated.title,
+          startIso: updated.startIso,
+          timeZone: updated.timeZone,
+          locationName: updated.locationName,
+          themeId: updated.style.themeId,
           editKey,
         });
 
-        setSaveSuccessMsg('All changes saved and live on your invite.');
-        onSaved?.(updatedEvent);
+        setSavedNotice(true);
+        onSaved?.(updated);
       }
-    } catch (err) {
-      setSubmitError(
-        err instanceof Error ? err.message : 'Something went wrong saving.',
-      );
+    } catch {
+      setErrorMsg('Network error saving invite. Please try again.');
     } finally {
-      setIsSubmitting(false);
+      setSubmitting(false);
     }
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!eventId || !editKey || isDeleting) return;
-    setIsDeleting(true);
-    setDeleteError(null);
-    try {
-      const res = await fetch(`/api/events/${encodeURIComponent(eventId)}`, {
-        method: 'DELETE',
-        headers: { 'x-edit-key': editKey },
-      });
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as {
-          error?: string;
-        };
-        throw new Error(data.error || 'Could not delete this event.');
-      }
-      removeRecentEvent(eventId);
-      setDeleteDialogOpen(false);
-      router.push('/');
-    } catch (err) {
-      setDeleteError(
-        err instanceof Error ? err.message : 'Failed to delete event.',
-      );
-    } finally {
-      setIsDeleting(false);
-    }
-  };
+  }
 
   return (
-    <div className="space-y-6 pb-28">
-      {/* Quick Fill Bar on /create */}
-      {mode === 'create' ? (
-        <details className="group rounded-3xl border border-emerald-400/25 bg-emerald-500/[0.06] overflow-hidden backdrop-blur-xl">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-sm font-medium text-emerald-100 hover:bg-emerald-500/[0.09] transition min-h-[52px]">
-            <span className="inline-flex items-center gap-2.5">
-              <Wand2 className="h-4 w-4 text-emerald-300" aria-hidden="true" />
-              <span>
-                Quick Fill from a sentence{' '}
-                <span className="text-emerald-200/70 font-normal">
-                  (paste a text or description to autofill fields &amp; theme)
-                </span>
-              </span>
-            </span>
-            <span className="text-xs text-emerald-300 font-semibold group-open:hidden">
-              Expand
-            </span>
-          </summary>
-
-          <div className="border-t border-emerald-400/20 p-5 space-y-3">
-            <div className="flex flex-col sm:flex-row gap-2.5">
-              <label htmlFor="studio-quick-fill" className="sr-only">
-                Describe your event in plain English
-              </label>
-              <input
-                id="studio-quick-fill"
-                type="text"
-                value={quickPrompt}
-                onChange={(e) => setQuickPrompt(e.target.value)}
-                onKeyDown={handleQuickPromptKeyDown}
-                placeholder="e.g. Friendsgiving dinner Nov 26 at 5pm at my place, hosted by Maya"
-                className="flex-1 rounded-2xl border border-white/15 bg-slate-950/80 px-4 py-3 text-base text-white placeholder:text-slate-500 min-h-[48px] [@media(pointer:coarse)]:min-h-[52px]"
-              />
+    <>
+      <form
+        onSubmit={handleSubmit}
+        className="grid grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)] gap-5 lg:gap-10 items-start"
+      >
+        {/* Left / Top Visual Column: Cover + 2 Progressive Disclosure Pills */}
+        <div className="space-y-3 lg:sticky lg:top-6 min-w-0">
+          {style.coverLayout !== 'none' ? (
+            <CoverArt
+              coverPresetId={style.coverPresetId}
+              customCoverUrl={style.customCoverUrl}
+              layout={style.coverLayout === 'banner' ? 'banner' : 'square'}
+              title={title || 'Event cover preview'}
+              className="w-full"
+            >
               <button
                 type="button"
-                onClick={() => void applyQuickFill()}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-400 px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-emerald-300 transition min-h-[48px] [@media(pointer:coarse)]:min-h-[52px] shrink-0"
+                aria-expanded={openPanel === 'covers'}
+                onClick={() =>
+                  setOpenPanel((prev) => (prev === 'covers' ? null : 'covers'))
+                }
+                className="inline-flex items-center gap-1.5 rounded-full bg-slate-950/80 backdrop-blur-md border border-white/25 px-3 py-1.5 text-xs font-medium text-white shadow-lg hover:bg-slate-950/95 transition cursor-pointer"
               >
-                <Sparkles className="h-4 w-4" aria-hidden="true" />
-                <span>Autofill Fields</span>
+                <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>Change Cover</span>
               </button>
-            </div>
-            {quickFillFeedback ? (
-              <p className="text-xs text-emerald-200" role="status">
-                {quickFillFeedback}
-              </p>
-            ) : null}
-          </div>
-        </details>
-      ) : null}
-
-      {/* Mobile jump-to-preview pill */}
-      <div className="flex justify-end lg:hidden">
-        <button
-          type="button"
-          onClick={() =>
-            previewSectionRef.current?.scrollIntoView({ behavior: 'smooth' })
-          }
-          className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.06] px-4 py-2 text-xs font-medium text-slate-200 hover:bg-white/[0.12] min-h-[44px]"
-        >
-          <Eye className="h-3.5 w-3.5 text-emerald-300" aria-hidden="true" />
-          <span>Jump to Live Preview</span>
-        </button>
-      </div>
-
-      <form onSubmit={(e) => void handleSubmit(e)} noValidate>
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)] gap-6 xl:gap-8 items-start">
-          {/* Left Column: Form Flow */}
-          <div className="space-y-6">
-            {/* Section 1: Event Essentials */}
-            <section
-              aria-labelledby="essentials-heading"
-              className="invite-card rounded-3xl border border-white/12 bg-white/[0.04] p-5 sm:p-6 space-y-5"
+            </CoverArt>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setStyle((prev) => ({ ...prev, coverLayout: 'square' }));
+                setOpenPanel('covers');
+              }}
+              className="w-full rounded-2xl border border-dashed py-4 px-4 text-xs font-medium flex items-center justify-center gap-2 transition hover:opacity-90 cursor-pointer"
+              style={{
+                borderColor: 'var(--theme-border)',
+                color: 'var(--theme-text-muted)',
+              }}
             >
-              <div>
-                <h2
-                  id="essentials-heading"
-                  className="text-lg font-semibold text-white"
-                >
-                  Event Essentials
-                </h2>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  The core details guests see right away.
-                </p>
-              </div>
+              <ImageIcon className="h-4 w-4" aria-hidden="true" />
+              <span>Add Cover Art</span>
+            </button>
+          )}
 
-              <div className="space-y-4">
-                <div>
-                  <label
-                    htmlFor="event-title"
-                    className="block text-sm font-medium text-slate-200 mb-1.5"
-                  >
-                    Event Title <span className="text-rose-400">*</span>
-                  </label>
-                  <input
-                    ref={titleInputRef}
-                    id="event-title"
-                    name="title"
-                    type="text"
-                    required
-                    maxLength={140}
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="e.g. Cozy Christmas Cocoa & Games Night"
-                    className="w-full rounded-2xl border border-white/15 bg-slate-900/75 px-4 py-3 text-base text-white placeholder:text-slate-500 focus:border-emerald-400/70 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 min-h-[48px] [@media(pointer:coarse)]:min-h-[52px]"
-                  />
-                </div>
-
-                {/* Date & Start Time */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div>
-                    <label
-                      htmlFor="event-start-date"
-                      className="flex items-center gap-1.5 text-sm font-medium text-slate-200 mb-1.5"
-                    >
-                      <Calendar
-                        className="h-3.5 w-3.5 text-emerald-300"
-                        aria-hidden="true"
-                      />
-                      <span>
-                        Start Date <span className="text-rose-400">*</span>
-                      </span>
-                    </label>
-                    <input
-                      id="event-start-date"
-                      name="startDate"
-                      type="date"
-                      required
-                      value={startDate}
-                      onChange={(e) => {
-                        setStartDate(e.target.value);
-                        setStartDisambiguation(undefined);
-                        setSubmitDstError(null);
-                        if (!endDate) setEndDate(e.target.value);
-                      }}
-                      className="w-full rounded-2xl border border-white/15 bg-slate-900/75 px-4 py-3 text-base text-white focus:border-emerald-400/70 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 min-h-[48px] [@media(pointer:coarse)]:min-h-[52px]"
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="event-start-time"
-                      className="flex items-center gap-1.5 text-sm font-medium text-slate-200 mb-1.5"
-                    >
-                      <Clock
-                        className="h-3.5 w-3.5 text-emerald-300"
-                        aria-hidden="true"
-                      />
-                      <span>
-                        Start Time <span className="text-rose-400">*</span>
-                      </span>
-                    </label>
-                    <input
-                      id="event-start-time"
-                      name="startTime"
-                      type="time"
-                      required
-                      value={startTime}
-                      onChange={(e) => {
-                        setStartTime(e.target.value);
-                        setStartDisambiguation(undefined);
-                        setSubmitDstError((prev) =>
-                          prev?.target === 'start' ? null : prev,
-                        );
-                      }}
-                      className="w-full rounded-2xl border border-white/15 bg-slate-900/75 px-4 py-3 text-base text-white focus:border-emerald-400/70 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 min-h-[48px] [@media(pointer:coarse)]:min-h-[52px]"
-                    />
-                  </div>
-                </div>
-
-                {/* Start DST Conflict Warning */}
-                {startDstConflict ? (
-                  <div
-                    role="alert"
-                    className="rounded-2xl border border-amber-400/45 bg-amber-500/15 p-3.5 space-y-2.5 text-xs sm:text-sm text-amber-100"
-                  >
-                    <div className="flex items-start gap-2">
-                      <AlertTriangle
-                        className="h-4 w-4 text-amber-300 shrink-0 mt-0.5"
-                        aria-hidden="true"
-                      />
-                      <p>{startDstConflict.message}</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {startDstConflict.kind === 'ambiguous' ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setStartDisambiguation('earlier');
-                              setSubmitDstError(null);
-                            }}
-                            className="rounded-xl bg-amber-300 px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-amber-200 min-h-[40px]"
-                          >
-                            Use first ({startDstConflict.earlierLabel})
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setStartDisambiguation('later');
-                              setSubmitDstError(null);
-                            }}
-                            className="rounded-xl border border-amber-300/40 px-3 py-2 text-xs font-semibold text-amber-100 hover:bg-amber-400/20 min-h-[40px]"
-                          >
-                            Use second ({startDstConflict.laterLabel})
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setStartDate(startDstConflict.laterDate);
-                            setStartTime(startDstConflict.laterTime);
-                            setStartDisambiguation(undefined);
-                            setSubmitDstError(null);
-                          }}
-                          className="rounded-xl bg-amber-300 px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-amber-200 min-h-[40px]"
-                        >
-                          Adjust to {startDstConflict.laterTime}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ) : null}
-
-                {/* Optional End Date & Time */}
-                {!showEndTime ? (
-                  <div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowEndTime(true);
-                        if (!endDate) setEndDate(startDate);
-                      }}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-white/12 bg-white/[0.04] px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-300 hover:bg-white/[0.08] hover:text-white transition min-h-[44px]"
-                    >
-                      <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                      <span>Add optional end time</span>
-                    </button>
-                  </div>
-                ) : (
-                  <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-3.5 space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                        Optional End Time
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowEndTime(false);
-                          setEndDstState(null);
-                          setSubmitDstError((prev) =>
-                            prev?.target === 'end' ? null : prev,
-                          );
-                          setEndDisambiguation(undefined);
-                        }}
-                        className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-white min-h-[36px] px-2"
-                      >
-                        <X className="h-3.5 w-3.5" aria-hidden="true" />
-                        <span>Remove</span>
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label
-                          htmlFor="event-end-date"
-                          className="block text-xs font-medium text-slate-300 mb-1"
-                        >
-                          End Date
-                        </label>
-                        <input
-                          id="event-end-date"
-                          name="endDate"
-                          type="date"
-                          value={endDate || startDate}
-                          onChange={(e) => {
-                            setEndDate(e.target.value);
-                            setEndDisambiguation(undefined);
-                            setSubmitDstError((prev) =>
-                              prev?.target === 'end' ? null : prev,
-                            );
-                          }}
-                          className="w-full rounded-xl border border-white/15 bg-slate-900 px-3.5 py-2.5 text-base text-white min-h-[48px] [@media(pointer:coarse)]:min-h-[52px]"
-                        />
-                      </div>
-                      <div>
-                        <label
-                          htmlFor="event-end-time"
-                          className="block text-xs font-medium text-slate-300 mb-1"
-                        >
-                          End Time
-                        </label>
-                        <input
-                          id="event-end-time"
-                          name="endTime"
-                          type="time"
-                          value={endTime}
-                          onChange={(e) => {
-                            setEndTime(e.target.value);
-                            setEndDisambiguation(undefined);
-                            setSubmitDstError((prev) =>
-                              prev?.target === 'end' ? null : prev,
-                            );
-                          }}
-                          className="w-full rounded-xl border border-white/15 bg-slate-900 px-3.5 py-2.5 text-base text-white min-h-[48px] [@media(pointer:coarse)]:min-h-[52px]"
-                        />
-                      </div>
-                    </div>
-
-                    {endDstConflict ? (
-                      <div
-                        role="alert"
-                        className="rounded-xl border border-amber-400/45 bg-amber-500/15 p-3 space-y-2 text-xs text-amber-100"
-                      >
-                        <p>{endDstConflict.message}</p>
-                        <div className="flex flex-wrap gap-2">
-                          {endDstConflict.kind === 'ambiguous' ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEndDisambiguation('earlier');
-                                  setSubmitDstError(null);
-                                }}
-                                className="rounded-lg bg-amber-300 px-3 py-1.5 font-semibold text-slate-950 min-h-[36px]"
-                              >
-                                First ({endDstConflict.earlierLabel})
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEndDisambiguation('later');
-                                  setSubmitDstError(null);
-                                }}
-                                className="rounded-lg border border-amber-300/40 px-3 py-1.5 font-semibold text-amber-100 min-h-[36px]"
-                              >
-                                Second ({endDstConflict.laterLabel})
-                              </button>
-                            </>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEndDate(endDstConflict.laterDate);
-                                setEndTime(endDstConflict.laterTime);
-                                setEndDisambiguation(undefined);
-                                setSubmitDstError(null);
-                              }}
-                              className="rounded-lg bg-amber-300 px-3 py-1.5 font-semibold text-slate-950 min-h-[36px]"
-                            >
-                              Adjust to {endDstConflict.laterTime}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                )}
-
-                {/* Timezone */}
-                <div>
-                  <label
-                    htmlFor="event-timezone"
-                    className="flex items-center gap-1.5 text-sm font-medium text-slate-200 mb-1.5"
-                  >
-                    <Globe
-                      className="h-3.5 w-3.5 text-sky-300"
-                      aria-hidden="true"
-                    />
-                    <span>Event Timezone</span>
-                  </label>
-                  <select
-                    id="event-timezone"
-                    name="timeZone"
-                    value={timeZone}
-                    onChange={(e) => {
-                      setTimeZone(e.target.value);
-                      setStartDisambiguation(undefined);
-                      setEndDisambiguation(undefined);
-                      setSubmitDstError(null);
-                    }}
-                    className="w-full rounded-2xl border border-white/15 bg-slate-900/75 px-4 py-3 text-base text-white focus:border-emerald-400/70 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 min-h-[48px] [@media(pointer:coarse)]:min-h-[52px]"
-                  >
-                    {timeZones.map((tz) => (
-                      <option key={tz} value={tz} className="bg-slate-900">
-                        {tz.replace(/_/g, ' ')}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Location & Virtual */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div>
-                    <label
-                      htmlFor="event-location-name"
-                      className="flex items-center gap-1.5 text-sm font-medium text-slate-200 mb-1.5"
-                    >
-                      <MapPin
-                        className="h-3.5 w-3.5 text-rose-300"
-                        aria-hidden="true"
-                      />
-                      <span>Location Name</span>
-                    </label>
-                    <input
-                      id="event-location-name"
-                      name="locationName"
-                      type="text"
-                      value={locationName}
-                      onChange={(e) => setLocationName(e.target.value)}
-                      placeholder="e.g. Our Place or Cedar Park Pavilion"
-                      className="w-full rounded-2xl border border-white/15 bg-slate-900/75 px-4 py-3 text-base text-white placeholder:text-slate-500 min-h-[48px] [@media(pointer:coarse)]:min-h-[52px]"
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="event-location-address"
-                      className="block text-sm font-medium text-slate-200 mb-1.5"
-                    >
-                      Street Address (optional)
-                    </label>
-                    <input
-                      id="event-location-address"
-                      name="locationAddress"
-                      type="text"
-                      value={locationAddress}
-                      onChange={(e) => setLocationAddress(e.target.value)}
-                      placeholder="e.g. 42 Maple St, Portland"
-                      className="w-full rounded-2xl border border-white/15 bg-slate-900/75 px-4 py-3 text-base text-white placeholder:text-slate-500 min-h-[48px] [@media(pointer:coarse)]:min-h-[52px]"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div>
-                    <label
-                      htmlFor="event-virtual-url"
-                      className="flex items-center gap-1.5 text-sm font-medium text-slate-200 mb-1.5"
-                    >
-                      <Link2
-                        className="h-3.5 w-3.5 text-violet-300"
-                        aria-hidden="true"
-                      />
-                      <span>Optional Virtual Link</span>
-                    </label>
-                    <input
-                      id="event-virtual-url"
-                      name="virtualUrl"
-                      type="url"
-                      value={virtualUrl}
-                      onChange={(e) => setVirtualUrl(e.target.value)}
-                      placeholder="https://meet.google.com/..."
-                      className="w-full rounded-2xl border border-white/15 bg-slate-900/75 px-4 py-3 text-base text-white placeholder:text-slate-500 min-h-[48px] [@media(pointer:coarse)]:min-h-[52px]"
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="event-host-name"
-                      className="flex items-center gap-1.5 text-sm font-medium text-slate-200 mb-1.5"
-                    >
-                      <User
-                        className="h-3.5 w-3.5 text-amber-300"
-                        aria-hidden="true"
-                      />
-                      <span>Host Name</span>
-                    </label>
-                    <input
-                      id="event-host-name"
-                      name="hostName"
-                      type="text"
-                      value={hostName}
-                      onChange={(e) => setHostName(e.target.value)}
-                      placeholder="e.g. Sarah & Jordan"
-                      className="w-full rounded-2xl border border-white/15 bg-slate-900/75 px-4 py-3 text-base text-white placeholder:text-slate-500 min-h-[48px] [@media(pointer:coarse)]:min-h-[52px]"
-                    />
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {/* Section 2: Rich Description & Guest Options */}
-            <section
-              aria-labelledby="description-options-heading"
-              className="invite-card rounded-3xl border border-white/12 bg-white/[0.04] p-5 sm:p-6 space-y-5"
+          {/* Two Clean Progressive Disclosure Pills */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-expanded={openPanel === 'themes'}
+              onClick={() =>
+                setOpenPanel((prev) => (prev === 'themes' ? null : 'themes'))
+              }
+              className="flex-1 min-w-0 inline-flex items-center justify-between gap-2 rounded-xl border backdrop-blur-md px-3 py-2 text-xs font-medium transition hover:opacity-90 cursor-pointer"
+              style={{
+                backgroundColor:
+                  openPanel === 'themes'
+                    ? 'var(--theme-surface-bg)'
+                    : 'var(--theme-glass-bg)',
+                borderColor:
+                  openPanel === 'themes'
+                    ? 'var(--theme-accent)'
+                    : 'var(--theme-hairline)',
+                color: 'var(--theme-text-primary)',
+              }}
             >
-              <div>
-                <h2
-                  id="description-options-heading"
-                  className="text-lg font-semibold text-white"
-                >
-                  Description &amp; Guest Options
-                </h2>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Add formatted details, potluck prompts, or pre-list guests.
-                </p>
-              </div>
-
-              <RichTextEditor
-                label="Event Description"
-                hint="Formatted with clean editorial prose"
-                value={descriptionHtml}
-                onChange={setDescriptionHtml}
+              <span className="inline-flex items-center gap-1.5 min-w-0">
+                <Palette className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+                <span className="truncate">{activePreset.name}</span>
+              </span>
+              <ChevronDown
+                className={`h-3.5 w-3.5 shrink-0 transition-transform ${
+                  openPanel === 'themes' ? 'rotate-180' : ''
+                }`}
+                aria-hidden="true"
               />
+            </button>
 
-              <div>
-                <label
-                  htmlFor="event-rsvp-prompt"
-                  className="block text-sm font-medium text-slate-200 mb-1.5"
-                >
-                  Prompt for guests&apos; RSVP note
-                </label>
-                <input
-                  id="event-rsvp-prompt"
-                  name="rsvpNotePrompt"
-                  type="text"
-                  value={rsvpNotePrompt}
-                  onChange={(e) => setRsvpNotePrompt(e.target.value)}
-                  placeholder="What dish or drink are you bringing?"
-                  className="w-full rounded-2xl border border-white/15 bg-slate-900/75 px-4 py-3 text-base text-white placeholder:text-slate-500 min-h-[48px] [@media(pointer:coarse)]:min-h-[52px]"
-                />
-              </div>
+            <button
+              type="button"
+              aria-expanded={openPanel === 'customize'}
+              onClick={() =>
+                setOpenPanel((prev) => (prev === 'customize' ? null : 'customize'))
+              }
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border backdrop-blur-md px-3 py-2 text-xs font-medium transition hover:opacity-90 cursor-pointer shrink-0"
+              style={{
+                backgroundColor:
+                  openPanel === 'customize'
+                    ? 'var(--theme-surface-bg)'
+                    : 'var(--theme-glass-bg)',
+                borderColor:
+                  openPanel === 'customize'
+                    ? 'var(--theme-accent)'
+                    : 'var(--theme-hairline)',
+                color: 'var(--theme-text-primary)',
+              }}
+            >
+              <Sliders className="h-3.5 w-3.5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+              <span>Customize</span>
+              <ChevronDown
+                className={`h-3.5 w-3.5 transition-transform ${
+                  openPanel === 'customize' ? 'rotate-180' : ''
+                }`}
+                aria-hidden="true"
+              />
+            </button>
+          </div>
 
-              <div>
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <label
-                    htmlFor="event-invited-names"
-                    className="flex items-center gap-1.5 text-sm font-medium text-slate-200"
-                  >
-                    <Users
-                      className="h-3.5 w-3.5 text-sky-300"
-                      aria-hidden="true"
-                    />
-                    <span>Invited Names (optional)</span>
-                  </label>
-                  {invitedNames.length > 0 ? (
-                    <span className="rounded-full bg-sky-400/15 px-2.5 py-0.5 text-xs font-medium text-sky-200">
-                      {invitedNames.length} listed for Awaiting Reply
-                    </span>
-                  ) : null}
-                </div>
-                <textarea
-                  id="event-invited-names"
-                  name="invitedNames"
-                  rows={2}
-                  value={invitedNamesRaw}
-                  onChange={(e) => setInvitedNamesRaw(e.target.value)}
-                  placeholder="Comma or line separated, e.g. Alex Rivera, Priya Patel, Sam & Mia"
-                  className="w-full rounded-2xl border border-white/15 bg-slate-900/75 px-4 py-3 text-base text-white placeholder:text-slate-500 resize-y [field-sizing:content] min-h-[80px]"
-                />
-                <p className="text-xs text-slate-400 mt-1">
-                  Guests can tap their name in 1 click to RSVP, and unresponded
-                  names appear under Awaiting Reply.
-                </p>
-              </div>
-
-              <label
-                htmlFor="event-hide-guest-list"
-                className="flex cursor-pointer items-start gap-3 rounded-2xl border border-white/12 bg-slate-950/50 p-3.5 hover:bg-white/[0.04] transition min-h-[52px]"
-              >
-                <input
-                  id="event-hide-guest-list"
-                  name="hideGuestList"
-                  type="checkbox"
-                  checked={hideGuestList}
-                  onChange={(e) => setHideGuestList(e.target.checked)}
-                  className="mt-0.5 h-5 w-5 rounded border-white/25 bg-slate-900 text-emerald-400 focus:ring-emerald-400"
-                />
-                <div className="space-y-0.5">
-                  <span className="block text-sm font-medium text-white">
-                    Hide guest list from other guests
-                  </span>
-                  <span className="block text-xs text-slate-400">
-                    Guests will still see total headcount attending, while
-                    individual names remain private to you.
-                  </span>
-                </div>
-              </label>
-            </section>
-
-            {/* Section 3: Progressive-Disclosure Styling Studio */}
+          {openPanel ? (
             <StyleStudioDrawer
+              section={openPanel}
               style={style}
               onChange={setStyle}
               eventId={eventId}
               editKey={editKey}
             />
-          </div>
-
-          {/* Right/Sticky Column: Live Interactive Invite Preview */}
-          <div
-            ref={previewSectionRef}
-            className="lg:sticky lg:top-6 space-y-4"
-          >
-            <InvitePreviewCard
-              title={title}
-              descriptionHtml={descriptionHtml}
-              startIso={resolvedStartIso}
-              endIso={resolvedEndIso}
-              timeZone={timeZone}
-              locationName={locationName}
-              locationAddress={locationAddress}
-              virtualUrl={virtualUrl}
-              hostName={hostName}
-              rsvpNotePrompt={rsvpNotePrompt}
-              invitedCount={invitedNames.length}
-              hideGuestList={hideGuestList}
-              style={style}
-            />
-          </div>
+          ) : null}
         </div>
 
-        {/* Sticky Publish / Save Bar */}
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-white/15 bg-slate-950/88 backdrop-blur-2xl">
-          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-8">
-            <div className="min-w-0 flex-1">
-              {submitError ? (
-                <p className="text-xs sm:text-sm text-rose-300 font-medium" role="alert">
-                  {submitError}
+        {/* Right / Main Form Column */}
+        <div className="min-w-0 space-y-4">
+          {/* 1-Line NLP Autofill Bar (Create Mode) */}
+          {mode === 'create' ? (
+            <div className="space-y-2">
+              <div
+                className="flex items-center gap-2 rounded-2xl border backdrop-blur-md p-1.5 pl-3"
+                style={{
+                  backgroundColor: 'var(--theme-glass-bg)',
+                  borderColor: 'var(--theme-hairline)',
+                }}
+              >
+                <Sparkles
+                  className="h-4 w-4 shrink-0"
+                  style={{ color: 'var(--theme-accent)' }}
+                  aria-hidden="true"
+                />
+                <input
+                  type="text"
+                  aria-label="Describe your event to autofill"
+                  value={quickPrompt}
+                  onChange={(e) => setQuickPrompt(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAutofillPrompt();
+                    }
+                  }}
+                  placeholder="Describe it: Christmas dinner Dec 19 at 6pm..."
+                  className="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:opacity-60"
+                  style={{ color: 'var(--theme-text-primary)' }}
+                />
+                <button
+                  type="button"
+                  disabled={!quickPrompt.trim()}
+                  onClick={() => handleAutofillPrompt()}
+                  className="shrink-0 rounded-xl px-3 py-1.5 text-xs font-semibold transition disabled:opacity-40 cursor-pointer"
+                  style={{
+                    backgroundColor: 'var(--theme-accent)',
+                    color: 'var(--theme-on-accent)',
+                  }}
+                >
+                  Autofill
+                </button>
+              </div>
+
+              {autofillNote ? (
+                <p
+                  className="flex items-center gap-1.5 text-xs px-1"
+                  style={{ color: 'var(--theme-accent)' }}
+                >
+                  <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <span>{autofillNote}</span>
                 </p>
-              ) : saveSuccessMsg ? (
-                <p className="inline-flex items-center gap-1.5 text-xs sm:text-sm text-emerald-300 font-medium" role="status">
-                  <Check className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  <span>{saveSuccessMsg}</span>
-                </p>
+              ) : !title.trim() ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {EXAMPLE_EVENT_PROMPTS.slice(0, 4).map((sample) => (
+                    <button
+                      key={sample.label}
+                      type="button"
+                      onClick={() => {
+                        setQuickPrompt(sample.prompt);
+                        handleAutofillPrompt(sample.prompt);
+                      }}
+                      className="rounded-full border px-2.5 py-1 text-xs transition hover:opacity-90 cursor-pointer"
+                      style={{
+                        backgroundColor: 'var(--theme-glass-bg)',
+                        borderColor: 'var(--theme-hairline)',
+                        color: 'var(--theme-text-muted)',
+                      }}
+                    >
+                      {sample.emoji} {sample.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* Core Grouped Card — 4 Essential Fields Only */}
+          <div
+            className="rounded-2xl border backdrop-blur-md p-4 sm:p-5 space-y-4"
+            style={{
+              backgroundColor: 'var(--theme-glass-bg)',
+              borderColor: 'var(--theme-border)',
+            }}
+          >
+            {/* 1. Event Name */}
+            <div className="pb-3 border-b" style={{ borderColor: 'var(--theme-hairline)' }}>
+              <label htmlFor={titleId} className="sr-only">
+                Event Name
+              </label>
+              <textarea
+                ref={titleTextareaRef}
+                id={titleId}
+                rows={1}
+                required
+                maxLength={140}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Event Name"
+                className="w-full bg-transparent border-0 outline-none resize-none text-2xl sm:text-[28px] font-bold leading-tight tracking-tight placeholder:opacity-45"
+                style={{
+                  color: 'var(--theme-text-primary)',
+                  fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
+                }}
+              />
+            </div>
+
+            {/* 2. Start / End Date & Time + Quiet Timezone */}
+            <div className="space-y-2.5 pb-3 border-b" style={{ borderColor: 'var(--theme-hairline)' }}>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span
+                    className="inline-flex items-center gap-1.5 text-xs font-medium"
+                    style={{ color: 'var(--theme-text-muted)' }}
+                  >
+                    <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span>Start</span>
+                  </span>
+
+                  <label className="inline-flex items-center gap-1 text-xs max-w-[180px]" style={{ color: 'var(--theme-text-muted)' }}>
+                    <Globe className="h-3 w-3 shrink-0" aria-hidden="true" />
+                    <select
+                      aria-label="Event time zone"
+                      value={timeZone}
+                      onChange={(e) => {
+                        setTimeZone(e.target.value);
+                        setStartDstConflict(null);
+                        setStartDisambiguation(undefined);
+                        setEndDstConflict(null);
+                        setEndDisambiguation(undefined);
+                      }}
+                      className="bg-transparent text-xs outline-none truncate max-w-[155px] cursor-pointer"
+                      style={{ color: 'var(--theme-text-muted)' }}
+                    >
+                      {timeZones.map((tz) => (
+                        <option key={tz} value={tz} className="bg-slate-900 text-white">
+                          {tz.replace(/_/g, ' ')}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    id="event-start-date"
+                    type="date"
+                    required
+                    aria-label="Start date"
+                    value={startDate}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setStartDate(next);
+                      setStartDstConflict(null);
+                      setStartDisambiguation(undefined);
+                      if (!hasEndTime) setEndDate(next);
+                    }}
+                    className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-sm outline-none focus:ring-2"
+                    style={{
+                      backgroundColor: 'var(--theme-surface-bg)',
+                      borderColor: 'var(--theme-border)',
+                      color: 'var(--theme-text-primary)',
+                    }}
+                  />
+                  <input
+                    id="event-start-time"
+                    type="time"
+                    required
+                    aria-label="Start time"
+                    value={startTime}
+                    onChange={(e) => {
+                      setStartTime(e.target.value);
+                      setStartDstConflict(null);
+                      setStartDisambiguation(undefined);
+                    }}
+                    className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-sm outline-none focus:ring-2"
+                    style={{
+                      backgroundColor: 'var(--theme-surface-bg)',
+                      borderColor: 'var(--theme-border)',
+                      color: 'var(--theme-text-primary)',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {startDstConflict ? (
+                <div
+                  role="alert"
+                  className="rounded-xl border border-amber-400/40 bg-amber-500/10 p-2.5 space-y-2 text-xs"
+                >
+                  <p>{startDstConflict.message}</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStartDisambiguation('earlier');
+                        setStartDstConflict(null);
+                      }}
+                      className="rounded-lg border px-2.5 py-1 font-medium cursor-pointer"
+                    >
+                      Use earlier ({startDstConflict.earlierLabel})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStartDisambiguation('later');
+                        setStartDstConflict(null);
+                      }}
+                      className="rounded-lg border px-2.5 py-1 font-medium cursor-pointer"
+                    >
+                      Use later ({startDstConflict.laterLabel})
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {hasEndTime ? (
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span
+                      className="inline-flex items-center gap-1.5 text-xs font-medium"
+                      style={{ color: 'var(--theme-text-muted)' }}
+                    >
+                      <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span>End</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHasEndTime(false);
+                        setEndDstConflict(null);
+                      }}
+                      className="text-xs opacity-75 hover:opacity-100 cursor-pointer"
+                      style={{ color: 'var(--theme-text-muted)' }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      id="event-end-date"
+                      type="date"
+                      aria-label="End date"
+                      value={endDate}
+                      onChange={(e) => {
+                        setEndDate(e.target.value);
+                        setEndDstConflict(null);
+                        setEndDisambiguation(undefined);
+                      }}
+                      className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-sm outline-none focus:ring-2"
+                      style={{
+                        backgroundColor: 'var(--theme-surface-bg)',
+                        borderColor: 'var(--theme-border)',
+                        color: 'var(--theme-text-primary)',
+                      }}
+                    />
+                    <input
+                      id="event-end-time"
+                      type="time"
+                      aria-label="End time"
+                      value={endTime}
+                      onChange={(e) => {
+                        setEndTime(e.target.value);
+                        setEndDstConflict(null);
+                        setEndDisambiguation(undefined);
+                      }}
+                      className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-sm outline-none focus:ring-2"
+                      style={{
+                        backgroundColor: 'var(--theme-surface-bg)',
+                        borderColor: 'var(--theme-border)',
+                        color: 'var(--theme-text-primary)',
+                      }}
+                    />
+                  </div>
+                  {endDstConflict ? (
+                    <div
+                      role="alert"
+                      className="rounded-xl border border-amber-400/40 bg-amber-500/10 p-2.5 space-y-2 text-xs"
+                    >
+                      <p>{endDstConflict.message}</p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEndDisambiguation('earlier');
+                            setEndDstConflict(null);
+                          }}
+                          className="rounded-lg border px-2.5 py-1 font-medium cursor-pointer"
+                        >
+                          {endDstConflict.earlierLabel}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEndDisambiguation('later');
+                            setEndDstConflict(null);
+                          }}
+                          className="rounded-lg border px-2.5 py-1 font-medium cursor-pointer"
+                        >
+                          {endDstConflict.laterLabel}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               ) : (
-                <p className="text-xs text-slate-400 hidden sm:block">
-                  {mode === 'create'
-                    ? 'Free & account-free — publish to get your Guest Invite Link + Secret Edit Link.'
-                    : 'Saving updates your live invite immediately.'}
-                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHasEndTime(true);
+                    setEndDate(startDate);
+                  }}
+                  className="text-xs font-medium opacity-75 hover:opacity-100 transition cursor-pointer"
+                  style={{ color: 'var(--theme-text-muted)' }}
+                >
+                  + Add end time
+                </button>
               )}
             </div>
 
-            <div className="flex flex-wrap items-center gap-2.5 ml-auto">
-              {mode === 'edit' && eventId ? (
-                <>
-                  <Link
-                    href={`/e/${eventId}`}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/[0.06] px-4 py-2.5 text-sm font-medium text-white hover:bg-white/[0.14] transition min-h-[48px] [@media(pointer:coarse)]:min-h-[52px]"
-                  >
-                    <ExternalLink className="h-4 w-4" aria-hidden="true" />
-                    <span className="hidden sm:inline">View Public Invite</span>
-                    <span className="sm:hidden">View</span>
-                  </Link>
-
+            {/* 3. Smart Location or Link */}
+            <div className="space-y-2 pb-3 border-b" style={{ borderColor: 'var(--theme-hairline)' }}>
+              {!showLocationDetails ? (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <MapPin
+                      className="h-4 w-4 shrink-0"
+                      style={{ color: 'var(--theme-text-muted)' }}
+                      aria-hidden="true"
+                    />
+                    <input
+                      id="event-location-single"
+                      type="text"
+                      maxLength={200}
+                      value={singleLocationValue}
+                      onChange={(e) => handleSingleLocationChange(e.target.value)}
+                      placeholder="Add location or virtual link"
+                      aria-label="Event location or virtual link"
+                      className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                      style={{
+                        backgroundColor: 'var(--theme-surface-bg)',
+                        borderColor: 'var(--theme-border)',
+                        color: 'var(--theme-text-primary)',
+                      }}
+                    />
+                  </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      setDeleteError(null);
-                      setDeleteDialogOpen(true);
-                    }}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-rose-400/35 bg-rose-500/10 px-3.5 py-2.5 text-sm font-medium text-rose-200 hover:bg-rose-500/20 transition min-h-[48px] [@media(pointer:coarse)]:min-h-[52px]"
+                    onClick={() => setShowLocationDetails(true)}
+                    className="pl-6 text-xs font-medium opacity-70 hover:opacity-100 transition cursor-pointer"
+                    style={{ color: 'var(--theme-text-muted)' }}
                   >
-                    <Trash2 className="h-4 w-4" aria-hidden="true" />
-                    <span className="hidden sm:inline">Delete Event</span>
+                    + Street address or separate video link
                   </button>
-                </>
-              ) : null}
-
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-300 px-5 sm:px-6 py-2.5 text-sm sm:text-base font-semibold text-slate-950 shadow-lg shadow-emerald-500/20 hover:brightness-105 transition min-h-[48px] [@media(pointer:coarse)]:min-h-[52px] disabled:opacity-70"
-              >
-                {mode === 'create'
-                  ? isSubmitting
-                    ? 'Publishing Invite...'
-                    : 'Publish Invite & Get Links'
-                  : isSubmitting
-                    ? 'Saving Changes...'
-                    : 'Save Changes'}
-              </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span
+                      className="inline-flex items-center gap-1.5 text-xs font-medium"
+                      style={{ color: 'var(--theme-text-muted)' }}
+                    >
+                      <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span>Location</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowLocationDetails(false)}
+                      className="text-xs opacity-75 hover:opacity-100 cursor-pointer"
+                      style={{ color: 'var(--theme-text-muted)' }}
+                    >
+                      Simplify
+                    </button>
+                  </div>
+                  <input
+                    id="event-location-name"
+                    type="text"
+                    maxLength={140}
+                    value={locationName}
+                    onChange={(e) => setLocationName(e.target.value)}
+                    placeholder="Venue or place name"
+                    className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                    style={{
+                      backgroundColor: 'var(--theme-surface-bg)',
+                      borderColor: 'var(--theme-border)',
+                      color: 'var(--theme-text-primary)',
+                    }}
+                  />
+                  <input
+                    id="event-location-address"
+                    type="text"
+                    maxLength={240}
+                    value={locationAddress}
+                    onChange={(e) => setLocationAddress(e.target.value)}
+                    placeholder="Street address, city, state (for Map)"
+                    className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                    style={{
+                      backgroundColor: 'var(--theme-surface-bg)',
+                      borderColor: 'var(--theme-border)',
+                      color: 'var(--theme-text-primary)',
+                    }}
+                  />
+                  <input
+                    id="event-virtual-url"
+                    type="url"
+                    maxLength={400}
+                    value={virtualUrl}
+                    onChange={(e) => setVirtualUrl(e.target.value)}
+                    placeholder="Virtual link https://... (optional)"
+                    className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                    style={{
+                      backgroundColor: 'var(--theme-surface-bg)',
+                      borderColor: 'var(--theme-border)',
+                      color: 'var(--theme-text-primary)',
+                    }}
+                  />
+                </div>
+              )}
             </div>
+
+            {/* 4. Rich Description */}
+            <RichTextEditor
+              label=""
+              placeholder="Add description (agenda, what to bring, parking...)"
+              value={descriptionHtml}
+              onChange={setDescriptionHtml}
+            />
           </div>
+
+          {/* Single Closed-By-Default Optional Disclosure */}
+          <details
+            className="group rounded-2xl border backdrop-blur-md overflow-hidden"
+            style={{
+              backgroundColor: 'var(--theme-glass-bg)',
+              borderColor: 'var(--theme-hairline)',
+            }}
+          >
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-xs sm:text-sm font-medium">
+              <span>More options (host, RSVP prompt, guest list)</span>
+              <ChevronDown
+                className="h-4 w-4 opacity-70 transition-transform group-open:rotate-180"
+                aria-hidden="true"
+              />
+            </summary>
+
+            <div
+              className="border-t p-4 space-y-3"
+              style={{ borderColor: 'var(--theme-hairline)' }}
+            >
+              <div>
+                <label
+                  htmlFor="event-host-name"
+                  className="flex items-center gap-1.5 text-xs font-medium mb-1"
+                  style={{ color: 'var(--theme-text-muted)' }}
+                >
+                  <User className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Hosted by</span>
+                </label>
+                <input
+                  id="event-host-name"
+                  type="text"
+                  maxLength={80}
+                  value={effectiveHostName}
+                  onChange={(e) => {
+                    setHostTouched(true);
+                    setHostName(e.target.value);
+                  }}
+                  placeholder="Your name or group"
+                  className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                  style={{
+                    backgroundColor: 'var(--theme-surface-bg)',
+                    borderColor: 'var(--theme-border)',
+                    color: 'var(--theme-text-primary)',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="event-rsvp-prompt"
+                  className="block text-xs font-medium mb-1"
+                  style={{ color: 'var(--theme-text-muted)' }}
+                >
+                  RSVP note question
+                </label>
+                <input
+                  id="event-rsvp-prompt"
+                  type="text"
+                  maxLength={140}
+                  value={rsvpNotePrompt}
+                  onChange={(e) => setRsvpNotePrompt(e.target.value)}
+                  placeholder="What dish or drink are you bringing?"
+                  className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                  style={{
+                    backgroundColor: 'var(--theme-surface-bg)',
+                    borderColor: 'var(--theme-border)',
+                    color: 'var(--theme-text-primary)',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="event-invited-names"
+                  className="block text-xs font-medium mb-1"
+                  style={{ color: 'var(--theme-text-muted)' }}
+                >
+                  Invited guest names (comma-separated, optional)
+                </label>
+                <input
+                  id="event-invited-names"
+                  type="text"
+                  maxLength={1200}
+                  value={invitedNamesRaw}
+                  onChange={(e) => setInvitedNamesRaw(e.target.value)}
+                  placeholder="Alex, Jordan, Sam"
+                  className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                  style={{
+                    backgroundColor: 'var(--theme-surface-bg)',
+                    borderColor: 'var(--theme-border)',
+                    color: 'var(--theme-text-primary)',
+                  }}
+                />
+              </div>
+
+              <label className="flex items-center gap-2.5 text-xs sm:text-sm cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  checked={hideGuestList}
+                  onChange={(e) => setHideGuestList(e.target.checked)}
+                  className="rounded border"
+                />
+                <span className="inline-flex items-center gap-1.5">
+                  <Lock className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
+                  <span>Hide guest list from guests</span>
+                </span>
+              </label>
+            </div>
+          </details>
+
+          {errorMsg ? (
+            <p role="alert" className="text-xs sm:text-sm font-medium text-rose-300 px-1">
+              {errorMsg}
+            </p>
+          ) : null}
+
+          {savedNotice && eventId ? (
+            <div
+              className="rounded-xl border px-3.5 py-2.5 text-xs sm:text-sm flex items-center justify-between gap-2"
+              style={{
+                backgroundColor: 'var(--theme-glass-bg)',
+                borderColor: 'var(--theme-accent)',
+              }}
+            >
+              <span className="inline-flex items-center gap-1.5 font-medium">
+                <Check className="h-4 w-4" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+                <span>Saved</span>
+              </span>
+              <Link
+                href={`/e/${eventId}`}
+                className="inline-flex items-center gap-1 font-medium underline underline-offset-2"
+              >
+                <span>View Invite</span>
+                <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </Link>
+            </div>
+          ) : null}
+
+          {/* Clean Inline Submit Button — Zero Sticky Bar */}
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full rounded-xl py-3.5 px-5 text-sm sm:text-base font-semibold transition active:scale-[0.99] disabled:opacity-60 cursor-pointer shadow-lg"
+            style={primaryCtaStyle}
+          >
+            {submitting
+              ? mode === 'create'
+                ? 'Creating Invite...'
+                : 'Saving...'
+              : mode === 'create'
+                ? 'Create Invite'
+                : 'Save Changes'}
+          </button>
         </div>
       </form>
 
-      {/* Post-Publish Dual-Link Celebration Modal */}
       <PublishSuccessDialog
         published={publishedResult}
         onClose={() => setPublishedResult(null)}
       />
-
-      {/* Delete Event Confirmation Modal */}
-      <dialog
-        ref={deleteDialogRef}
-        closedby="any"
-        aria-labelledby="delete-event-title"
-        className="m-auto w-[min(92vw,440px)] rounded-3xl border border-white/15 bg-slate-950 p-6 text-slate-100 shadow-2xl"
-      >
-        <div className="space-y-4">
-          <div className="flex items-start gap-3">
-            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-rose-500/20 text-rose-300">
-              <AlertTriangle className="h-5 w-5" aria-hidden="true" />
-            </span>
-            <div className="space-y-1">
-              <h2
-                id="delete-event-title"
-                className="text-lg font-semibold text-white"
-              >
-                Delete &ldquo;{title || 'this event'}&rdquo;?
-              </h2>
-              <p className="text-sm text-slate-300">
-                This permanently removes the public invite link, all RSVPs, and
-                the event wall. This cannot be undone.
-              </p>
-            </div>
-          </div>
-
-          {deleteError ? (
-            <p className="text-xs text-rose-300" role="alert">
-              {deleteError}
-            </p>
-          ) : null}
-
-          <div className="flex flex-wrap items-center justify-end gap-2.5 pt-2">
-            <button
-              type="button"
-              onClick={() => setDeleteDialogOpen(false)}
-              className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-medium text-slate-200 hover:bg-white/10 min-h-[48px]"
-            >
-              Keep Event
-            </button>
-            <button
-              type="button"
-              disabled={isDeleting}
-              onClick={() => void handleConfirmDelete()}
-              className="rounded-xl bg-rose-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-400 transition min-h-[48px] disabled:opacity-70"
-            >
-              {isDeleting ? 'Deleting...' : 'Yes, Delete Permanently'}
-            </button>
-          </div>
-        </div>
-      </dialog>
-    </div>
+    </>
   );
 }

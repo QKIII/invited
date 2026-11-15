@@ -1,5 +1,10 @@
-import { HomeJumpstart } from '@/components/studio/HomeJumpstart';
+import { Suspense } from 'react';
+import { CreateInviteClient } from '@/components/studio/CreateInviteClient';
 
 export default function HomePage() {
-  return <HomeJumpstart />;
+  return (
+    <Suspense fallback={null}>
+      <CreateInviteClient />
+    </Suspense>
+  );
 }

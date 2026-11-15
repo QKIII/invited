@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EventWall } from '@/components/invite/EventWall';
 import { GuestList } from '@/components/invite/GuestList';
 import { getGuestTokenStorageKey, RsvpPanel } from '@/components/invite/RsvpPanel';
+import { saveDeviceProfile } from '@/lib/client/deviceProfile';
 import { SafeRichHtml } from '@/components/invite/SafeRichHtml';
 import { SubscribeControl } from '@/components/invite/SubscribeControl';
 import {
@@ -304,10 +305,10 @@ describe('RsvpPanel', () => {
       />,
     );
 
-    expect(container.textContent).toContain("You responded: Yes, I'm coming");
+    expect(container.textContent).toContain("You're In");
     expect(container.textContent).toContain('Hot cocoa');
     const updateBtn = Array.from(container.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('Update my RSVP'),
+      b.textContent?.includes('Update response'),
     );
     expect(updateBtn).toBeDefined();
 
@@ -315,6 +316,67 @@ describe('RsvpPanel', () => {
       updateBtn!.click();
     });
     expect(onEditingChange).toHaveBeenCalledWith(true);
+    unmount();
+  });
+
+  it('auto-recognizes device profile on new invites with One-Click binary RSVP', async () => {
+    saveDeviceProfile({ name: 'Ivan', email: 'ivan@example.com' });
+    const event = createSampleEvent({ id: 'evt_brand_new' });
+    const onRsvpSuccess = vi.fn();
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        rsvp: {
+          id: 'rsvp_oneclick',
+          eventId: event.id,
+          guestName: 'Ivan',
+          status: 'yes',
+          plusOnes: 0,
+          createdAt: '2026-11-15T12:00:00Z',
+          updatedAt: '2026-11-15T12:00:00Z',
+        },
+        guestToken: 'tok_oneclick_999',
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { container, unmount } = renderIntoDom(
+      <RsvpPanel
+        event={event}
+        awaitingNames={[]}
+        guestToken={null}
+        guestName="Ivan"
+        onGuestNameChange={vi.fn()}
+        isEditing={false}
+        onEditingChange={vi.fn()}
+        onRsvpSuccess={onRsvpSuccess}
+        onOpenSubscribe={vi.fn()}
+      />,
+    );
+
+    expect(container.textContent).toContain('Welcome, Ivan!');
+    expect(container.textContent).toContain("Can't Make It");
+    expect(container.textContent?.toLowerCase()).not.toContain('maybe');
+
+    const oneClickBtn = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('One-Click RSVP'),
+    );
+    expect(oneClickBtn).toBeDefined();
+
+    await act(async () => {
+      oneClickBtn!.click();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/events/evt_brand_new/rsvps',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.guestName).toBe('Ivan');
+    expect(body.status).toBe('yes');
+    expect(onRsvpSuccess).toHaveBeenCalledTimes(1);
+
     unmount();
   });
 });

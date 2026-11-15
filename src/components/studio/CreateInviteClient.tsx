@@ -1,59 +1,68 @@
 'use client';
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, History } from 'lucide-react';
-import { InviteStudio } from '@/components/studio/InviteStudio';
-import { RecentEventsDialog } from '@/components/studio/RecentEventsDialog';
-import { getBrowserTimeZone } from '@/components/studio/dateTimeUtils';
+import { Calendar, Sparkles } from 'lucide-react';
+import { AmbientBackdrop } from '@/components/effects/AmbientBackdrop';
+import { GuestAvatar } from '@/components/invite/GuestAvatar';
 import {
-  consumeStudioDraft,
-  getRecentEvents,
-  getRecentEventsServerSnapshot,
-  subscribeRecentEvents,
-} from '@/lib/client/recentEvents';
-import {
-  parseEventPrompt,
-  type ParsedEventDraft,
-} from '@/lib/nlp/parseEventPrompt';
+  getDeviceProfile,
+  getDeviceProfileServerSnapshot,
+  subscribeDeviceProfile,
+} from '@/lib/client/deviceProfile';
+import { consumeStudioDraft } from '@/lib/client/recentEvents';
+import { parseEventPrompt, type ParsedEventDraft } from '@/lib/nlp/parseEventPrompt';
+import { getThemePreset, resolveThemeCssVars } from '@/lib/themes/presets';
+import type { InviteStyleConfig } from '@/types/invite';
+import { getBrowserTimeZone } from './dateTimeUtils';
+import { InviteStudio } from './InviteStudio';
+import { RecentEventsDialog } from './RecentEventsDialog';
 
 interface CreateInviteClientProps {
   initialPrompt?: string;
 }
 
+function getInitialStyle(): InviteStyleConfig {
+  const preset = getThemePreset('winter-snowfall');
+  return {
+    themeId: preset.id,
+    fontId: preset.defaultFontId,
+    effectId: preset.defaultEffectId,
+    coverPresetId: preset.defaultCoverPresetId,
+    coverLayout: 'square',
+    colorMode: preset.colorMode,
+  };
+}
+
 export function CreateInviteClient({ initialPrompt }: CreateInviteClientProps) {
-  const [sessionDraft, setSessionDraft] = useState<ParsedEventDraft | null>(
-    null,
+  const [recentOpen, setRecentOpen] = useState(false);
+  const [sessionDraft, setSessionDraft] = useState<ParsedEventDraft | null>(null);
+  const [userStyle, setUserStyle] = useState<InviteStyleConfig | null>(null);
+
+  const deviceProfile = useSyncExternalStore(
+    subscribeDeviceProfile,
+    getDeviceProfile,
+    getDeviceProfileServerSnapshot,
   );
-  const [myEventsOpen, setMyEventsOpen] = useState(false);
-  const recentEvents = useSyncExternalStore(
-    subscribeRecentEvents,
-    getRecentEvents,
-    getRecentEventsServerSnapshot,
-  );
-  const recentCount = recentEvents.length;
 
   useEffect(() => {
-    let cancelled = false;
-    void Promise.resolve().then(() => {
-      if (cancelled) return;
-      const saved = consumeStudioDraft();
-      if (saved) {
-        setSessionDraft(saved);
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      const consumed = consumeStudioDraft();
+      if (consumed) {
+        setSessionDraft(consumed);
       }
     });
     return () => {
-      cancelled = true;
+      active = false;
     };
   }, []);
 
   const fallbackPromptDraft = useMemo(() => {
-    if (!initialPrompt || !initialPrompt.trim()) return null;
-    return parseEventPrompt(
-      initialPrompt.trim(),
-      new Date(),
-      getBrowserTimeZone(),
-    );
+    const trimmed = initialPrompt?.trim();
+    if (!trimmed) return null;
+    return parseEventPrompt(trimmed, new Date(), getBrowserTimeZone());
   }, [initialPrompt]);
 
   const activeDraft = sessionDraft ?? fallbackPromptDraft;
@@ -63,71 +72,70 @@ export function CreateInviteClient({ initialPrompt }: CreateInviteClientProps) {
       ? `prompt-${initialPrompt.slice(0, 32)}`
       : 'blank';
 
+  const liveStyle = useMemo(
+    () => userStyle ?? activeDraft?.style ?? getInitialStyle(),
+    [userStyle, activeDraft],
+  );
+
+  const themeVars = useMemo(
+    () => resolveThemeCssVars(liveStyle) as React.CSSProperties,
+    [liveStyle],
+  );
+
   return (
-    <div className="min-h-screen bg-[#060913] text-slate-100">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(16,185,129,0.12),transparent_48%),radial-gradient(ellipse_at_top_right,rgba(139,92,246,0.1),transparent_50%)]"
-      />
+    <div
+      style={{
+        ...themeVars,
+        backgroundColor: 'var(--theme-page-bg)',
+        color: 'var(--theme-text-primary)',
+        fontFamily: 'var(--font-invite-body), var(--font-sans), sans-serif',
+      }}
+      className="min-h-screen relative overflow-x-hidden transition-colors duration-300"
+    >
+      <AmbientBackdrop effectId={liveStyle.effectId} />
 
-      <header className="relative z-10 border-b border-white/10 bg-slate-950/70 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3.5 sm:px-8">
-          <div className="flex items-center gap-3 min-w-0">
-            <Link
-              href="/"
-              className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.05] px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-200 hover:bg-white/[0.12] transition min-h-[44px]"
-            >
-              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-              <span className="hidden sm:inline">Back</span>
-            </Link>
+      {/* Minimal 48px single-row header */}
+      <header className="relative z-10 h-12 max-w-[480px] lg:max-w-[920px] mx-auto px-4 lg:px-8 flex items-center justify-between gap-2">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-sm font-semibold tracking-tight hover:opacity-80 transition shrink-0"
+          style={{ color: 'var(--theme-text-primary)' }}
+        >
+          <Sparkles className="h-3.5 w-3.5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+          <span>invited</span>
+        </Link>
 
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <Link
-                  href="/"
-                  className="text-xl tracking-tight text-white"
-                  style={{
-                    fontFamily: 'var(--font-editorial-serif), Georgia, serif',
-                  }}
-                >
-                  invited
-                </Link>
-                <span className="text-slate-600">/</span>
-                <h1 className="text-sm sm:text-base font-semibold text-white truncate">
-                  Create Invite
-                </h1>
-              </div>
-            </div>
-          </div>
-
+        <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
-            onClick={() => setMyEventsOpen(true)}
-            className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.06] px-4 py-2 text-xs sm:text-sm font-medium text-slate-200 hover:bg-white/[0.14] transition min-h-[44px]"
+            onClick={() => setRecentOpen(true)}
+            className="h-8 inline-flex items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition hover:opacity-90 cursor-pointer"
+            style={{
+              backgroundColor: 'var(--theme-glass-bg)',
+              borderColor: 'var(--theme-hairline)',
+              color: 'var(--theme-text-primary)',
+            }}
           >
-            <History className="h-4 w-4 text-emerald-300" aria-hidden="true" />
-            <span>My Events</span>
-            {recentCount > 0 ? (
-              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-400/20 px-1.5 text-xs font-semibold text-emerald-200">
-                {recentCount}
-              </span>
-            ) : null}
+            <Calendar className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span>My Invites</span>
           </button>
+
+          {deviceProfile?.name ? (
+            <GuestAvatar name={deviceProfile.name} size="sm" className="shrink-0" />
+          ) : null}
         </div>
       </header>
 
-      <main className="relative z-10 mx-auto max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
+      <main className="relative z-10 max-w-[480px] lg:max-w-[920px] mx-auto px-4 lg:px-8 pt-2 sm:pt-4 pb-16">
         <InviteStudio
           key={studioKey}
           mode="create"
           initialDraft={activeDraft}
+          onStyleChange={setUserStyle}
         />
       </main>
 
-      <RecentEventsDialog
-        open={myEventsOpen}
-        onClose={() => setMyEventsOpen(false)}
-      />
+      <RecentEventsDialog open={recentOpen} onClose={() => setRecentOpen(false)} />
     </div>
   );
 }

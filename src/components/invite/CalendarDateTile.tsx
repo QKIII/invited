@@ -138,11 +138,11 @@ export function CalendarDateTile({
     <div
       className={
         size === 'sm'
-          ? 'inline-flex h-10 w-10 shrink-0 flex-col overflow-hidden rounded-lg border text-center select-none'
-          : 'inline-flex h-12 w-12 shrink-0 flex-col overflow-hidden rounded-xl border text-center select-none shadow-xs'
+          ? 'inline-flex h-10 w-10 shrink-0 flex-col overflow-hidden rounded-xl border text-center select-none backdrop-blur-sm'
+          : 'inline-flex h-12 w-12 shrink-0 flex-col overflow-hidden rounded-xl border text-center select-none shadow-xs backdrop-blur-sm'
       }
       style={{
-        backgroundColor: 'var(--theme-card-bg)',
+        backgroundColor: 'var(--theme-glass-bg, var(--theme-card-bg))',
         borderColor: 'var(--theme-border)',
       }}
       data-testid="calendar-date-tile"
@@ -151,10 +151,13 @@ export function CalendarDateTile({
       <span
         className={
           size === 'sm'
-            ? 'invite-on-accent flex items-center justify-center py-0.5 text-[9px] font-bold uppercase tracking-wider leading-none'
-            : 'invite-on-accent flex items-center justify-center py-1 text-[10px] font-bold uppercase tracking-wider leading-none'
+            ? 'flex items-center justify-center border-b py-0.5 text-[9px] font-bold uppercase tracking-wider leading-none'
+            : 'flex items-center justify-center border-b py-1 text-[10px] font-bold uppercase tracking-wider leading-none'
         }
-        style={{ backgroundColor: 'var(--theme-accent)' }}
+        style={{
+          borderColor: 'var(--theme-hairline, var(--theme-border))',
+          color: 'var(--theme-text-muted)',
+        }}
       >
         {parts.month}
       </span>

@@ -8,6 +8,7 @@ export function CoverArt({
   title,
   accentColor,
   className = '',
+  children,
 }: {
   coverPresetId: string;
   customCoverUrl?: string;
@@ -15,6 +16,7 @@ export function CoverArt({
   title?: string;
   accentColor?: string;
   className?: string;
+  children?: React.ReactNode;
 }): React.JSX.Element | null {
   const uid = useId().replace(/:/g, '');
 
@@ -23,7 +25,7 @@ export function CoverArt({
   }
 
   const aspectClass = layout === 'banner' ? 'aspect-[16/9] w-full' : 'aspect-square w-full';
-  const containerClass = `relative overflow-hidden rounded-2xl border border-white/10 shadow-lg ${aspectClass} ${className}`.trim();
+  const containerClass = `relative overflow-hidden rounded-2xl border border-white/15 shadow-xl ${aspectClass} ${className}`.trim();
 
   if (customCoverUrl && customCoverUrl.trim().length > 0) {
     return (
@@ -34,6 +36,11 @@ export function CoverArt({
           alt={title ? `${title} cover artwork` : 'Event cover artwork'}
           className="h-full w-full object-cover"
         />
+        {children ? (
+          <div className="pointer-events-none absolute inset-0 flex items-end justify-end p-3 z-10">
+            <div className="pointer-events-auto">{children}</div>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -41,52 +48,205 @@ export function CoverArt({
   const bgId = `bg-${uid}`;
   const glowId = `glow-${uid}`;
   const accentId = `acc-${uid}`;
+  const curveId = `curve-${uid}`;
+  const shadowId = `shd-${uid}`;
+  const gridBlueId = `gblue-${uid}`;
+  const gridTealId = `gteal-${uid}`;
+  const dotsDarkId = `dotsd-${uid}`;
+  const dotsWhiteId = `dotsw-${uid}`;
+  const stripesRedId = `strr-${uid}`;
   const accent = accentColor || '#34d399';
 
   const renderArtwork = () => {
     switch (coverPresetId) {
+      case 'you-are-invited':
+        return (
+          <>
+            <defs>
+              <linearGradient id={bgId} x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#fdf6df" />
+                <stop offset="100%" stopColor="#fae9c0" />
+              </linearGradient>
+              <filter id={shadowId} x="-15%" y="-15%" width="135%" height="135%">
+                <feDropShadow dx="0" dy="8" stdDeviation="8" floodColor="#7c5b2b" floodOpacity="0.22" />
+              </filter>
+              <pattern id={gridBlueId} width="32" height="32" patternUnits="userSpaceOnUse">
+                <rect width="32" height="32" fill="#0ea5e9" />
+                <path d="M32 0 L0 0 0 32" fill="none" stroke="#bae6fd" strokeWidth="1.5" opacity="0.55" />
+              </pattern>
+              <pattern id={gridTealId} width="32" height="32" patternUnits="userSpaceOnUse">
+                <rect width="32" height="32" fill="#06b6d4" />
+                <path d="M32 0 L0 0 0 32" fill="none" stroke="#a5f3fc" strokeWidth="1.5" opacity="0.55" />
+              </pattern>
+              <pattern id={dotsDarkId} width="26" height="26" patternUnits="userSpaceOnUse">
+                <rect width="26" height="26" fill="#f59e0b" />
+                <circle cx="13" cy="13" r="4.5" fill="#18181b" />
+              </pattern>
+              <pattern id={dotsWhiteId} width="24" height="24" patternUnits="userSpaceOnUse">
+                <rect width="24" height="24" fill="#ea580c" />
+                <circle cx="12" cy="12" r="4" fill="#ffffff" />
+              </pattern>
+              <pattern id={stripesRedId} width="22" height="22" patternUnits="userSpaceOnUse" patternTransform="rotate(28)">
+                <rect width="22" height="22" fill="#dc2626" />
+                <rect width="10" height="22" fill="#fb7185" opacity="0.7" />
+              </pattern>
+              <path id={curveId} d="M 110 380 Q 250 285 400 375 T 690 455" />
+            </defs>
+            <rect width="800" height="800" fill={`url(#${bgId})`} />
+
+            {/* Top-left speckled loop ribbon */}
+            <path
+              d="M-10,120 C85,30 175,90 140,185 C105,275 -20,255 -10,120 Z"
+              fill="#f1f5f9"
+              stroke="#1e293b"
+              strokeWidth="4"
+              strokeDasharray="2 18"
+              strokeLinecap="round"
+              filter={`url(#${shadowId})`}
+            />
+
+            {/* Top-center orange polka splat */}
+            <path
+              d="M210,-20 C245,85 335,95 385,-10 Z"
+              fill={`url(#${dotsWhiteId})`}
+              filter={`url(#${shadowId})`}
+            />
+
+            {/* Blue grid zig-zag arrow */}
+            <path
+              d="M365,190 L460,85 L430,50 L545,-10 L570,125 L535,95 L420,220 Z"
+              fill={`url(#${gridBlueId})`}
+              filter={`url(#${shadowId})`}
+            />
+
+            {/* Top-right golden amber wave */}
+            <path
+              d="M620,165 C600,85 690,25 810,55 L810,165 C725,180 650,210 620,165 Z"
+              fill="#f59e0b"
+              filter={`url(#${shadowId})`}
+            />
+
+            {/* Red outline loop heart */}
+            <path
+              d="M555,275 C540,220 470,220 485,280 C500,340 565,375 565,375 C565,375 625,315 625,260 C625,215 570,225 555,275 Z"
+              fill="none"
+              stroke="#dc2626"
+              strokeWidth="18"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              filter={`url(#${shadowId})`}
+            />
+
+            {/* Striped red tilted heart */}
+            <g transform="rotate(-14 275 520)" filter={`url(#${shadowId})`}>
+              <path
+                d="M275,585 C200,530 185,445 235,425 C265,412 280,445 280,460 C280,445 305,412 335,425 C385,445 355,530 275,585 Z"
+                fill={`url(#${stripesRedId})`}
+              />
+            </g>
+
+            {/* Bottom-left cyan polka splat */}
+            <path
+              d="M-15,535 C75,510 120,575 110,645 C100,705 20,700 -15,675 Z"
+              fill="#0284c7"
+              filter={`url(#${shadowId})`}
+            />
+            <circle cx="48" cy="595" r="7" fill="#e0f2fe" />
+            <circle cx="82" cy="615" r="6" fill="#e0f2fe" />
+            <circle cx="38" cy="642" r="6" fill="#e0f2fe" />
+
+            {/* Bottom polka starburst */}
+            <path
+              d="M175,650 L215,705 L275,710 L245,765 L270,815 L110,815 L125,755 L95,705 Z"
+              fill={`url(#${dotsDarkId})`}
+              filter={`url(#${shadowId})`}
+            />
+
+            {/* Bottom-center golden arrow up */}
+            <path
+              d="M410,615 L495,690 L455,695 L470,815 L370,815 L360,695 L325,690 Z"
+              fill="#fbbf24"
+              stroke="#f59e0b"
+              strokeWidth="4"
+              filter={`url(#${shadowId})`}
+            />
+
+            {/* Bottom-right turquoise organic blob */}
+            <path
+              d="M575,670 C625,605 745,620 765,705 C780,770 725,815 635,815 C565,815 530,730 575,670 Z"
+              fill={`url(#${gridTealId})`}
+              filter={`url(#${shadowId})`}
+            />
+
+            {/* Curved playful typography */}
+            <text
+              fill="#111827"
+              fontSize="74"
+              fontWeight="800"
+              fontFamily="system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+              letterSpacing="-1.5"
+            >
+              <textPath href={`#${curveId}`} startOffset="50%" textAnchor="middle">
+                you are invited
+              </textPath>
+            </text>
+          </>
+        );
+
       case 'christmas-evergreen':
         return (
           <>
             <defs>
               <linearGradient id={bgId} x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#071a12" />
-                <stop offset="55%" stopColor="#0f2d20" />
-                <stop offset="100%" stopColor="#1b3c2b" />
+                <stop offset="0%" stopColor="#082016" />
+                <stop offset="55%" stopColor="#113828" />
+                <stop offset="100%" stopColor="#1e4d37" />
               </linearGradient>
-              <radialGradient id={glowId} cx="50%" cy="46%" r="48%">
-                <stop offset="0%" stopColor="#fbbf24" stopOpacity="0.38" />
-                <stop offset="55%" stopColor="#fb7185" stopOpacity="0.14" />
-                <stop offset="100%" stopColor="#071a12" stopOpacity="0" />
+              <radialGradient id={glowId} cx="50%" cy="46%" r="54%">
+                <stop offset="0%" stopColor="#fbbf24" stopOpacity="0.45" />
+                <stop offset="52%" stopColor="#fb7185" stopOpacity="0.16" />
+                <stop offset="100%" stopColor="#082016" stopOpacity="0" />
               </radialGradient>
             </defs>
             <rect width="800" height="800" fill={`url(#${bgId})`} />
             <rect width="800" height="800" fill={`url(#${glowId})`} />
-            {/* Minimalist geometric evergreen tree centered in y=200..600 */}
-            <polygon points="400,215 305,360 495,360" fill="#174d35" />
-            <polygon points="400,290 270,455 530,455" fill="#14422d" />
-            <polygon points="400,365 235,555 565,555" fill="#103725" />
-            <rect x="382" y="555" width="36" height="44" rx="4" fill="#5c3a21" />
+            {/* Soft snow ground */}
+            <path d="M0,625 Q400,585 800,625 L800,800 L0,800 Z" fill="#0d291d" />
+            {/* Full-scale evergreen layers */}
+            <polygon points="400,155 265,355 535,355" fill="#1b5e3f" />
+            <polygon points="400,245 215,475 585,475" fill="#175237" />
+            <polygon points="400,340 165,610 635,610" fill="#12422c" />
+            <rect x="372" y="610" width="56" height="58" rx="6" fill="#6b4226" />
+            {/* Golden garland arcs */}
+            <path d="M315,315 Q400,350 485,315" fill="none" stroke="#fde047" strokeWidth="4" opacity="0.65" />
+            <path d="M265,425 Q400,468 535,425" fill="none" stroke="#fde047" strokeWidth="4.5" opacity="0.65" />
+            <path d="M210,545 Q400,595 590,545" fill="none" stroke="#fde047" strokeWidth="5" opacity="0.65" />
             {/* Star topper */}
+            <circle cx="400" cy="145" r="54" fill="#fde047" opacity="0.22" />
             <polygon
-              points="400,190 407,210 428,210 411,222 417,242 400,230 383,242 389,222 372,210 393,210"
-              fill="#fde047"
+              points="400,108 411,134 440,136 417,154 425,182 400,165 375,182 383,154 360,136 389,134"
+              fill="#fef08a"
             />
-            {/* Warm ornaments */}
-            <circle cx="368" cy="335" r="10" fill="#fb7185" />
-            <circle cx="432" cy="340" r="9" fill="#fde047" />
-            <circle cx="342" cy="422" r="11" fill="#fde047" />
-            <circle cx="410" cy="410" r="10" fill="#f43f5e" />
-            <circle cx="465" cy="434" r="9" fill="#f8fafc" />
-            <circle cx="310" cy="515" r="12" fill="#fb7185" />
-            <circle cx="385" cy="500" r="11" fill="#fde047" />
-            <circle cx="458" cy="522" r="11" fill="#fb7185" />
-            <circle cx="512" cy="534" r="9" fill="#fde047" />
-            {/* Ambient snow */}
-            <circle cx="170" cy="240" r="3" fill="#ffffff" opacity="0.5" />
-            <circle cx="620" cy="270" r="3.5" fill="#ffffff" opacity="0.6" />
-            <circle cx="215" cy="460" r="2.5" fill="#ffffff" opacity="0.4" />
-            <circle cx="645" cy="480" r="3" fill="#ffffff" opacity="0.5" />
+            {/* Warm glowing ornaments */}
+            <circle cx="355" cy="308" r="13" fill="#fb7185" />
+            <circle cx="445" cy="316" r="12" fill="#fde047" />
+            <circle cx="318" cy="422" r="14" fill="#fde047" />
+            <circle cx="405" cy="405" r="13" fill="#f43f5e" />
+            <circle cx="485" cy="435" r="12" fill="#f8fafc" />
+            <circle cx="275" cy="542" r="15" fill="#fb7185" />
+            <circle cx="378" cy="522" r="14" fill="#fde047" />
+            <circle cx="475" cy="552" r="14" fill="#fb7185" />
+            <circle cx="552" cy="566" r="12" fill="#fde047" />
+            {/* Wrapped gifts */}
+            <rect x="275" y="618" width="66" height="54" rx="8" fill="#e11d48" />
+            <rect x="303" y="618" width="10" height="54" fill="#fde047" />
+            <rect x="460" y="626" width="58" height="46" rx="8" fill="#fbbf24" />
+            <rect x="484" y="626" width="10" height="46" fill="#be123c" />
+            {/* Snowfall */}
+            <circle cx="145" cy="195" r="5" fill="#ffffff" opacity="0.65" />
+            <circle cx="655" cy="220" r="6" fill="#ffffff" opacity="0.7" />
+            <circle cx="185" cy="445" r="4" fill="#ffffff" opacity="0.5" />
+            <circle cx="670" cy="465" r="5" fill="#ffffff" opacity="0.55" />
           </>
         );
 
@@ -99,9 +259,9 @@ export function CoverArt({
                 <stop offset="60%" stopColor="#12183b" />
                 <stop offset="100%" stopColor="#1e2554" />
               </linearGradient>
-              <radialGradient id={glowId} cx="50%" cy="35%" r="50%">
-                <stop offset="0%" stopColor="#fde68a" stopOpacity="0.62" />
-                <stop offset="40%" stopColor="#f5c451" stopOpacity="0.2" />
+              <radialGradient id={glowId} cx="50%" cy="32%" r="54%">
+                <stop offset="0%" stopColor="#fde68a" stopOpacity="0.68" />
+                <stop offset="42%" stopColor="#f5c451" stopOpacity="0.22" />
                 <stop offset="100%" stopColor="#070a1c" stopOpacity="0" />
               </radialGradient>
             </defs>
@@ -109,33 +269,33 @@ export function CoverArt({
             <rect width="800" height="800" fill={`url(#${glowId})`} />
             {/* Sanctuary arches */}
             <path
-              d="M250,610 L250,415 A150,150 0 0,1 550,415 L550,610"
+              d="M190,645 L190,395 A210,210 0 0,1 610,395 L610,645"
               fill="none"
               stroke="#f5c451"
-              strokeOpacity="0.28"
-              strokeWidth="2.5"
+              strokeOpacity="0.34"
+              strokeWidth="3"
             />
             <path
-              d="M300,610 L300,435 A100,100 0 0,1 500,435 L500,610"
+              d="M255,645 L255,420 A145,145 0 0,1 545,420 L545,645"
               fill="none"
               stroke="#fde68a"
-              strokeOpacity="0.2"
-              strokeWidth="1.5"
+              strokeOpacity="0.22"
+              strokeWidth="2"
             />
             {/* Radiant Star of Bethlehem */}
-            <line x1="400" y1="190" x2="400" y2="535" stroke="#fde68a" strokeWidth="2.5" opacity="0.7" />
-            <line x1="275" y1="315" x2="525" y2="315" stroke="#fde68a" strokeWidth="2.5" opacity="0.7" />
-            <line x1="330" y1="245" x2="470" y2="385" stroke="#f5c451" strokeWidth="1.5" opacity="0.45" />
-            <line x1="470" y1="245" x2="330" y2="385" stroke="#f5c451" strokeWidth="1.5" opacity="0.45" />
+            <line x1="400" y1="125" x2="400" y2="545" stroke="#fde68a" strokeWidth="3.5" opacity="0.82" />
+            <line x1="230" y1="295" x2="570" y2="295" stroke="#fde68a" strokeWidth="3.5" opacity="0.82" />
+            <line x1="295" y1="190" x2="505" y2="400" stroke="#f5c451" strokeWidth="2" opacity="0.55" />
+            <line x1="505" y1="190" x2="295" y2="400" stroke="#f5c451" strokeWidth="2" opacity="0.55" />
             <polygon
-              points="400,255 414,301 460,315 414,329 400,375 386,329 340,315 386,301"
+              points="400,218 419,276 477,295 419,314 400,372 381,314 323,295 381,276"
               fill="#fef3c7"
             />
-            {/* Subtle distant hills & candlelight glow */}
-            <path d="M0,565 Q240,515 440,560 T800,545 L800,800 L0,800 Z" fill="#0b0f26" />
-            <circle cx="400" cy="542" r="24" fill="#fbbf24" opacity="0.25" />
-            <ellipse cx="400" cy="542" rx="6" ry="12" fill="#fde68a" />
-            <rect x="394" y="556" width="12" height="32" rx="3" fill="#fcfaf2" opacity="0.9" />
+            {/* Hills & glowing taper candle */}
+            <path d="M0,585 Q240,525 440,575 T800,560 L800,800 L0,800 Z" fill="#0b0f26" />
+            <circle cx="400" cy="540" r="34" fill="#fbbf24" opacity="0.28" />
+            <ellipse cx="400" cy="540" rx="8" ry="16" fill="#fde68a" />
+            <rect x="392" y="558" width="16" height="44" rx="4" fill="#fcfaf2" opacity="0.94" />
           </>
         );
 
@@ -144,35 +304,36 @@ export function CoverArt({
           <>
             <defs>
               <linearGradient id={bgId} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#0b192e" />
-                <stop offset="65%" stopColor="#173257" />
-                <stop offset="100%" stopColor="#264b7a" />
+                <stop offset="0%" stopColor="#082252" />
+                <stop offset="60%" stopColor="#123a7d" />
+                <stop offset="100%" stopColor="#1f53a6" />
               </linearGradient>
-              <radialGradient id={glowId} cx="72%" cy="30%" r="35%">
-                <stop offset="0%" stopColor="#e0f2fe" stopOpacity="0.4" />
-                <stop offset="100%" stopColor="#0b192e" stopOpacity="0" />
+              <radialGradient id={glowId} cx="72%" cy="28%" r="42%">
+                <stop offset="0%" stopColor="#e0f2fe" stopOpacity="0.48" />
+                <stop offset="100%" stopColor="#082252" stopOpacity="0" />
               </radialGradient>
             </defs>
             <rect width="800" height="800" fill={`url(#${bgId})`} />
             <rect width="800" height="800" fill={`url(#${glowId})`} />
-            <circle cx="575" cy="270" r="44" fill="#f0f9ff" opacity="0.9" />
+            <circle cx="575" cy="235" r="56" fill="#f0f9ff" opacity="0.92" />
             {/* Snow-dusted pine hills */}
-            <path d="M0,515 Q210,455 430,520 T800,490 L800,800 L0,800 Z" fill="#1b3a63" />
-            <path d="M0,565 Q280,520 520,565 T800,550 L800,800 L0,800 Z" fill="#dbeafe" opacity="0.88" />
+            <path d="M0,510 Q210,445 430,515 T800,485 L800,800 L0,800 Z" fill="#174587" />
+            <path d="M0,575 Q280,525 520,575 T800,560 L800,800 L0,800 Z" fill="#e0f2fe" opacity="0.92" />
             {/* Pines */}
-            <polygon points="210,330 140,520 280,520" fill="#0f2847" />
-            <polygon points="210,330 175,425 245,425" fill="#e0f2fe" opacity="0.7" />
-            <polygon points="315,375 260,535 370,535" fill="#133154" />
-            <polygon points="315,375 288,450 342,450" fill="#e0f2fe" opacity="0.65" />
-            {/* Cozy cabin */}
-            <rect x="470" y="455" width="120" height="90" fill="#1f2937" />
-            <polygon points="452,458 530,398 608,458" fill="#f8fafc" />
-            <rect x="512" y="485" width="36" height="36" rx="4" fill="#fbbf24" />
-            {/* Snowfall specks */}
-            <circle cx="140" cy="240" r="4" fill="#ffffff" opacity="0.75" />
-            <circle cx="380" cy="260" r="3" fill="#ffffff" opacity="0.65" />
-            <circle cx="670" cy="350" r="4" fill="#ffffff" opacity="0.7" />
-            <circle cx="445" cy="295" r="2.5" fill="#ffffff" opacity="0.55" />
+            <polygon points="185,295 100,530 270,530" fill="#0d2852" />
+            <polygon points="185,295 142,415 228,415" fill="#e0f2fe" opacity="0.78" />
+            <polygon points="305,355 240,550 370,550" fill="#113366" />
+            <polygon points="305,355 272,445 338,445" fill="#e0f2fe" opacity="0.72" />
+            {/* Cozy illuminated cabin */}
+            <rect x="465" y="455" width="150" height="108" rx="4" fill="#1e293b" />
+            <polygon points="442,458 540,382 638,458" fill="#f8fafc" />
+            <rect x="515" y="488" width="50" height="44" rx="6" fill="#fbbf24" />
+            {/* Bokeh snowfall */}
+            <circle cx="140" cy="195" r="12" fill="#ffffff" opacity="0.22" />
+            <circle cx="380" cy="235" r="5" fill="#ffffff" opacity="0.75" />
+            <circle cx="675" cy="345" r="14" fill="#ffffff" opacity="0.2" />
+            <circle cx="445" cy="285" r="4" fill="#ffffff" opacity="0.65" />
+            <circle cx="240" cy="220" r="4.5" fill="#ffffff" opacity="0.6" />
           </>
         );
 
@@ -615,6 +776,11 @@ export function CoverArt({
       >
         {renderArtwork()}
       </svg>
+      {children ? (
+        <div className="pointer-events-none absolute inset-0 flex items-end justify-end p-3 z-10">
+          <div className="pointer-events-auto">{children}</div>
+        </div>
+      ) : null}
     </div>
   );
 }

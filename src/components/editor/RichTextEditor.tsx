@@ -404,25 +404,50 @@ export function RichTextEditor({
   ];
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-baseline justify-between gap-2">
-        <span
-          id={labelId}
-          onClick={focusEditor}
-          className="block text-sm font-medium text-slate-200 cursor-pointer"
-        >
-          {label}
+    <div className="space-y-1.5">
+      {label || hint ? (
+        <div className="flex items-baseline justify-between gap-2">
+          {label ? (
+            <span
+              id={labelId}
+              onClick={focusEditor}
+              className="block text-xs font-medium cursor-pointer opacity-80"
+              style={{ color: 'var(--theme-text-muted, #cbd5e1)' }}
+            >
+              {label}
+            </span>
+          ) : (
+            <span id={labelId} className="sr-only">
+              Event description
+            </span>
+          )}
+          {hint ? (
+            <span
+              className="text-xs opacity-70"
+              style={{ color: 'var(--theme-text-muted, #94a3b8)' }}
+            >
+              {hint}
+            </span>
+          ) : null}
+        </div>
+      ) : (
+        <span id={labelId} className="sr-only">
+          Event description
         </span>
-        {hint ? (
-          <span className="text-xs text-slate-400">{hint}</span>
-        ) : null}
-      </div>
+      )}
 
-      <div className="rounded-2xl border border-white/15 bg-slate-900/75 shadow-inner focus-within:border-emerald-400/70 focus-within:ring-2 focus-within:ring-emerald-400/20 transition">
+      <div
+        className="rounded-xl border transition focus-within:ring-2"
+        style={{
+          backgroundColor: 'var(--theme-surface-bg, rgba(15, 23, 42, 0.7))',
+          borderColor: 'var(--theme-hairline, rgba(255, 255, 255, 0.14))',
+        }}
+      >
         <div
           role="toolbar"
           aria-label="Description formatting"
-          className="flex flex-wrap items-center gap-1 border-b border-white/10 px-2.5 py-2"
+          className="flex flex-wrap items-center gap-0.5 border-b px-2 py-1.5"
+          style={{ borderColor: 'var(--theme-hairline, rgba(255, 255, 255, 0.1))' }}
         >
           {toolbarButtons.map((btn) => {
             const Icon = btn.icon;
@@ -434,25 +459,41 @@ export function RichTextEditor({
                 aria-pressed={btn.active}
                 title={btn.label}
                 onClick={() => handleToolbarAction(btn.action)}
-                className={`inline-flex items-center justify-center rounded-xl min-h-[44px] min-w-[44px] [@media(pointer:coarse)]:min-h-[48px] [@media(pointer:coarse)]:min-w-[48px] px-2.5 text-sm font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400 ${
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-medium transition cursor-pointer"
+                style={
                   btn.active
-                    ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/40'
-                    : 'text-slate-300 hover:bg-white/10 hover:text-white border border-transparent'
-                }`}
+                    ? {
+                        backgroundColor: 'var(--theme-accent, #34d399)',
+                        borderColor: 'var(--theme-accent, #34d399)',
+                        color: 'var(--theme-on-accent, #0f172a)',
+                      }
+                    : {
+                        backgroundColor: 'transparent',
+                        borderColor: 'transparent',
+                        color: 'var(--theme-text-muted, #cbd5e1)',
+                      }
+                }
               >
-                <Icon className="h-4 w-4" aria-hidden="true" />
+                <Icon className="h-3.5 w-3.5" aria-hidden="true" />
               </button>
             );
           })}
         </div>
 
         {showLinkInput ? (
-          <div className="border-b border-white/10 bg-slate-950/70 p-3 space-y-2.5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div
+            className="border-b p-3 space-y-2"
+            style={{
+              borderColor: 'var(--theme-hairline, rgba(255, 255, 255, 0.1))',
+              backgroundColor: 'var(--theme-card-bg, rgba(15, 23, 42, 0.5))',
+            }}
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
                 <label
                   htmlFor={`${editorId}-link-text`}
-                  className="block text-xs font-medium text-slate-300 mb-1"
+                  className="block text-xs font-medium mb-1"
+                  style={{ color: 'var(--theme-text-muted, #cbd5e1)' }}
                 >
                   Link text
                 </label>
@@ -462,14 +503,20 @@ export function RichTextEditor({
                   value={linkText}
                   onChange={(e) => setLinkText(e.target.value)}
                   onKeyDown={handleLinkInputKeyDown}
-                  placeholder="e.g. Gift registry or parking map"
-                  className="w-full rounded-xl border border-white/15 bg-slate-900 px-3 py-2 text-base text-white placeholder:text-slate-500 min-h-[48px] [@media(pointer:coarse)]:min-h-[52px]"
+                  placeholder="Registry or parking link"
+                  className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
+                  style={{
+                    backgroundColor: 'var(--theme-surface-bg, #0f172a)',
+                    borderColor: 'var(--theme-border, rgba(255,255,255,0.16))',
+                    color: 'var(--theme-text-primary, #f8fafc)',
+                  }}
                 />
               </div>
               <div>
                 <label
                   htmlFor={`${editorId}-link-url`}
-                  className="block text-xs font-medium text-slate-300 mb-1"
+                  className="block text-xs font-medium mb-1"
+                  style={{ color: 'var(--theme-text-muted, #cbd5e1)' }}
                 >
                   Destination URL
                 </label>
@@ -483,12 +530,17 @@ export function RichTextEditor({
                   }}
                   onKeyDown={handleLinkInputKeyDown}
                   placeholder="https://example.com"
-                  className="w-full rounded-xl border border-white/15 bg-slate-900 px-3 py-2 text-base text-white placeholder:text-slate-500 min-h-[48px] [@media(pointer:coarse)]:min-h-[52px]"
+                  className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
+                  style={{
+                    backgroundColor: 'var(--theme-surface-bg, #0f172a)',
+                    borderColor: 'var(--theme-border, rgba(255,255,255,0.16))',
+                    color: 'var(--theme-text-primary, #f8fafc)',
+                  }}
                 />
               </div>
             </div>
             {linkError ? (
-              <p className="text-xs text-rose-300" role="alert">
+              <p className="text-xs text-rose-400" role="alert">
                 {linkError}
               </p>
             ) : null}
@@ -496,7 +548,11 @@ export function RichTextEditor({
               <button
                 type="button"
                 onClick={applyLink}
-                className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400 transition min-h-[44px]"
+                className="rounded-lg px-3 py-1.5 text-xs font-semibold transition cursor-pointer"
+                style={{
+                  backgroundColor: 'var(--theme-accent, #34d399)',
+                  color: 'var(--theme-on-accent, #0f172a)',
+                }}
               >
                 Insert Link
               </button>
@@ -506,7 +562,11 @@ export function RichTextEditor({
                   setShowLinkInput(false);
                   setLinkError(null);
                 }}
-                className="rounded-xl border border-white/15 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-white/10 transition min-h-[44px]"
+                className="rounded-lg border px-3 py-1.5 text-xs font-medium transition cursor-pointer"
+                style={{
+                  borderColor: 'var(--theme-hairline, rgba(255,255,255,0.15))',
+                  color: 'var(--theme-text-muted, #cbd5e1)',
+                }}
               >
                 Cancel
               </button>
@@ -518,7 +578,8 @@ export function RichTextEditor({
           {isEmpty ? (
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-x-4 top-3.5 text-base text-slate-500 select-none"
+              className="pointer-events-none absolute inset-x-3.5 top-2.5 text-sm opacity-55 select-none"
+              style={{ color: 'var(--theme-text-muted, #94a3b8)' }}
             >
               {placeholder}
             </div>
@@ -536,7 +597,8 @@ export function RichTextEditor({
             onKeyUp={refreshActiveFormats}
             onMouseUp={refreshActiveFormats}
             onPaste={handlePaste}
-            className="invite-prose min-h-[168px] max-h-[420px] overflow-y-auto resize-y px-4 py-3.5 text-base text-slate-100 outline-none"
+            className="invite-prose min-h-[108px] max-h-[340px] overflow-y-auto resize-y px-3.5 py-2.5 text-sm leading-relaxed outline-none"
+            style={{ color: 'var(--theme-text-primary, #f8fafc)' }}
           />
         </div>
       </div>

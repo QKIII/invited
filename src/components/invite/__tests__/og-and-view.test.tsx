@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InviteView } from '@/components/invite/InviteView';
 import { getRecentEvents } from '@/lib/client/recentEvents';
+import { COVER_PRESETS, getThemePreset } from '@/lib/themes/presets';
 import type { EventDetailResponse, EventMeta } from '@/types/invite';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -112,8 +113,10 @@ describe('InviteView (post-merge integration)', () => {
 
     expect(container.textContent).toContain('Christmas Eve Candlelight & Cocoa');
     expect(container.textContent).toContain('Hosted by Clara');
-    expect(container.textContent).toContain('You are the Host · Edit Event');
+    expect(container.textContent).toContain('You have manage access for this event.');
+    expect(container.textContent).toContain('Manage');
     expect(container.textContent).toContain('4:00 PM – 7:00 PM PST (your time)');
+    expect(container.querySelector('iframe[src^="https://maps.google.com/maps?"]')).not.toBeNull();
 
     const dateTile = container.querySelector('[data-testid="calendar-date-tile"]');
     expect(dateTile?.textContent).toBe('DEC24');
@@ -201,8 +204,12 @@ describe('InviteView (post-merge integration)', () => {
       { timeout: 3000 },
     );
 
-    const matches = container.textContent?.match(/42 Maple St/g) ?? [];
-    expect(matches).toHaveLength(1);
+    const heroLoc = container.querySelector('[data-testid="hero-location"]');
+    const lowerLoc = container.querySelector('[data-testid="location-section"]');
+    expect(heroLoc?.textContent?.match(/42 Maple St/g) ?? []).toHaveLength(1);
+    expect(lowerLoc?.textContent?.match(/42 Maple St/g) ?? []).toHaveLength(1);
+    expect(COVER_PRESETS.some((c) => c.id === 'you-are-invited')).toBe(true);
+    expect(getThemePreset('winter-snowfall').pageBg).toBe('#082556');
 
     act(() => {
       root.unmount();

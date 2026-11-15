@@ -248,19 +248,20 @@ function createParticles(
         shape: 'confetti',
       });
     } else {
-      // snowfall
+      // snowfall: 30% dreamy out-of-focus bokeh snow orbs + 70% crisp drifting flakes
+      const isBokehOrb = i % 3 === 0;
       particles.push({
         x: rand(0, width),
         y: rand(0, height),
-        vx: rand(-0.2, 0.25),
-        vy: rand(0.35, 1.15),
-        size: rand(1.6, 4.4),
-        alpha: rand(0.35, 0.85),
+        vx: rand(-0.18, 0.22),
+        vy: isBokehOrb ? rand(0.18, 0.55) : rand(0.35, 1.1),
+        size: isBokehOrb ? rand(10, 26) : rand(1.6, 4.2),
+        alpha: isBokehOrb ? rand(0.08, 0.19) : rand(0.28, 0.68),
         phase: rand(0, Math.PI * 2),
         rotation: 0,
         vRot: 0,
         color: pick(),
-        shape: 'circle',
+        shape: isBokehOrb ? 'bokeh' : 'circle',
       });
     }
   }
@@ -593,7 +594,7 @@ export function AmbientBackdrop({
       {/* Festive Christmas string lights along top edge */}
       {effectId === 'christmas-lights' && (
         <svg
-          className="absolute top-0 left-0 h-20 w-full opacity-90"
+          className="absolute top-0 left-0 h-14 w-full opacity-75"
           viewBox="0 0 1000 80"
           preserveAspectRatio="none"
         >

@@ -1,8 +1,37 @@
 'use client';
 
-import { useState } from 'react';
-import { Bell, Check, Minus, Plus, Sparkles, X } from 'lucide-react';
-import type { EventDetailResponse, EventMeta, RsvpRecord, RsvpStatus } from '@/types/invite';
+import React, { useId, useState, useSyncExternalStore } from 'react';
+import {
+  Bell,
+  CalendarPlus,
+  Check,
+  ChevronRight,
+  Minus,
+  Plus,
+  Share2,
+  X,
+} from 'lucide-react';
+import {
+  clearGuestToken,
+  formatRelativeCountdown,
+  getDeviceProfile,
+  getDeviceProfileServerSnapshot,
+  saveCachedGuestRsvp,
+  saveDeviceProfile,
+  saveGuestToken,
+  subscribeDeviceProfile,
+} from '@/lib/client/deviceProfile';
+import { getThemePreset } from '@/lib/themes/presets';
+import type {
+  CommentRecord,
+  EventDetailResponse,
+  EventMeta,
+  RsvpRecord,
+  RsvpStatus,
+} from '@/types/invite';
+import { GuestAvatar } from './GuestAvatar';
+
+export { getGuestTokenStorageKey } from '@/lib/client/deviceProfile';
 
 interface RsvpPanelProps {
   event: EventMeta;
@@ -17,22 +46,29 @@ interface RsvpPanelProps {
   onRsvpSuccess: (payload: {
     rsvp: RsvpRecord;
     guestToken: string;
+    wallComment?: CommentRecord;
     detail?: EventDetailResponse;
   }) => void;
-  onWithdrawRsvp?: (detail?: EventDetailResponse) => void;
-  onOpenSubscribe: () => void;
+  onWithdrawRsvp?: (freshDetail?: EventDetailResponse) => void;
+  onOpenSubscribe?: () => void;
+  onShareInvite?: () => void;
+  shareCopied?: boolean;
   nameInputRef?: React.RefObject<HTMLInputElement | null>;
 }
 
-export function getGuestTokenStorageKey(eventId: string): string {
-  return `invited_guest_tokens:${eventId}`;
+interface RsvpApiResponse {
+  rsvp: RsvpRecord;
+  guestToken: string;
+  wallComment?: CommentRecord;
+  detail?: EventDetailResponse;
+  error?: string;
 }
 
 export function RsvpPanel({
   event,
   awaitingNames,
   viewerRsvp,
-  editKey = null,
+  editKey,
   guestToken,
   guestName,
   onGuestNameChange,
@@ -41,578 +77,825 @@ export function RsvpPanel({
   onRsvpSuccess,
   onWithdrawRsvp,
   onOpenSubscribe,
+  onShareInvite,
+  shareCopied = false,
   nameInputRef,
 }: RsvpPanelProps) {
-  const [status, setStatus] = useState<RsvpStatus | null>(viewerRsvp?.status ?? null);
+  const formHeadingId = useId();
+  const deviceProfile = useSyncExternalStore(
+    subscribeDeviceProfile,
+    getDeviceProfile,
+    getDeviceProfileServerSnapshot,
+  );
+
+  const [status, setStatus] = useState<RsvpStatus>(viewerRsvp?.status ?? 'yes');
   const [plusOnes, setPlusOnes] = useState<number>(viewerRsvp?.plusOnes ?? 0);
   const [bringingNote, setBringingNote] = useState<string>(viewerRsvp?.bringingNote ?? '');
-  const [postToWall, setPostToWall] = useState<boolean>(false);
-  const [userToggledWall, setUserToggledWall] = useState<boolean>(false);
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [isWithdrawing, setIsWithdrawing] = useState<boolean>(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [savedFeedback, setSavedFeedback] = useState<string | null>(null);
+  const [postToWall, setPostToWall] = useState<boolean>(true);
+  const [manualIdentityEdit, setManualIdentityEdit] = useState<boolean>(false);
+  const [showOneClickExtras, setShowOneClickExtras] = useState<boolean>(
+    Boolean(event.rsvpNotePrompt?.trim()),
+  );
+  const [submitting, setSubmitting] = useState<boolean>(false);
+  const [submittingStatus, setSubmittingStatus] = useState<RsvpStatus | null>(null);
+  const [withdrawing, setWithdrawing] = useState<boolean>(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [localShareCopied, setLocalShareCopied] = useState<boolean>(false);
 
-  const showSummary = Boolean(viewerRsvp) && !isEditing;
+  const isLightTheme =
+    event.style.colorMode === 'light' ||
+    (!event.style.colorMode && getThemePreset(event.style.themeId).colorMode === 'light');
 
-  const handleStartEdit = () => {
-    if (viewerRsvp) {
-      setStatus(viewerRsvp.status);
-      onGuestNameChange(viewerRsvp.guestName);
-      setPlusOnes(viewerRsvp.status === 'yes' ? Math.min(10, Math.max(0, viewerRsvp.plusOnes)) : 0);
-      setBringingNote(viewerRsvp.bringingNote ?? '');
-      setPostToWall(false);
-      setUserToggledWall(false);
-    }
-    setErrorMessage(null);
-    setSavedFeedback(null);
-    onEditingChange(true);
-  };
+  const primaryCtaStyle: React.CSSProperties = isLightTheme
+    ? { backgroundColor: '#0f172a', color: '#ffffff' }
+    : { backgroundColor: '#ffffff', color: '#0f172a' };
 
-  const handleNoteChange = (value: string) => {
-    const wasEmpty = bringingNote.trim().length === 0;
-    const nowNonEmpty = value.trim().length > 0;
-    setBringingNote(value);
-    if (wasEmpty && nowNonEmpty && !userToggledWall) {
-      setPostToWall(true);
-    } else if (!nowNonEmpty && !userToggledWall) {
-      setPostToWall(false);
-    }
-  };
+  const recognizedName = deviceProfile?.name?.trim() || '';
+  const firstName = recognizedName.split(/\s+/)[0] || recognizedName;
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setErrorMessage(null);
-    setSavedFeedback(null);
-
-    if (status !== 'yes' && status !== 'no') {
-      setErrorMessage("Please select Yes, I'm coming or No, can't make it.");
-      return;
-    }
-
-    const trimmedName = guestName.trim();
+  async function submitRsvp(params: {
+    targetStatus: RsvpStatus;
+    targetName: string;
+    targetPlusOnes: number;
+    targetNote: string;
+    shareNoteToWall: boolean;
+  }) {
+    const trimmedName = params.targetName.trim();
     if (!trimmedName) {
-      setErrorMessage('Please enter your name so the host knows who is responding.');
+      setErrorMsg('Please enter your name.');
       nameInputRef?.current?.focus();
       return;
     }
 
-    setIsSubmitting(true);
+    setSubmitting(true);
+    setSubmittingStatus(params.targetStatus);
+    setErrorMsg(null);
+
     try {
-      const response = await fetch(`/api/events/${encodeURIComponent(event.id)}/rsvps`, {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (guestToken) {
+        headers['x-guest-token'] = guestToken;
+      }
+
+      const trimmedNote = params.targetNote.trim();
+      const res = await fetch(`/api/events/${event.id}/rsvps`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(editKey ? { 'x-edit-key': editKey } : {}),
-          ...(guestToken ? { 'x-guest-token': guestToken } : {}),
-        },
+        headers,
         body: JSON.stringify({
           guestName: trimmedName,
-          status,
-          plusOnes: status === 'yes' ? plusOnes : 0,
-          bringingNote: bringingNote.trim() || undefined,
-          guestToken: guestToken || undefined,
-          postToWall: bringingNote.trim() ? postToWall : false,
+          status: params.targetStatus,
+          plusOnes: params.targetStatus === 'yes' ? params.targetPlusOnes : 0,
+          bringingNote: trimmedNote || undefined,
+          postToWall: Boolean(trimmedNote && params.shareNoteToWall),
+          guestToken: guestToken ?? undefined,
         }),
       });
 
-      const data = (await response.json().catch(() => ({}))) as {
-        error?: string;
-        rsvp?: RsvpRecord;
-        guestToken?: string;
-        detail?: EventDetailResponse;
-      };
-
-      if (!response.ok || !data.rsvp) {
-        setErrorMessage(data.error || 'Could not save your RSVP. Please try again.');
+      const data = (await res.json()) as RsvpApiResponse;
+      if (!res.ok) {
+        setErrorMsg(data.error ?? 'Could not save your RSVP. Please try again.');
         return;
       }
 
       const nextToken = data.guestToken || guestToken || '';
-      if (nextToken && typeof window !== 'undefined') {
-        try {
-          window.localStorage.setItem(getGuestTokenStorageKey(event.id), nextToken);
-        } catch {
-          // Ignore storage quota / private mode issues
-        }
+      if (nextToken) {
+        saveGuestToken(event.id, nextToken);
       }
+      saveCachedGuestRsvp(event.id, data.rsvp);
+      saveDeviceProfile({ name: trimmedName });
+      onGuestNameChange(trimmedName);
+      setManualIdentityEdit(false);
+      onEditingChange(false);
 
-      setSavedFeedback(
-        data.rsvp.status === 'yes'
-          ? "You're on the list! Looking forward to seeing you."
-          : 'Response saved. Thanks for letting the host know!',
-      );
       onRsvpSuccess({
         rsvp: data.rsvp,
         guestToken: nextToken,
+        wallComment: data.wallComment,
         detail: data.detail,
       });
-      onEditingChange(false);
     } catch {
-      setErrorMessage('Network error while saving your RSVP. Please try again.');
+      setErrorMsg('Network error saving your RSVP. Please try again.');
     } finally {
-      setIsSubmitting(false);
+      setSubmitting(false);
+      setSubmittingStatus(null);
     }
-  };
+  }
 
-  const handleWithdrawRsvp = async () => {
-    if (!viewerRsvp || !guestToken) return;
-    setIsWithdrawing(true);
-    setErrorMessage(null);
+  async function handleFormSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    await submitRsvp({
+      targetStatus: status,
+      targetName: guestName,
+      targetPlusOnes: plusOnes,
+      targetNote: bringingNote,
+      shareNoteToWall: postToWall,
+    });
+  }
+
+  async function handleWithdraw() {
+    if (!viewerRsvp) return;
+    setWithdrawing(true);
+    setErrorMsg(null);
+
     try {
-      const res = await fetch(
-        `/api/events/${encodeURIComponent(event.id)}/rsvps/${encodeURIComponent(viewerRsvp.id)}`,
-        {
-          method: 'DELETE',
-          headers: {
-            'x-guest-token': guestToken,
-          },
-        },
-      );
+      const headers: Record<string, string> = {};
+      if (guestToken) headers['x-guest-token'] = guestToken;
+      if (editKey) headers['x-edit-key'] = editKey;
+
+      const res = await fetch(`/api/events/${event.id}/rsvps/${viewerRsvp.id}`, {
+        method: 'DELETE',
+        headers,
+      });
+
+      const data = (await res.json()) as {
+        error?: string;
+        detail?: EventDetailResponse;
+      };
       if (!res.ok) {
-        setErrorMessage('Could not remove your RSVP. Please try again.');
+        setErrorMsg(data.error ?? 'Could not cancel registration.');
         return;
       }
-      if (typeof window !== 'undefined') {
-        try {
-          window.localStorage.removeItem(getGuestTokenStorageKey(event.id));
-        } catch {
-          // Ignore storage error
-        }
-      }
-      const detailRes = await fetch(`/api/events/${encodeURIComponent(event.id)}`, {
-        cache: 'no-store',
-      });
-      const freshDetail = detailRes.ok
-        ? ((await detailRes.json()) as EventDetailResponse)
-        : undefined;
 
-      setStatus(null);
-      setPlusOnes(0);
+      clearGuestToken(event.id);
+      saveCachedGuestRsvp(event.id, null);
       setBringingNote('');
-      setSavedFeedback(null);
-      onGuestNameChange('');
-      onWithdrawRsvp?.(freshDetail);
-      onEditingChange(true);
+      setPlusOnes(0);
+      setStatus('yes');
+      onEditingChange(false);
+      onWithdrawRsvp?.(data.detail);
     } catch {
-      setErrorMessage('Network error while removing your RSVP.');
+      setErrorMsg('Network error canceling your registration.');
     } finally {
-      setIsWithdrawing(false);
+      setWithdrawing(false);
     }
-  };
+  }
 
-  return (
-    <section
-      id="rsvp-section"
-      aria-labelledby="rsvp-heading"
-      className="invite-card rounded-2xl border p-5 sm:p-6 transition-colors"
-      style={{
-        backgroundColor: 'var(--theme-surface-bg)',
-        borderColor: 'var(--theme-border)',
-      }}
-    >
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <div>
-          <h2
-            id="rsvp-heading"
-            className="text-xl sm:text-2xl font-semibold tracking-tight"
-            style={{ fontFamily: 'var(--theme-font-heading)' }}
-          >
-            {showSummary ? 'Your RSVP' : 'RSVP'}
-          </h2>
-          <p className="text-sm mt-0.5" style={{ color: 'var(--theme-text-muted)' }}>
-            No account needed — respond in seconds.
-          </p>
-        </div>
+  async function handleInviteFriendClick() {
+    if (onShareInvite) {
+      onShareInvite();
+      return;
+    }
+    try {
+      const url = typeof window !== 'undefined' ? window.location.href : '';
+      if (typeof navigator !== 'undefined' && 'share' in navigator && url) {
+        await navigator.share({ title: event.title, url });
+        return;
+      }
+      if (typeof navigator !== 'undefined' && navigator.clipboard && url) {
+        await navigator.clipboard.writeText(url);
+        setLocalShareCopied(true);
+        setTimeout(() => setLocalShareCopied(false), 2000);
+      }
+    } catch {
+      // User dismissed native share sheet
+    }
+  }
 
-        <button
-          type="button"
-          onClick={onOpenSubscribe}
-          className="inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-medium min-h-[44px] transition-opacity hover:opacity-85 cursor-pointer"
-          style={{
-            borderColor: 'var(--theme-border)',
-            color: 'var(--theme-text-primary)',
-          }}
-        >
-          <Bell className="h-3.5 w-3.5" aria-hidden="true" />
-          <span>Notify me of updates</span>
-        </button>
-      </div>
+  // ---------------------------------------------------------------------------
+  // State A: Already Responded ("You're In" / "Can't Make It")
+  // ---------------------------------------------------------------------------
+  if (viewerRsvp && !isEditing) {
+    const isGoing = viewerRsvp.status === 'yes';
+    const countdown = formatRelativeCountdown(event.startIso, event.endIso);
+    const copied = shareCopied || localShareCopied;
 
-      {savedFeedback && (
-        <div
-          role="status"
-          className="mb-4 flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium"
-          style={{
-            borderColor: 'var(--theme-accent)',
-            backgroundColor: 'color-mix(in srgb, var(--theme-accent) 14%, transparent)',
-          }}
-        >
-          <Sparkles className="h-4 w-4 shrink-0" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-          <span>{savedFeedback}</span>
-        </div>
-      )}
-
-      {showSummary && viewerRsvp ? (
-        <div className="space-y-4">
-          <div
-            className="rounded-xl border p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-            style={{
-              borderColor: 'var(--theme-accent)',
-              backgroundColor: 'color-mix(in srgb, var(--theme-accent) 12%, var(--theme-card-bg))',
-            }}
-          >
-            <div className="space-y-1.5">
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className="invite-on-accent inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-semibold"
-                  style={{ backgroundColor: 'var(--theme-accent)' }}
-                >
-                  {viewerRsvp.status === 'yes' ? (
-                    <>
-                      <Check className="h-4 w-4" aria-hidden="true" />
-                      <span>You responded: Yes, I&apos;m coming</span>
-                    </>
-                  ) : (
-                    <>
-                      <X className="h-4 w-4" aria-hidden="true" />
-                      <span>You responded: No, can&apos;t make it</span>
-                    </>
-                  )}
-                </span>
-                {viewerRsvp.status === 'yes' && viewerRsvp.plusOnes > 0 && (
-                  <span
-                    className="rounded-full border px-2.5 py-0.5 text-xs font-medium"
-                    style={{ borderColor: 'var(--theme-border)' }}
-                  >
-                    +{viewerRsvp.plusOnes} {viewerRsvp.plusOnes === 1 ? 'guest' : 'guests'}
-                  </span>
-                )}
-              </div>
-
-              <p className="text-sm font-medium">
-                Name: <span className="font-semibold">{viewerRsvp.guestName}</span>
-              </p>
-
-              {viewerRsvp.bringingNote && (
-                <p className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>
-                  (Bringing / Note: &ldquo;{viewerRsvp.bringingNote}&rdquo;)
-                </p>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={handleStartEdit}
-                className="invite-on-accent inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold min-h-[48px] transition-opacity hover:opacity-90 cursor-pointer"
-                style={{ backgroundColor: 'var(--theme-accent)' }}
-              >
-                Update my RSVP
-              </button>
-              <button
-                type="button"
-                onClick={handleWithdrawRsvp}
-                disabled={isWithdrawing}
-                className="inline-flex items-center justify-center rounded-xl border px-3.5 py-2.5 text-sm font-medium min-h-[48px] transition-opacity hover:opacity-80 disabled:opacity-50 cursor-pointer"
+    return (
+      <section
+        id="rsvp-section"
+        aria-labelledby={formHeadingId}
+        className="rounded-2xl border backdrop-blur-md overflow-hidden"
+        style={{
+          backgroundColor: 'var(--theme-glass-bg)',
+          borderColor: 'var(--theme-border)',
+        }}
+      >
+        <div className="p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-3">
+            <GuestAvatar name={viewerRsvp.guestName} size="lg" />
+            {countdown ? (
+              <span
+                className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium border whitespace-nowrap"
                 style={{
-                  borderColor: 'var(--theme-border)',
+                  backgroundColor: 'var(--theme-surface-bg)',
+                  borderColor: 'var(--theme-hairline)',
                   color: 'var(--theme-text-muted)',
                 }}
               >
-                {isWithdrawing ? 'Removing...' : 'Remove'}
-              </button>
-            </div>
+                {countdown}
+              </span>
+            ) : null}
           </div>
+
+          <h2
+            id={formHeadingId}
+            className="mt-3 text-2xl font-bold tracking-tight"
+            style={{
+              color: 'var(--theme-text-primary)',
+              fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
+            }}
+          >
+            {isGoing ? "You're In" : "Can't Make It"}
+          </h2>
+
+          {(isGoing && viewerRsvp.plusOnes > 0) || viewerRsvp.bringingNote ? (
+            <p
+              className="mt-1 text-sm leading-relaxed break-words"
+              style={{ color: 'var(--theme-text-muted)' }}
+            >
+              {isGoing && viewerRsvp.plusOnes > 0 ? `+${viewerRsvp.plusOnes} guest${viewerRsvp.plusOnes === 1 ? '' : 's'}` : ''}
+              {isGoing && viewerRsvp.plusOnes > 0 && viewerRsvp.bringingNote ? ' · ' : ''}
+              {viewerRsvp.bringingNote ? viewerRsvp.bringingNote : ''}
+            </p>
+          ) : null}
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              popoverTarget="calendar-menu"
+              className="inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs sm:text-sm font-medium transition hover:opacity-90 cursor-pointer"
+              style={{
+                backgroundColor: 'var(--theme-surface-bg)',
+                borderColor: 'var(--theme-hairline)',
+                color: 'var(--theme-text-primary)',
+              }}
+            >
+              <CalendarPlus className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>Add to Calendar</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void handleInviteFriendClick()}
+              className="inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs sm:text-sm font-medium transition hover:opacity-90 cursor-pointer"
+              style={{
+                backgroundColor: 'var(--theme-surface-bg)',
+                borderColor: 'var(--theme-hairline)',
+                color: 'var(--theme-text-primary)',
+              }}
+            >
+              <Share2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>{copied ? 'Link Copied' : 'Invite a Friend'}</span>
+            </button>
+          </div>
+
+          <p
+            className="mt-4 text-xs leading-relaxed"
+            style={{ color: 'var(--theme-text-muted)' }}
+          >
+            Need to change plans?{' '}
+            <button
+              type="button"
+              onClick={() => {
+                setStatus(viewerRsvp.status);
+                setPlusOnes(viewerRsvp.plusOnes);
+                setBringingNote(viewerRsvp.bringingNote ?? '');
+                onEditingChange(true);
+              }}
+              className="underline underline-offset-2 font-medium hover:opacity-100 cursor-pointer"
+              style={{ color: 'var(--theme-text-primary)' }}
+            >
+              Update response
+            </button>{' '}
+            or{' '}
+            <button
+              type="button"
+              disabled={withdrawing}
+              onClick={() => void handleWithdraw()}
+              className="underline underline-offset-2 font-medium hover:opacity-100 disabled:opacity-50 cursor-pointer"
+              style={{ color: 'var(--theme-text-primary)' }}
+            >
+              {withdrawing ? 'canceling...' : 'cancel registration'}
+            </button>
+            .
+          </p>
+
+          {errorMsg ? (
+            <p role="alert" className="mt-3 text-xs font-medium text-rose-300">
+              {errorMsg}
+            </p>
+          ) : null}
         </div>
-      ) : (
-        <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-          <fieldset className="space-y-2.5">
-            <legend className="text-sm font-medium mb-1">
-              Can you make it?
-            </legend>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <label
-                data-selected={status === 'yes' ? 'true' : undefined}
-                className="flex items-center gap-3 rounded-xl border px-4 py-3.5 min-h-[52px] cursor-pointer transition-all"
-                style={{
-                  borderColor:
-                    status === 'yes' ? 'var(--theme-accent)' : 'var(--theme-border)',
-                  backgroundColor:
-                    status === 'yes'
-                      ? 'color-mix(in srgb, var(--theme-accent) 16%, var(--theme-card-bg))'
-                      : 'var(--theme-card-bg)',
-                  boxShadow:
-                    status === 'yes' ? '0 0 0 1px var(--theme-accent)' : undefined,
-                }}
-              >
-                <input
-                  type="radio"
-                  name="rsvpStatus"
-                  value="yes"
-                  checked={status === 'yes'}
-                  onChange={() => {
-                    setStatus('yes');
-                    setErrorMessage(null);
-                  }}
-                  required
-                  className="h-5 w-5 shrink-0 cursor-pointer"
-                  style={{ accentColor: 'var(--theme-accent)' }}
-                />
-                <span
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border"
-                  style={{
-                    borderColor:
-                      status === 'yes' ? 'var(--theme-accent)' : 'var(--theme-border)',
-                    backgroundColor:
-                      status === 'yes' ? 'var(--theme-accent)' : 'transparent',
-                    color:
-                      status === 'yes'
-                        ? 'var(--theme-on-accent, #ffffff)'
-                        : 'var(--theme-text-primary)',
-                  }}
-                  aria-hidden="true"
-                >
-                  <Check className="h-4 w-4" />
-                </span>
-                <span className="font-semibold text-base">Yes, I&apos;m coming</span>
-              </label>
 
-              <label
-                data-selected={status === 'no' ? 'true' : undefined}
-                className="flex items-center gap-3 rounded-xl border px-4 py-3.5 min-h-[52px] cursor-pointer transition-all"
-                style={{
-                  borderColor:
-                    status === 'no' ? 'var(--theme-accent)' : 'var(--theme-border)',
-                  backgroundColor:
-                    status === 'no'
-                      ? 'color-mix(in srgb, var(--theme-accent) 16%, var(--theme-card-bg))'
-                      : 'var(--theme-card-bg)',
-                  boxShadow:
-                    status === 'no' ? '0 0 0 1px var(--theme-accent)' : undefined,
-                }}
-              >
-                <input
-                  type="radio"
-                  name="rsvpStatus"
-                  value="no"
-                  checked={status === 'no'}
-                  onChange={() => {
-                    setStatus('no');
-                    setPlusOnes(0);
-                    setErrorMessage(null);
-                  }}
-                  required
-                  className="h-5 w-5 shrink-0 cursor-pointer"
-                  style={{ accentColor: 'var(--theme-accent)' }}
-                />
-                <span
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border"
-                  style={{
-                    borderColor:
-                      status === 'no' ? 'var(--theme-accent)' : 'var(--theme-border)',
-                    backgroundColor:
-                      status === 'no' ? 'var(--theme-accent)' : 'transparent',
-                    color:
-                      status === 'no'
-                        ? 'var(--theme-on-accent, #ffffff)'
-                        : 'var(--theme-text-primary)',
-                  }}
-                  aria-hidden="true"
+        {onOpenSubscribe ? (
+          <button
+            type="button"
+            onClick={onOpenSubscribe}
+            className="w-full px-4 py-3.5 sm:px-5 border-t flex items-center justify-between gap-3 text-left transition hover:opacity-90 cursor-pointer"
+            style={{ borderColor: 'var(--theme-hairline)' }}
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <Bell
+                className="h-4 w-4 shrink-0"
+                style={{ color: 'var(--theme-text-muted)' }}
+                aria-hidden="true"
+              />
+              <div className="min-w-0">
+                <p
+                  className="text-sm font-medium truncate"
+                  style={{ color: 'var(--theme-text-primary)' }}
                 >
-                  <X className="h-4 w-4" />
-                </span>
-                <span className="font-semibold text-base">No, can&apos;t make it</span>
-              </label>
-            </div>
-          </fieldset>
-
-          {awaitingNames.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-xs font-medium" style={{ color: 'var(--theme-text-muted)' }}>
-                Are you one of these guests? Tap to select:
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {awaitingNames.slice(0, 12).map((name) => {
-                  const isSelected = guestName.trim().toLowerCase() === name.toLowerCase();
-                  return (
-                    <button
-                      key={name}
-                      type="button"
-                      data-selected={isSelected ? 'true' : undefined}
-                      onClick={() => {
-                        onGuestNameChange(name);
-                        setErrorMessage(null);
-                      }}
-                      className="rounded-full border px-3.5 py-1.5 text-sm font-medium min-h-[44px] transition-colors cursor-pointer"
-                      style={{
-                        borderColor: isSelected
-                          ? 'var(--theme-accent)'
-                          : 'var(--theme-border)',
-                        backgroundColor: isSelected
-                          ? 'color-mix(in srgb, var(--theme-accent) 16%, transparent)'
-                          : 'var(--theme-card-bg)',
-                      }}
-                    >
-                      {name}
-                    </button>
-                  );
-                })}
+                  Get Event Reminders
+                </p>
+                <p
+                  className="text-xs truncate"
+                  style={{ color: 'var(--theme-text-muted)' }}
+                >
+                  Push, email, or calendar alerts
+                </p>
               </div>
             </div>
-          )}
+            <ChevronRight
+              className="h-4 w-4 shrink-0"
+              style={{ color: 'var(--theme-text-muted)' }}
+              aria-hidden="true"
+            />
+          </button>
+        ) : null}
+      </section>
+    );
+  }
 
-          <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
-            <div className={status === 'yes' ? 'sm:col-span-7 space-y-1.5' : 'sm:col-span-12 space-y-1.5'}>
-              <label htmlFor="rsvp-guest-name" className="block text-sm font-medium">
-                Your Name <span aria-hidden="true">*</span>
-              </label>
+  // ---------------------------------------------------------------------------
+  // State B: Recognized Device on New Event (One-Click Binary RSVP)
+  // ---------------------------------------------------------------------------
+  if (!viewerRsvp && !isEditing && recognizedName && !manualIdentityEdit) {
+    return (
+      <section
+        id="rsvp-section"
+        aria-labelledby={formHeadingId}
+        className="rounded-2xl border backdrop-blur-md overflow-hidden"
+        style={{
+          backgroundColor: 'var(--theme-glass-bg)',
+          borderColor: 'var(--theme-border)',
+        }}
+      >
+        <div
+          className="px-4 py-2.5 sm:px-5 border-b flex items-center justify-between gap-2"
+          style={{ borderColor: 'var(--theme-hairline)' }}
+        >
+          <h2
+            id={formHeadingId}
+            className="text-sm font-medium"
+            style={{
+              color: 'var(--theme-text-muted)',
+              fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
+            }}
+          >
+            Registration
+          </h2>
+        </div>
+
+        <div className="p-4 sm:p-5 space-y-3.5">
+          <p className="text-sm leading-relaxed" style={{ color: 'var(--theme-text-primary)' }}>
+            Welcome, <span className="font-semibold">{firstName}</span>! To join the event, tap below.
+          </p>
+
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <GuestAvatar name={recognizedName} size="sm" />
+              <div className="flex items-baseline gap-2 min-w-0">
+                <span
+                  className="text-sm font-semibold truncate"
+                  style={{ color: 'var(--theme-text-primary)' }}
+                >
+                  {recognizedName}
+                </span>
+                {deviceProfile?.email ? (
+                  <span
+                    className="text-xs truncate"
+                    style={{ color: 'var(--theme-text-muted)' }}
+                  >
+                    {deviceProfile.email}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setManualIdentityEdit(true);
+                onGuestNameChange('');
+              }}
+              className="shrink-0 text-xs underline underline-offset-2 opacity-80 hover:opacity-100 cursor-pointer"
+              style={{ color: 'var(--theme-text-muted)' }}
+            >
+              Not {firstName}?
+            </button>
+          </div>
+
+          {!showOneClickExtras ? (
+            <button
+              type="button"
+              onClick={() => setShowOneClickExtras(true)}
+              className="text-xs font-medium opacity-80 hover:opacity-100 transition cursor-pointer"
+              style={{ color: 'var(--theme-text-muted)' }}
+            >
+              + Add a +1 or dish note
+            </button>
+          ) : (
+            <div
+              className="space-y-2.5 pt-2 border-t"
+              style={{ borderColor: 'var(--theme-hairline)' }}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium" style={{ color: 'var(--theme-text-muted)' }}>
+                  Bringing a guest?
+                </span>
+                <div className="inline-flex items-center gap-2">
+                  <button
+                    type="button"
+                    aria-label="Decrease plus-ones"
+                    onClick={() => setPlusOnes((n) => Math.max(0, n - 1))}
+                    disabled={plusOnes === 0}
+                    className="h-7 w-7 rounded-full border flex items-center justify-center disabled:opacity-35 cursor-pointer"
+                    style={{
+                      borderColor: 'var(--theme-border)',
+                      color: 'var(--theme-text-primary)',
+                    }}
+                  >
+                    <Minus className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                  <span
+                    className="min-w-[2ch] text-center text-sm font-semibold tabular-nums"
+                    style={{ color: 'var(--theme-text-primary)' }}
+                  >
+                    {plusOnes}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Increase plus-ones"
+                    onClick={() => setPlusOnes((n) => Math.min(20, n + 1))}
+                    disabled={plusOnes >= 20}
+                    className="h-7 w-7 rounded-full border flex items-center justify-center disabled:opacity-35 cursor-pointer"
+                    style={{
+                      borderColor: 'var(--theme-border)',
+                      color: 'var(--theme-text-primary)',
+                    }}
+                  >
+                    <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+
               <input
-                ref={nameInputRef}
-                id="rsvp-guest-name"
-                name="guestName"
+                id="rsvp-bringing-note"
                 type="text"
-                required
-                autoComplete="name"
-                value={guestName}
-                onChange={(e) => {
-                  onGuestNameChange(e.target.value);
-                  if (errorMessage) setErrorMessage(null);
-                }}
-                placeholder="Enter your full name"
-                className="w-full rounded-xl border px-3.5 py-2.5 min-h-[48px] focus:outline-none focus-visible:ring-2"
+                maxLength={240}
+                value={bringingNote}
+                onChange={(e) => setBringingNote(e.target.value)}
+                placeholder={
+                  event.rsvpNotePrompt?.trim() || 'Bringing a dish, drink, or note (optional)'
+                }
+                className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
                 style={{
-                  fontSize: 'max(1rem, 1em)',
-                  backgroundColor: 'var(--theme-card-bg)',
+                  backgroundColor: 'var(--theme-surface-bg)',
                   borderColor: 'var(--theme-border)',
                   color: 'var(--theme-text-primary)',
                 }}
               />
             </div>
-
-            {status === 'yes' && (
-              <div className="sm:col-span-5 space-y-1.5">
-                <span id="plus-ones-label" className="block text-sm font-medium">
-                  Bringing extra guests?
-                </span>
-                <div
-                  role="group"
-                  aria-labelledby="plus-ones-label"
-                  className="flex items-center justify-between rounded-xl border px-2 min-h-[48px]"
-                  style={{
-                    backgroundColor: 'var(--theme-card-bg)',
-                    borderColor: 'var(--theme-border)',
-                  }}
-                >
-                  <button
-                    type="button"
-                    aria-label="Decrease plus-ones"
-                    onClick={() => setPlusOnes((n) => Math.max(0, n - 1))}
-                    disabled={plusOnes <= 0}
-                    className="inline-flex h-10 w-10 min-w-[44px] min-h-[44px] items-center justify-center rounded-lg transition-opacity disabled:opacity-35 hover:opacity-80 cursor-pointer"
-                  >
-                    <Minus className="h-4 w-4" aria-hidden="true" />
-                  </button>
-                  <span className="text-sm font-semibold tabular-nums px-2">
-                    {plusOnes === 0 ? '+0 (Just me)' : `+${plusOnes} ${plusOnes === 1 ? 'guest' : 'guests'}`}
-                  </span>
-                  <button
-                    type="button"
-                    aria-label="Increase plus-ones"
-                    onClick={() => setPlusOnes((n) => Math.min(10, n + 1))}
-                    disabled={plusOnes >= 10}
-                    className="inline-flex h-10 w-10 min-w-[44px] min-h-[44px] items-center justify-center rounded-lg transition-opacity disabled:opacity-35 hover:opacity-80 cursor-pointer"
-                  >
-                    <Plus className="h-4 w-4" aria-hidden="true" />
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <label htmlFor="rsvp-bringing-note" className="block text-sm font-medium">
-              Comment or what you&apos;re bringing
-            </label>
-            <textarea
-              id="rsvp-bringing-note"
-              name="bringingNote"
-              rows={2}
-              value={bringingNote}
-              onChange={(e) => handleNoteChange(e.target.value)}
-              placeholder={
-                event.rsvpNotePrompt ||
-                'e.g. Bringing homemade mac & cheese and sparkling cider!'
-              }
-              className="w-full rounded-xl border px-3.5 py-2.5 focus:outline-none focus-visible:ring-2"
-              style={{
-                resize: 'vertical',
-                fontSize: 'max(1rem, 1em)',
-                backgroundColor: 'var(--theme-card-bg)',
-                borderColor: 'var(--theme-border)',
-                color: 'var(--theme-text-primary)',
-              }}
-            />
-
-            {bringingNote.trim().length > 0 && (
-              <label className="inline-flex items-center gap-2.5 pt-1 text-sm cursor-pointer min-h-[44px]">
-                <input
-                  type="checkbox"
-                  checked={postToWall}
-                  onChange={(e) => {
-                    setUserToggledWall(true);
-                    setPostToWall(e.target.checked);
-                  }}
-                  className="h-4 w-4 rounded"
-                  style={{ accentColor: 'var(--theme-accent)' }}
-                />
-                <span>Also post this note on the Event Wall</span>
-              </label>
-            )}
-          </div>
-
-          {errorMessage && (
-            <p
-              role="alert"
-              className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-400"
-            >
-              {errorMessage}
-            </p>
           )}
 
-          <div className="flex flex-wrap items-center gap-3 pt-1">
+          {errorMsg ? (
+            <p role="alert" className="text-xs font-medium text-rose-300">
+              {errorMsg}
+            </p>
+          ) : null}
+
+          <div className="space-y-2 pt-0.5">
             <button
-              type="submit"
-              disabled={isSubmitting}
-              className="invite-on-accent inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-base font-semibold min-h-[52px] transition-opacity hover:opacity-90 disabled:opacity-60 cursor-pointer"
-              style={{ backgroundColor: 'var(--theme-accent)' }}
+              type="button"
+              disabled={submitting}
+              onClick={() =>
+                void submitRsvp({
+                  targetStatus: 'yes',
+                  targetName: recognizedName,
+                  targetPlusOnes: plusOnes,
+                  targetNote: bringingNote,
+                  shareNoteToWall: postToWall,
+                })
+              }
+              className="w-full rounded-xl py-3 px-4 text-sm font-semibold transition active:scale-[0.99] disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
+              style={primaryCtaStyle}
             >
-              {isSubmitting
-                ? 'Saving RSVP...'
-                : viewerRsvp
-                  ? 'Save Updated RSVP'
-                  : 'Send RSVP'}
+              {submitting && submittingStatus === 'yes' ? 'Confirming...' : 'One-Click RSVP'}
             </button>
 
-            {viewerRsvp && isEditing && (
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() =>
+                void submitRsvp({
+                  targetStatus: 'no',
+                  targetName: recognizedName,
+                  targetPlusOnes: 0,
+                  targetNote: bringingNote,
+                  shareNoteToWall: postToWall,
+                })
+              }
+              className="w-full rounded-xl border py-2.5 px-4 text-sm font-medium transition hover:opacity-90 disabled:opacity-60 cursor-pointer"
+              style={{
+                backgroundColor: 'var(--theme-surface-bg)',
+                borderColor: 'var(--theme-hairline)',
+                color: 'var(--theme-text-muted)',
+              }}
+            >
+              {submitting && submittingStatus === 'no' ? 'Saving...' : "Can't Make It"}
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // State C: First-Time Guest / Editing Response / Switching Identity
+  // ---------------------------------------------------------------------------
+  return (
+    <section
+      id="rsvp-section"
+      aria-labelledby={formHeadingId}
+      className="rounded-2xl border backdrop-blur-md overflow-hidden"
+      style={{
+        backgroundColor: 'var(--theme-glass-bg)',
+        borderColor: 'var(--theme-border)',
+      }}
+    >
+      <div
+        className="px-4 py-2.5 sm:px-5 border-b flex items-center justify-between gap-2"
+        style={{ borderColor: 'var(--theme-hairline)' }}
+      >
+        <h2
+          id={formHeadingId}
+          className="text-sm font-medium"
+          style={{
+            color: 'var(--theme-text-muted)',
+            fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
+          }}
+        >
+          {isEditing ? 'Update Registration' : 'Registration'}
+        </h2>
+
+        {(isEditing || (manualIdentityEdit && recognizedName)) && (
+          <button
+            type="button"
+            onClick={() => {
+              setErrorMsg(null);
+              if (isEditing) {
+                onEditingChange(false);
+              } else if (recognizedName) {
+                setManualIdentityEdit(false);
+                onGuestNameChange(recognizedName);
+              }
+            }}
+            className="text-xs font-medium opacity-80 hover:opacity-100 cursor-pointer"
+            style={{ color: 'var(--theme-text-muted)' }}
+          >
+            Cancel
+          </button>
+        )}
+      </div>
+
+      <form onSubmit={handleFormSubmit} className="p-4 sm:p-5 space-y-3.5">
+        {/* Binary-only RSVP selection — strictly Yes or No */}
+        <div
+          role="radiogroup"
+          aria-label="Attendance response"
+          className="grid grid-cols-2 gap-2.5"
+        >
+          <label
+            className="relative flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold cursor-pointer transition"
+            style={
+              status === 'yes'
+                ? {
+                    backgroundColor: 'var(--theme-accent)',
+                    borderColor: 'var(--theme-accent)',
+                    color: 'var(--theme-on-accent)',
+                  }
+                : {
+                    backgroundColor: 'var(--theme-surface-bg)',
+                    borderColor: 'var(--theme-border)',
+                    color: 'var(--theme-text-primary)',
+                  }
+            }
+          >
+            <input
+              type="radio"
+              name="rsvpStatus"
+              value="yes"
+              checked={status === 'yes'}
+              onChange={() => setStatus('yes')}
+              className="sr-only"
+            />
+            <Check className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>Yes, I&apos;m Going</span>
+          </label>
+
+          <label
+            className="relative flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold cursor-pointer transition"
+            style={
+              status === 'no'
+                ? {
+                    backgroundColor: 'var(--theme-accent)',
+                    borderColor: 'var(--theme-accent)',
+                    color: 'var(--theme-on-accent)',
+                  }
+                : {
+                    backgroundColor: 'var(--theme-surface-bg)',
+                    borderColor: 'var(--theme-border)',
+                    color: 'var(--theme-text-primary)',
+                  }
+            }
+          >
+            <input
+              type="radio"
+              name="rsvpStatus"
+              value="no"
+              checked={status === 'no'}
+              onChange={() => {
+                setStatus('no');
+                setPlusOnes(0);
+              }}
+              className="sr-only"
+            />
+            <X className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>Can&apos;t Make It</span>
+          </label>
+        </div>
+
+        {/* Name field */}
+        <div>
+          <label
+            htmlFor="rsvp-guest-name"
+            className="block text-xs font-medium mb-1.5"
+            style={{ color: 'var(--theme-text-muted)' }}
+          >
+            Your name
+          </label>
+          <input
+            ref={nameInputRef}
+            id="rsvp-guest-name"
+            type="text"
+            required
+            maxLength={80}
+            autoComplete="name"
+            value={guestName}
+            onChange={(e) => onGuestNameChange(e.target.value)}
+            placeholder="First & last name"
+            className="w-full rounded-xl border px-3.5 py-2.5 text-sm outline-none focus:ring-2"
+            style={{
+              backgroundColor: 'var(--theme-surface-bg)',
+              borderColor: 'var(--theme-border)',
+              color: 'var(--theme-text-primary)',
+            }}
+          />
+
+          {awaitingNames.length > 0 && !guestName.trim() ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {awaitingNames.slice(0, 8).map((invited) => (
+                <button
+                  key={invited}
+                  type="button"
+                  onClick={() => onGuestNameChange(invited)}
+                  className="rounded-full border px-2.5 py-1 text-xs transition hover:opacity-90 cursor-pointer"
+                  style={{
+                    backgroundColor: 'var(--theme-surface-bg)',
+                    borderColor: 'var(--theme-hairline)',
+                    color: 'var(--theme-text-muted)',
+                  }}
+                >
+                  {invited}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        {/* +1 Counter (only when Going) */}
+        {status === 'yes' ? (
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium" style={{ color: 'var(--theme-text-muted)' }}>
+              Additional guests (+1s)
+            </span>
+            <div className="inline-flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  setErrorMessage(null);
-                  onEditingChange(false);
-                }}
-                className="inline-flex items-center justify-center rounded-xl border px-4 py-3 text-sm font-medium min-h-[52px] hover:opacity-80 cursor-pointer"
+                aria-label="Decrease plus-ones"
+                onClick={() => setPlusOnes((n) => Math.max(0, n - 1))}
+                disabled={plusOnes === 0}
+                className="h-7 w-7 rounded-full border flex items-center justify-center disabled:opacity-35 cursor-pointer"
                 style={{
                   borderColor: 'var(--theme-border)',
-                  color: 'var(--theme-text-muted)',
+                  color: 'var(--theme-text-primary)',
                 }}
               >
-                Cancel
+                <Minus className="h-3.5 w-3.5" aria-hidden="true" />
               </button>
-            )}
+              <span
+                className="min-w-[2ch] text-center text-sm font-semibold tabular-nums"
+                style={{ color: 'var(--theme-text-primary)' }}
+              >
+                {plusOnes}
+              </span>
+              <button
+                type="button"
+                aria-label="Increase plus-ones"
+                onClick={() => setPlusOnes((n) => Math.min(20, n + 1))}
+                disabled={plusOnes >= 20}
+                className="h-7 w-7 rounded-full border flex items-center justify-center disabled:opacity-35 cursor-pointer"
+                style={{
+                  borderColor: 'var(--theme-border)',
+                  color: 'var(--theme-text-primary)',
+                }}
+              >
+                <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            </div>
           </div>
-        </form>
-      )}
+        ) : null}
+
+        {/* Bringing / RSVP Note */}
+        <div>
+          <label
+            htmlFor="rsvp-bringing-note"
+            className="block text-xs font-medium mb-1.5"
+            style={{ color: 'var(--theme-text-muted)' }}
+          >
+            {event.rsvpNotePrompt?.trim() || 'Bringing something or adding a note? (optional)'}
+          </label>
+          <textarea
+            id="rsvp-bringing-note"
+            rows={2}
+            maxLength={240}
+            value={bringingNote}
+            onChange={(e) => setBringingNote(e.target.value)}
+            placeholder={
+              status === 'yes'
+                ? 'e.g., Bringing spiced apple cider!'
+                : 'e.g., Sorry to miss this — have fun!'
+            }
+            className="w-full rounded-xl border px-3.5 py-2 text-sm outline-none focus:ring-2 resize-y"
+            style={{
+              backgroundColor: 'var(--theme-surface-bg)',
+              borderColor: 'var(--theme-border)',
+              color: 'var(--theme-text-primary)',
+            }}
+          />
+
+          {bringingNote.trim() ? (
+            <label
+              className="mt-1.5 flex items-center gap-2 text-xs cursor-pointer"
+              style={{ color: 'var(--theme-text-muted)' }}
+            >
+              <input
+                type="checkbox"
+                checked={postToWall}
+                onChange={(e) => setPostToWall(e.target.checked)}
+                className="rounded border"
+              />
+              <span>Share note to event activity</span>
+            </label>
+          ) : null}
+        </div>
+
+        {errorMsg ? (
+          <p role="alert" className="text-xs font-medium text-rose-300">
+            {errorMsg}
+          </p>
+        ) : null}
+
+        <button
+          type="submit"
+          disabled={submitting}
+          className="w-full rounded-xl py-3 px-4 text-sm font-semibold transition active:scale-[0.99] disabled:opacity-60 cursor-pointer"
+          style={primaryCtaStyle}
+        >
+          {submitting
+            ? 'Saving...'
+            : isEditing
+              ? 'Save Response'
+              : status === 'yes'
+                ? "Confirm RSVP"
+                : "Send Can't Make It"}
+        </button>
+
+        {isEditing && viewerRsvp ? (
+          <div className="text-center pt-1">
+            <button
+              type="button"
+              disabled={withdrawing}
+              onClick={() => void handleWithdraw()}
+              className="text-xs underline underline-offset-2 opacity-80 hover:opacity-100 disabled:opacity-50 cursor-pointer"
+              style={{ color: 'var(--theme-text-muted)' }}
+            >
+              {withdrawing ? 'Canceling registration...' : 'Cancel registration'}
+            </button>
+          </div>
+        ) : null}
+      </form>
     </section>
   );
 }

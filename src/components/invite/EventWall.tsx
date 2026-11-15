@@ -1,11 +1,16 @@
 'use client';
 
-import { useState } from 'react';
-import { Check, MessageSquare, Send, Sparkles, Trash, X } from 'lucide-react';
-import { formatRelativeTime } from '@/components/invite/calendarLinks';
-import type { CommentRecord, EventDetailResponse, RsvpStatus } from '@/types/invite';
-
-const REACTION_EMOJIS = ['🎉', '❤️', '🍽️', '🥂', '🔥'] as const;
+import React, { useEffect, useId, useState, useSyncExternalStore } from 'react';
+import { Send, Trash2 } from 'lucide-react';
+import {
+  getDeviceProfile,
+  getDeviceProfileServerSnapshot,
+  saveDeviceProfile,
+  subscribeDeviceProfile,
+} from '@/lib/client/deviceProfile';
+import type { CommentRecord, RsvpStatus } from '@/types/invite';
+import { formatRelativeTime } from './calendarLinks';
+import { GuestAvatar } from './GuestAvatar';
 
 interface EventWallProps {
   eventId: string;
@@ -19,111 +24,136 @@ interface EventWallProps {
   onRefreshDetail: () => Promise<void>;
 }
 
+const REACTION_EMOJIS = ['🎉', '❤️', '🍽️', '🙌'] as const;
+
 export function EventWall({
   eventId,
   comments,
   isHost,
   editKey,
   guestToken,
-  defaultAuthorName,
+  defaultAuthorName = '',
   viewerRsvpStatus,
   onCommentsChange,
   onRefreshDetail,
 }: EventWallProps) {
-  const [authorName, setAuthorName] = useState<string>('');
-  const [hasEditedAuthor, setHasEditedAuthor] = useState<boolean>(false);
+  const headingId = useId();
+  const deviceProfile = useSyncExternalStore(
+    subscribeDeviceProfile,
+    getDeviceProfile,
+    getDeviceProfileServerSnapshot,
+  );
+
+  const knownDefaultName = defaultAuthorName.trim() || deviceProfile?.name?.trim() || '';
+  const [customAuthorName, setCustomAuthorName] = useState<string | null>(null);
+  const authorName = customAuthorName ?? knownDefaultName;
+  const [editingAuthorName, setEditingAuthorName] = useState<boolean>(false);
   const [body, setBody] = useState<string>('');
-  const [isPosting, setIsPosting] = useState<boolean>(false);
+  const [posting, setPosting] = useState<boolean>(false);
+  const [reactingId, setReactingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [reactingKey, setReactingKey] = useState<string | null>(null);
-  const [reactedMap, setReactedMap] = useState<Record<string, boolean>>({});
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [activeReactions, setActiveReactions] = useState<Record<string, boolean>>({});
 
-  const effectiveAuthor = hasEditedAuthor ? authorName : authorName || defaultAuthorName || '';
+  useEffect(() => {
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      try {
+        const raw = window.localStorage.getItem(`invited_wall_reactions:${eventId}`);
+        if (raw) {
+          const parsed = JSON.parse(raw) as unknown;
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            setActiveReactions(parsed as Record<string, boolean>);
+          }
+        }
+      } catch {
+        // Ignore storage access errors
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [eventId]);
 
-  const submitComment = async () => {
-    setErrorMessage(null);
-    const trimmedAuthor = effectiveAuthor.trim();
+  const effectiveAuthorName = authorName.trim() || knownDefaultName;
+  const showNameInput = !effectiveAuthorName || editingAuthorName;
+
+  async function submitComment() {
+    const trimmedName = (showNameInput ? authorName : effectiveAuthorName).trim();
     const trimmedBody = body.trim();
-
-    if (!trimmedAuthor) {
-      setErrorMessage('Please enter your name before posting to the wall.');
+    if (!trimmedName) {
+      setEditingAuthorName(true);
+      setErrorMsg('Please enter your name to post.');
       return;
     }
     if (!trimmedBody) {
-      setErrorMessage('Please write a message first.');
+      setErrorMsg('Please enter a message.');
       return;
     }
 
-    setIsPosting(true);
+    setPosting(true);
+    setErrorMsg(null);
+
     try {
-      const response = await fetch(`/api/events/${encodeURIComponent(eventId)}/comments`, {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (editKey) headers['x-edit-key'] = editKey;
+      if (guestToken) headers['x-guest-token'] = guestToken;
+
+      const res = await fetch(`/api/events/${eventId}/comments`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(editKey ? { 'x-edit-key': editKey } : {}),
-          ...(guestToken ? { 'x-guest-token': guestToken } : {}),
-        },
+        headers,
         body: JSON.stringify({
-          authorName: trimmedAuthor,
+          authorName: trimmedName,
           body: trimmedBody,
-          editKey: editKey || undefined,
-          guestToken: guestToken || undefined,
           rsvpStatus: viewerRsvpStatus,
+          editKey: editKey ?? undefined,
         }),
       });
 
-      const data = (await response.json().catch(() => ({}))) as {
-        error?: string;
-        comment?: CommentRecord;
-        comments?: CommentRecord[];
-        detail?: EventDetailResponse;
-      };
-
-      if (!response.ok) {
-        setErrorMessage(data.error || 'Could not post your message. Please try again.');
+      const data = (await res.json()) as { comment?: CommentRecord; error?: string };
+      if (!res.ok || !data.comment) {
+        setErrorMsg(data.error ?? 'Could not post your comment.');
         return;
       }
 
+      saveDeviceProfile({ name: trimmedName });
+      setCustomAuthorName(trimmedName);
+      setEditingAuthorName(false);
       setBody('');
-      if (data.detail?.comments) {
-        onCommentsChange(data.detail.comments);
-      } else if (Array.isArray(data.comments)) {
-        onCommentsChange(data.comments);
-      } else if (data.comment) {
-        onCommentsChange([...comments, data.comment]);
-      } else {
-        await onRefreshDetail();
-      }
+      onCommentsChange([data.comment, ...comments]);
+      await onRefreshDetail();
     } catch {
-      setErrorMessage('Network error while posting. Please try again.');
+      setErrorMsg('Network error posting your comment.');
     } finally {
-      setIsPosting(false);
+      setPosting(false);
     }
-  };
+  }
 
-  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  async function handleFormSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    void submitComment();
-  };
+    await submitComment();
+  }
 
-  const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.nativeEvent.isComposing) return;
+  function handleBodyKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.nativeEvent.isComposing || e.keyCode === 229) {
+      return;
+    }
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
       void submitComment();
     }
-  };
+  }
 
-  const handleReact = async (commentId: string, emoji: string) => {
+  async function handleReact(commentId: string, emoji: string) {
     const key = `${commentId}:${emoji}`;
-    if (reactingKey === key) return;
-    setReactingKey(key);
-    const wasPressed = Boolean(reactedMap[key]);
-    const delta = wasPressed ? -1 : 1;
-
+    const wasActive = Boolean(activeReactions[key]);
+    const delta = wasActive ? -1 : 1;
+    setReactingId(key);
     try {
-      const response = await fetch(`/api/events/${encodeURIComponent(eventId)}/comments`, {
+      const res = await fetch(`/api/events/${eventId}/comments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -133,278 +163,257 @@ export function EventWall({
           delta,
         }),
       });
-
-      const data = (await response.json().catch(() => ({}))) as {
-        comment?: CommentRecord;
-        comments?: CommentRecord[];
-        detail?: EventDetailResponse;
-      };
-
-      if (response.ok) {
-        setReactedMap((prev) => ({ ...prev, [key]: !wasPressed }));
-        if (data.detail?.comments) {
-          onCommentsChange(data.detail.comments);
-        } else if (Array.isArray(data.comments)) {
-          onCommentsChange(data.comments);
-        } else if (data.comment) {
-          const updated = data.comment;
-          onCommentsChange(comments.map((c) => (c.id === updated.id ? updated : c)));
-        } else {
-          await onRefreshDetail();
+      const data = (await res.json()) as { comment?: CommentRecord; error?: string };
+      if (res.ok && data.comment) {
+        const nextActive = { ...activeReactions, [key]: !wasActive };
+        if (wasActive) {
+          delete nextActive[key];
         }
+        setActiveReactions(nextActive);
+        try {
+          window.localStorage.setItem(
+            `invited_wall_reactions:${eventId}`,
+            JSON.stringify(nextActive),
+          );
+        } catch {
+          // Ignore storage quota errors
+        }
+        onCommentsChange(comments.map((c) => (c.id === commentId ? data.comment! : c)));
       }
+    } catch {
+      // Ignore transient reaction network failure
     } finally {
-      setReactingKey(null);
+      setReactingId(null);
     }
-  };
+  }
 
-  const handleDeleteComment = async (commentId: string) => {
-    if (!isHost || !editKey) return;
+  async function handleDelete(commentId: string) {
+    if (!editKey) return;
     setDeletingId(commentId);
     try {
-      const response = await fetch(
-        `/api/events/${encodeURIComponent(eventId)}/comments/${encodeURIComponent(commentId)}`,
-        {
-          method: 'DELETE',
-          headers: {
-            'x-edit-key': editKey,
-          },
+      const res = await fetch(`/api/events/${eventId}/comments/${commentId}`, {
+        method: 'DELETE',
+        headers: {
+          'x-edit-key': editKey,
         },
-      );
-      if (response.ok) {
+      });
+      if (res.ok) {
         onCommentsChange(comments.filter((c) => c.id !== commentId));
       }
+    } catch {
+      setErrorMsg('Could not delete comment.');
     } finally {
       setDeletingId(null);
     }
-  };
+  }
 
   return (
-    <section
-      aria-labelledby="event-wall-heading"
-      className="invite-card rounded-2xl border p-5 sm:p-6 space-y-5"
-      style={{
-        backgroundColor: 'var(--theme-surface-bg)',
-        borderColor: 'var(--theme-border)',
-      }}
-    >
-      <div>
+    <section id="wall-section" aria-labelledby={headingId} className="space-y-3.5">
+      <div
+        className="flex items-center justify-between gap-2 pb-2 border-b"
+        style={{ borderColor: 'var(--theme-hairline)' }}
+      >
         <h2
-          id="event-wall-heading"
-          className="text-xl font-semibold tracking-tight flex items-center gap-2"
-          style={{ fontFamily: 'var(--theme-font-heading)' }}
+          id={headingId}
+          className="text-sm font-medium"
+          style={{
+            color: 'var(--theme-text-muted)',
+            fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
+          }}
         >
-          <MessageSquare className="h-5 w-5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-          <span>Event Wall</span>
-          {comments.length > 0 && (
-            <span className="text-sm font-normal" style={{ color: 'var(--theme-text-muted)' }}>
-              ({comments.length})
-            </span>
-          )}
+          Activity{comments.length > 0 ? ` (${comments.length})` : ''}
         </h2>
-        <p className="text-sm mt-0.5" style={{ color: 'var(--theme-text-muted)' }}>
-          Coordinate rides, ask questions, or drop a warm note for everyone.
-        </p>
       </div>
 
-      <form onSubmit={handleFormSubmit} className="space-y-3" noValidate>
-        <div className="space-y-1.5">
-          <label htmlFor="wall-author-name" className="block text-sm font-medium">
-            Your Name
-          </label>
+      <form onSubmit={handleFormSubmit} className="space-y-2">
+        {showNameInput ? (
           <input
             id="wall-author-name"
             type="text"
-            required
+            maxLength={80}
             autoComplete="name"
-            value={effectiveAuthor}
-            onChange={(e) => {
-              setHasEditedAuthor(true);
-              setAuthorName(e.target.value);
-              if (errorMessage) setErrorMessage(null);
-            }}
+            value={authorName}
+            onChange={(e) => setCustomAuthorName(e.target.value)}
             placeholder="Your name"
-            className="w-full rounded-xl border px-3.5 py-2.5 min-h-[48px] focus:outline-none focus-visible:ring-2"
+            className="w-full rounded-xl border px-3.5 py-2 text-sm outline-none focus:ring-2"
             style={{
-              fontSize: 'max(1rem, 1em)',
-              backgroundColor: 'var(--theme-card-bg)',
+              backgroundColor: 'var(--theme-surface-bg)',
               borderColor: 'var(--theme-border)',
               color: 'var(--theme-text-primary)',
             }}
           />
-        </div>
+        ) : null}
 
-        <div className="space-y-1.5">
-          <label htmlFor="wall-comment-body" className="block text-sm font-medium">
-            Message
-          </label>
-          <textarea
-            id="wall-comment-body"
-            rows={2}
-            required
-            value={body}
-            onChange={(e) => {
-              setBody(e.target.value);
-              if (errorMessage) setErrorMessage(null);
-            }}
-            onKeyDown={handleTextareaKeyDown}
-            placeholder="Say hi, coordinate carpools, or ask about parking..."
-            className="w-full rounded-xl border px-3.5 py-2.5 focus:outline-none focus-visible:ring-2"
-            style={{
-              resize: 'vertical',
-              fontSize: 'max(1rem, 1em)',
-              backgroundColor: 'var(--theme-card-bg)',
-              borderColor: 'var(--theme-border)',
-              color: 'var(--theme-text-primary)',
-            }}
-          />
-        </div>
-
-        {errorMessage && (
-          <p
-            role="alert"
-            className="rounded-xl border border-red-500/40 bg-red-500/10 px-3.5 py-2 text-sm text-red-400"
-          >
-            {errorMessage}
-          </p>
-        )}
-
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-xs hidden sm:inline" style={{ color: 'var(--theme-text-muted)' }}>
-            Tip: Press Cmd/Ctrl + Enter to post
-          </span>
-          <button
-            type="submit"
-            disabled={isPosting}
-            className="invite-on-accent ml-auto inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold min-h-[48px] transition-opacity hover:opacity-90 disabled:opacity-60 cursor-pointer"
-            style={{ backgroundColor: 'var(--theme-accent)' }}
-          >
-            <Send className="h-4 w-4" aria-hidden="true" />
-            <span>{isPosting ? 'Posting...' : 'Post Note'}</span>
-          </button>
-        </div>
-      </form>
-
-      {comments.length === 0 ? (
-        <p
-          className="rounded-xl border border-dashed p-5 text-center text-sm"
-          style={{
-            borderColor: 'var(--theme-border)',
-            color: 'var(--theme-text-muted)',
-          }}
-        >
-          No wall notes yet. Start the conversation!
-        </p>
-      ) : (
-        <ul className="space-y-3">
-          {comments.map((comment) => (
-            <li
-              key={comment.id}
-              className="rounded-xl border p-4 space-y-2.5"
+        <div className="flex items-start gap-2.5">
+          {effectiveAuthorName ? (
+            <GuestAvatar name={effectiveAuthorName} size="sm" className="mt-1.5" />
+          ) : null}
+          <div className="flex-1 min-w-0 flex items-end gap-2">
+            <textarea
+              id="wall-comment-body"
+              rows={2}
+              maxLength={600}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              onKeyDown={handleBodyKeyDown}
+              placeholder="Add a comment or what you're bringing..."
+              aria-label="Comment message"
+              className="w-full min-w-0 rounded-xl border px-3.5 py-2 text-sm outline-none focus:ring-2 resize-y"
               style={{
-                backgroundColor: 'var(--theme-card-bg)',
+                backgroundColor: 'var(--theme-surface-bg)',
                 borderColor: 'var(--theme-border)',
+                color: 'var(--theme-text-primary)',
+              }}
+            />
+            <button
+              type="submit"
+              disabled={posting}
+              aria-label="Post comment"
+              className="h-9 shrink-0 rounded-xl px-3.5 text-xs sm:text-sm font-semibold transition hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-1.5 cursor-pointer"
+              style={{
+                backgroundColor: 'var(--theme-accent)',
+                color: 'var(--theme-on-accent)',
               }}
             >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold text-sm sm:text-base">
-                    {comment.authorName}
-                  </span>
+              <Send className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>{posting ? '...' : 'Post'}</span>
+            </button>
+          </div>
+        </div>
 
-                  {comment.isHost && (
-                    <span
-                      className="invite-on-accent inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold"
-                      style={{ backgroundColor: 'var(--theme-accent)' }}
+        {!showNameInput && effectiveAuthorName ? (
+          <p className="text-xs pl-9" style={{ color: 'var(--theme-text-muted)' }}>
+            Posting as <span className="font-medium">{effectiveAuthorName}</span> ·{' '}
+            <button
+              type="button"
+              onClick={() => setEditingAuthorName(true)}
+              className="underline underline-offset-2 hover:opacity-100 cursor-pointer"
+            >
+              Change
+            </button>
+          </p>
+        ) : null}
+
+        {errorMsg ? (
+          <p role="alert" className="text-xs font-medium text-rose-300">
+            {errorMsg}
+          </p>
+        ) : null}
+      </form>
+
+      {comments.length > 0 ? (
+        <ul className="divide-y" style={{ borderColor: 'var(--theme-hairline)' }}>
+          {comments.map((comment) => {
+            const existingReactions = Object.entries(comment.reactions ?? {}).filter(
+              ([, count]) => count > 0,
+            );
+            return (
+              <li
+                key={comment.id}
+                className="py-3.5 space-y-2"
+                style={{ borderColor: 'var(--theme-hairline)' }}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <GuestAvatar name={comment.authorName} size="sm" className="mt-0.5" />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span
+                          className="text-sm font-medium break-words"
+                          style={{ color: 'var(--theme-text-primary)' }}
+                        >
+                          {comment.authorName}
+                        </span>
+                        {comment.isHost ? (
+                          <span
+                            className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                            style={{
+                              backgroundColor: 'var(--theme-surface-bg)',
+                              color: 'var(--theme-accent)',
+                            }}
+                          >
+                            Host
+                          </span>
+                        ) : null}
+                        <span className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>
+                          · {formatRelativeTime(comment.createdAt)}
+                        </span>
+                      </div>
+                      <p
+                        className="mt-1 text-sm leading-relaxed whitespace-pre-wrap break-words"
+                        style={{ color: 'var(--theme-text-primary)' }}
+                      >
+                        {comment.body}
+                      </p>
+                    </div>
+                  </div>
+
+                  {isHost && editKey ? (
+                    <button
+                      type="button"
+                      disabled={deletingId === comment.id}
+                      aria-label={`Delete comment by ${comment.authorName}`}
+                      onClick={() => void handleDelete(comment.id)}
+                      className="shrink-0 rounded-lg p-1.5 opacity-60 hover:opacity-100 disabled:opacity-35 transition cursor-pointer"
+                      style={{ color: 'var(--theme-text-muted)' }}
                     >
-                      <Sparkles className="h-3 w-3" aria-hidden="true" />
-                      Host
-                    </span>
-                  )}
-
-                  {!comment.isHost && comment.rsvpStatus === 'yes' && (
-                    <span
-                      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
-                      style={{
-                        backgroundColor:
-                          'color-mix(in srgb, var(--theme-accent) 16%, transparent)',
-                      }}
-                    >
-                      Going
-                      <Check className="h-3 w-3" aria-hidden="true" />
-                    </span>
-                  )}
-
-                  {!comment.isHost && comment.rsvpStatus === 'no' && (
-                    <span
-                      className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs"
-                      style={{
-                        borderColor: 'var(--theme-border)',
-                        color: 'var(--theme-text-muted)',
-                      }}
-                    >
-                      Can&apos;t Go
-                      <X className="h-3 w-3" aria-hidden="true" />
-                    </span>
-                  )}
-
-                  <span className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>
-                    {formatRelativeTime(comment.createdAt)}
-                  </span>
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  ) : null}
                 </div>
 
-                {isHost && (
-                  <button
-                    type="button"
-                    aria-label={`Delete comment by ${comment.authorName}`}
-                    disabled={deletingId === comment.id}
-                    onClick={() => void handleDeleteComment(comment.id)}
-                    className="inline-flex h-10 w-10 min-w-[44px] min-h-[44px] items-center justify-center rounded-lg transition-opacity hover:opacity-80 disabled:opacity-40 cursor-pointer"
-                    style={{ color: 'var(--theme-text-muted)' }}
-                  >
-                    <Trash className="h-4 w-4" aria-hidden="true" />
-                  </button>
-                )}
-              </div>
+                <div className="flex flex-wrap items-center gap-1.5 pl-9">
+                  {existingReactions.map(([emoji, count]) => {
+                    const isActive = Boolean(activeReactions[`${comment.id}:${emoji}`]);
+                    return (
+                      <button
+                        key={emoji}
+                        type="button"
+                        aria-pressed={isActive}
+                        aria-label={`React with ${emoji} (${count})`}
+                        disabled={reactingId === `${comment.id}:${emoji}`}
+                        onClick={() => void handleReact(comment.id, emoji)}
+                        className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition hover:opacity-90 cursor-pointer"
+                        style={
+                          isActive
+                            ? {
+                                backgroundColor: 'var(--theme-accent)',
+                                borderColor: 'var(--theme-accent)',
+                                color: 'var(--theme-on-accent)',
+                              }
+                            : {
+                                backgroundColor: 'var(--theme-surface-bg)',
+                                borderColor: 'var(--theme-hairline)',
+                                color: 'var(--theme-text-primary)',
+                              }
+                        }
+                      >
+                        <span>{emoji}</span>
+                        <span className="tabular-nums text-[11px]">{count}</span>
+                      </button>
+                    );
+                  })}
 
-              <p className="text-sm sm:text-base whitespace-pre-wrap break-words leading-relaxed">
-                {comment.body}
-              </p>
-
-              <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                {REACTION_EMOJIS.map((emoji) => {
-                  const count = comment.reactions?.[emoji] ?? 0;
-                  const reactKey = `${comment.id}:${emoji}`;
-                  const pressed = Boolean(reactedMap[reactKey]);
-                  return (
-                    <button
-                      key={emoji}
-                      type="button"
-                      aria-label={`React with ${emoji}${count > 0 ? `, ${count} reactions` : ''}`}
-                      aria-pressed={pressed}
-                      disabled={reactingKey === reactKey}
-                      onClick={() => void handleReact(comment.id, emoji)}
-                      className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium min-h-[40px] transition-colors hover:opacity-90 cursor-pointer"
-                      style={{
-                        borderColor:
-                          pressed || count > 0
-                            ? 'var(--theme-accent)'
-                            : 'var(--theme-border)',
-                        backgroundColor: pressed
-                          ? 'color-mix(in srgb, var(--theme-accent) 18%, transparent)'
-                          : 'var(--theme-surface-bg)',
-                      }}
-                    >
-                      <span aria-hidden="true">{emoji}</span>
-                      {count > 0 && <span className="tabular-nums">{count}</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            </li>
-          ))}
+                  {REACTION_EMOJIS.filter((emoji) => !(comment.reactions?.[emoji] > 0)).map(
+                    (emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        aria-label={`React with ${emoji} (0)`}
+                        disabled={reactingId === `${comment.id}:${emoji}`}
+                        onClick={() => void handleReact(comment.id, emoji)}
+                        className="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs opacity-45 hover:opacity-100 transition cursor-pointer"
+                      >
+                        {emoji}
+                      </button>
+                    ),
+                  )}
+                </div>
+              </li>
+            );
+          })}
         </ul>
-      )}
+      ) : null}
     </section>
   );
 }

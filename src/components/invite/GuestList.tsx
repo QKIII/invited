@@ -1,10 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { Check, Lock, Users, Utensils, X } from 'lucide-react';
+import React, { useId, useState } from 'react';
+import { Lock } from 'lucide-react';
 import type { EventDetailResponse, EventMeta, RsvpRecord } from '@/types/invite';
-
-type GuestTab = 'yes' | 'no' | 'awaiting';
+import { GuestAvatar } from './GuestAvatar';
 
 interface GuestListProps {
   event: EventMeta;
@@ -14,12 +13,7 @@ interface GuestListProps {
   onSelectAwaitingName: (name: string) => void;
 }
 
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-}
+type GuestTab = 'yes' | 'no' | 'awaiting';
 
 export function GuestList({
   event,
@@ -28,344 +22,307 @@ export function GuestList({
   viewerRsvp,
   onSelectAwaitingName,
 }: GuestListProps) {
+  const headingId = useId();
   const [activeTab, setActiveTab] = useState<GuestTab>('yes');
 
   const isPrivateForViewer = event.hideGuestList && !isHost;
+  const hasAnyGuestActivity =
+    rsvps.yes.length > 0 || rsvps.no.length > 0 || rsvps.awaitingNames.length > 0;
 
-  const availableTabs: Array<{ id: GuestTab; label: string; count: number }> = [
-    { id: 'yes', label: 'Coming', count: rsvps.totalHeadcount },
-    { id: 'no', label: "Can't Make It", count: rsvps.no.length },
-    ...(rsvps.awaitingNames.length > 0
-      ? [{ id: 'awaiting' as const, label: 'Awaiting Reply', count: rsvps.awaitingNames.length }]
-      : []),
-  ];
+  if (!isPrivateForViewer && !hasAnyGuestActivity) {
+    return null;
+  }
 
-  const resolvedTab: GuestTab =
-    activeTab === 'awaiting' && rsvps.awaitingNames.length === 0 ? 'yes' : activeTab;
-
-  const handleTabKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
-    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-      e.preventDefault();
-      const delta = e.key === 'ArrowRight' ? 1 : -1;
-      const nextIndex = (index + delta + availableTabs.length) % availableTabs.length;
-      setActiveTab(availableTabs[nextIndex].id);
-    }
-  };
-
-  return (
-    <section
-      aria-labelledby="guest-list-heading"
-      className="invite-card rounded-2xl border p-5 sm:p-6 space-y-4"
-      style={{
-        backgroundColor: 'var(--theme-surface-bg)',
-        borderColor: 'var(--theme-border)',
-      }}
-    >
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between gap-2">
-          <h2
-            id="guest-list-heading"
-            className="text-xl font-semibold tracking-tight flex items-center gap-2"
-            style={{ fontFamily: 'var(--theme-font-heading)' }}
-          >
-            <Users className="h-5 w-5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-            <span>Guest List</span>
-          </h2>
-          {event.hideGuestList && isHost && (
-            <span
-              className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium"
-              style={{ borderColor: 'var(--theme-border)', color: 'var(--theme-text-muted)' }}
-            >
-              <Lock className="h-3 w-3" aria-hidden="true" />
-              Hidden from guests
-            </span>
-          )}
-        </div>
-
-        {!isPrivateForViewer && (
-          <p className="text-sm font-medium" style={{ color: 'var(--theme-text-muted)' }}>
-            <span className="font-semibold" style={{ color: 'var(--theme-text-primary)' }}>
-              {rsvps.totalHeadcount} Going
-            </span>
-            {' · '}
-            <span>{rsvps.no.length} Not Coming</span>
-            {rsvps.awaitingNames.length > 0 && (
-              <>
-                {' · '}
-                <span>{rsvps.awaitingNames.length} Awaiting Reply</span>
-              </>
-            )}
-          </p>
-        )}
-      </div>
-
-      {isPrivateForViewer ? (
+  if (isPrivateForViewer) {
+    return (
+      <section aria-labelledby={headingId} className="space-y-3">
         <div
-          className="rounded-xl border p-4 flex items-start gap-3 text-sm"
-          style={{
-            backgroundColor: 'var(--theme-card-bg)',
-            borderColor: 'var(--theme-border)',
-          }}
+          className="flex items-center justify-between gap-2 pb-2 border-b"
+          style={{ borderColor: 'var(--theme-hairline)' }}
         >
-          <Lock
-            className="h-4 w-4 mt-0.5 shrink-0"
-            style={{ color: 'var(--theme-accent)' }}
-            aria-hidden="true"
-          />
-          <div className="space-y-1">
-            <p className="font-medium">
-              Guest list is kept private by the host — {rsvps.totalHeadcount} attending so far.
-            </p>
-            {viewerRsvp && (
-              <p style={{ color: 'var(--theme-text-muted)' }}>
-                Your response ({viewerRsvp.status === 'yes' ? 'Coming' : "Can't make it"}) is
-                saved.
-              </p>
-            )}
-          </div>
-        </div>
-      ) : (
-        <>
-          <div
-            role="tablist"
-            aria-label="Guest list sections"
-            className="flex flex-wrap gap-1.5 rounded-xl border p-1"
+          <h2
+            id={headingId}
+            className="text-sm font-medium flex items-center gap-1.5"
             style={{
-              backgroundColor: 'var(--theme-card-bg)',
-              borderColor: 'var(--theme-border)',
+              color: 'var(--theme-text-muted)',
+              fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
             }}
           >
-            {availableTabs.map((tab, idx) => {
-              const selected = resolvedTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  id={`guest-tab-${tab.id}`}
-                  role="tab"
-                  type="button"
-                  aria-selected={selected}
-                  aria-controls={`guest-tabpanel-${tab.id}`}
-                  tabIndex={selected ? 0 : -1}
-                  onClick={() => setActiveTab(tab.id)}
-                  onKeyDown={(e) => handleTabKeyDown(e, idx)}
-                  className={`flex-1 min-w-[105px] rounded-lg px-3 py-2 text-xs sm:text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
-                    selected ? 'invite-on-accent font-semibold' : 'hover:opacity-80'
-                  }`}
-                  style={{
-                    backgroundColor: selected ? 'var(--theme-accent)' : 'transparent',
-                    color: selected ? undefined : 'var(--theme-text-muted)',
-                  }}
-                >
-                  <span>{tab.label}</span>{' '}
-                  <span className="opacity-85 tabular-nums">({tab.count})</span>
-                </button>
-              );
-            })}
+            <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span>Guests</span>
+          </h2>
+          <span className="text-xs font-medium" style={{ color: 'var(--theme-text-muted)' }}>
+            {rsvps.totalHeadcount} Going
+          </span>
+        </div>
+
+        <p className="text-sm leading-relaxed" style={{ color: 'var(--theme-text-muted)' }}>
+          Guest list is kept private by the host — {rsvps.totalHeadcount} attending so far.
+        </p>
+
+        {viewerRsvp ? (
+          <p className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>
+            Your response: {viewerRsvp.status === 'yes' ? "Yes, I'm going" : "Can't make it"}
+            {viewerRsvp.plusOnes > 0 ? ` (+${viewerRsvp.plusOnes})` : ''}
+            {viewerRsvp.bringingNote ? ` · ${viewerRsvp.bringingNote}` : ''}
+          </p>
+        ) : null}
+      </section>
+    );
+  }
+
+  const showNoTab = rsvps.no.length > 0;
+  const showAwaitingTab = rsvps.awaitingNames.length > 0;
+  const safeTab: GuestTab =
+    activeTab === 'no' && !showNoTab
+      ? 'yes'
+      : activeTab === 'awaiting' && !showAwaitingTab
+        ? 'yes'
+        : activeTab;
+
+  return (
+    <section aria-labelledby={headingId} className="space-y-3">
+      <div
+        className="flex items-center justify-between gap-3 pb-2 border-b"
+        style={{ borderColor: 'var(--theme-hairline)' }}
+      >
+        <h2
+          id={headingId}
+          className="text-sm font-medium"
+          style={{
+            color: 'var(--theme-text-muted)',
+            fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
+          }}
+        >
+          {rsvps.totalHeadcount} Going
+        </h2>
+
+        {rsvps.yes.length > 0 ? (
+          <div className="flex items-center -space-x-1.5 shrink-0" aria-hidden="true">
+            {rsvps.yes.slice(0, 5).map((entry) => (
+              <GuestAvatar
+                key={entry.id}
+                name={entry.guestName}
+                size="xs"
+                className="ring-1 ring-black/30"
+              />
+            ))}
+            {rsvps.yes.length > 5 ? (
+              <span
+                className="inline-flex h-5 items-center justify-center rounded-full px-1.5 text-[10px] font-medium"
+                style={{
+                  backgroundColor: 'var(--theme-surface-bg)',
+                  color: 'var(--theme-text-muted)',
+                }}
+              >
+                +{rsvps.yes.length - 5}
+              </span>
+            ) : null}
           </div>
+        ) : null}
+      </div>
 
-          {resolvedTab === 'yes' && (
-            <div
-              id="guest-tabpanel-yes"
-              role="tabpanel"
-              aria-labelledby="guest-tab-yes"
-              className="space-y-2.5"
-            >
-              {rsvps.yes.length === 0 ? (
-                <p
-                  className="rounded-xl border border-dashed p-5 text-center text-sm"
-                  style={{
-                    borderColor: 'var(--theme-border)',
+      {(showNoTab || showAwaitingTab) && (
+        <div role="tablist" aria-label="Guest attendance lists" className="flex flex-wrap gap-1.5">
+          <button
+            id="guest-tab-yes"
+            role="tab"
+            type="button"
+            aria-selected={safeTab === 'yes'}
+            aria-controls="guest-panel-yes"
+            onClick={() => setActiveTab('yes')}
+            className="rounded-full px-3 py-1 text-xs font-medium border transition cursor-pointer"
+            style={
+              safeTab === 'yes'
+                ? {
+                    backgroundColor: 'var(--theme-accent)',
+                    borderColor: 'var(--theme-accent)',
+                    color: 'var(--theme-on-accent)',
+                  }
+                : {
+                    backgroundColor: 'transparent',
+                    borderColor: 'var(--theme-hairline)',
                     color: 'var(--theme-text-muted)',
-                  }}
+                  }
+            }
+          >
+            {rsvps.totalHeadcount} Going
+          </button>
+
+          {showNoTab ? (
+            <button
+              id="guest-tab-no"
+              role="tab"
+              type="button"
+              aria-selected={safeTab === 'no'}
+              aria-controls="guest-panel-no"
+              onClick={() => setActiveTab('no')}
+              className="rounded-full px-3 py-1 text-xs font-medium border transition cursor-pointer"
+              style={
+                safeTab === 'no'
+                  ? {
+                      backgroundColor: 'var(--theme-accent)',
+                      borderColor: 'var(--theme-accent)',
+                      color: 'var(--theme-on-accent)',
+                    }
+                  : {
+                      backgroundColor: 'transparent',
+                      borderColor: 'var(--theme-hairline)',
+                      color: 'var(--theme-text-muted)',
+                    }
+              }
+            >
+              {rsvps.no.length} Not Coming
+            </button>
+          ) : null}
+
+          {showAwaitingTab ? (
+            <button
+              id="guest-tab-awaiting"
+              role="tab"
+              type="button"
+              aria-selected={safeTab === 'awaiting'}
+              aria-controls="guest-panel-awaiting"
+              onClick={() => setActiveTab('awaiting')}
+              className="rounded-full px-3 py-1 text-xs font-medium border transition cursor-pointer"
+              style={
+                safeTab === 'awaiting'
+                  ? {
+                      backgroundColor: 'var(--theme-accent)',
+                      borderColor: 'var(--theme-accent)',
+                      color: 'var(--theme-on-accent)',
+                    }
+                  : {
+                      backgroundColor: 'transparent',
+                      borderColor: 'var(--theme-hairline)',
+                      color: 'var(--theme-text-muted)',
+                    }
+              }
+            >
+              {rsvps.awaitingNames.length} Awaiting Reply
+            </button>
+          ) : null}
+        </div>
+      )}
+
+      {safeTab === 'yes' ? (
+        <div
+          id="guest-panel-yes"
+          role="tabpanel"
+          aria-labelledby={showNoTab || showAwaitingTab ? 'guest-tab-yes' : undefined}
+        >
+          {rsvps.yes.length === 0 ? (
+            <p className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>
+              Be the first to RSVP.
+            </p>
+          ) : (
+            <ul className="divide-y" style={{ borderColor: 'var(--theme-hairline)' }}>
+              {rsvps.yes.map((guest) => (
+                <li
+                  key={guest.id}
+                  className="py-2.5 flex items-start justify-between gap-3"
+                  style={{ borderColor: 'var(--theme-hairline)' }}
                 >
-                  No responses yet — be the first to RSVP!
-                </p>
-              ) : (
-                <ul className="space-y-2.5">
-                  {rsvps.yes.map((guest) => {
-                    const isViewer = viewerRsvp?.id === guest.id;
-                    return (
-                      <li
-                        key={guest.id}
-                        className="rounded-xl border p-3.5 flex items-start gap-3"
-                        style={{
-                          backgroundColor: 'var(--theme-card-bg)',
-                          borderColor: isViewer
-                            ? 'var(--theme-accent)'
-                            : 'var(--theme-border)',
-                        }}
-                      >
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <GuestAvatar name={guest.guestName} size="sm" className="mt-0.5" />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span
-                          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold"
-                          style={{
-                            backgroundColor:
-                              'color-mix(in srgb, var(--theme-accent) 20%, var(--theme-surface-bg))',
-                            color: 'var(--theme-text-primary)',
-                          }}
-                          aria-hidden="true"
+                          className="text-sm font-medium break-words"
+                          style={{ color: 'var(--theme-text-primary)' }}
                         >
-                          {getInitials(guest.guestName)}
+                          {guest.guestName}
                         </span>
-
-                        <div className="min-w-0 flex-1 space-y-1.5">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-semibold text-sm sm:text-base truncate">
-                              {guest.guestName}
-                            </span>
-                            <span
-                              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
-                              style={{
-                                backgroundColor:
-                                  'color-mix(in srgb, var(--theme-accent) 16%, transparent)',
-                              }}
-                            >
-                              <Check className="h-3 w-3" aria-hidden="true" />
-                              Going
-                            </span>
-                            {guest.plusOnes > 0 && (
-                              <span
-                                className="rounded-full border px-2 py-0.5 text-xs font-semibold tabular-nums"
-                                style={{ borderColor: 'var(--theme-border)' }}
-                              >
-                                +{guest.plusOnes}
-                              </span>
-                            )}
-                            {isViewer && (
-                              <span
-                                className="text-xs font-medium"
-                                style={{ color: 'var(--theme-accent)' }}
-                              >
-                                (You)
-                              </span>
-                            )}
-                          </div>
-
-                          {guest.bringingNote && (
-                            <div
-                              className="inline-flex items-start gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs sm:text-sm"
-                              style={{
-                                borderColor: 'var(--theme-border)',
-                                backgroundColor: 'var(--theme-surface-bg)',
-                                color: 'var(--theme-text-primary)',
-                              }}
-                            >
-                              <Utensils
-                                className="h-3.5 w-3.5 mt-0.5 shrink-0"
-                                style={{ color: 'var(--theme-accent)' }}
-                                aria-hidden="true"
-                              />
-                              <span className="break-words">&ldquo;{guest.bringingNote}&rdquo;</span>
-                            </div>
-                          )}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-          )}
-
-          {resolvedTab === 'no' && (
-            <div
-              id="guest-tabpanel-no"
-              role="tabpanel"
-              aria-labelledby="guest-tab-no"
-              className="space-y-2.5"
-            >
-              {rsvps.no.length === 0 ? (
-                <p
-                  className="rounded-xl border border-dashed p-5 text-center text-sm"
-                  style={{
-                    borderColor: 'var(--theme-border)',
-                    color: 'var(--theme-text-muted)',
-                  }}
-                >
-                  Everyone who replied is coming so far!
-                </p>
-              ) : (
-                <ul className="space-y-2.5">
-                  {rsvps.no.map((guest) => (
-                    <li
-                      key={guest.id}
-                      className="rounded-xl border p-3.5 flex items-start gap-3"
-                      style={{
-                        backgroundColor: 'var(--theme-card-bg)',
-                        borderColor: 'var(--theme-border)',
-                      }}
-                    >
-                      <span
-                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold opacity-75"
-                        style={{
-                          backgroundColor: 'var(--theme-surface-bg)',
-                          color: 'var(--theme-text-muted)',
-                        }}
-                        aria-hidden="true"
-                      >
-                        {getInitials(guest.guestName)}
-                      </span>
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-medium text-sm sm:text-base">
-                            {guest.guestName}
-                          </span>
+                        {guest.plusOnes > 0 ? (
                           <span
-                            className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs"
+                            className="rounded-full px-2 py-0.5 text-[11px] font-medium"
                             style={{
-                              borderColor: 'var(--theme-border)',
+                              backgroundColor: 'var(--theme-surface-bg)',
                               color: 'var(--theme-text-muted)',
                             }}
                           >
-                            <X className="h-3 w-3" aria-hidden="true" />
-                            Can&apos;t make it
+                            +{guest.plusOnes}
                           </span>
-                        </div>
-                        {guest.bringingNote && (
-                          <p
-                            className="text-xs sm:text-sm break-words"
-                            style={{ color: 'var(--theme-text-muted)' }}
-                          >
-                            &ldquo;{guest.bringingNote}&rdquo;
-                          </p>
-                        )}
+                        ) : null}
                       </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+                      {guest.bringingNote ? (
+                        <p
+                          className="text-xs leading-relaxed break-words mt-0.5"
+                          style={{ color: 'var(--theme-text-muted)' }}
+                        >
+                          {guest.bringingNote}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
+        </div>
+      ) : null}
 
-          {resolvedTab === 'awaiting' && rsvps.awaitingNames.length > 0 && (
-            <div
-              id="guest-tabpanel-awaiting"
-              role="tabpanel"
-              aria-labelledby="guest-tab-awaiting"
-              className="space-y-3"
-            >
-              <p className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>
-                Invited guests who haven&apos;t replied yet. Tap your name to pre-fill your RSVP:
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {rsvps.awaitingNames.map((name) => (
-                  <button
-                    key={name}
-                    type="button"
-                    onClick={() => onSelectAwaitingName(name)}
-                    className="rounded-full border px-3.5 py-2 text-sm font-medium min-h-[44px] transition-colors hover:opacity-85 cursor-pointer"
-                    style={{
-                      backgroundColor: 'var(--theme-card-bg)',
-                      borderColor: 'var(--theme-border)',
-                    }}
+      {safeTab === 'no' ? (
+        <div id="guest-panel-no" role="tabpanel" aria-labelledby="guest-tab-no">
+          <ul className="divide-y" style={{ borderColor: 'var(--theme-hairline)' }}>
+            {rsvps.no.map((guest) => (
+              <li
+                key={guest.id}
+                className="py-2.5 flex items-start gap-2.5"
+                style={{ borderColor: 'var(--theme-hairline)' }}
+              >
+                <GuestAvatar name={guest.guestName} size="sm" className="mt-0.5 opacity-75" />
+                <div className="min-w-0">
+                  <p
+                    className="text-sm font-medium break-words"
+                    style={{ color: 'var(--theme-text-primary)' }}
                   >
-                    {name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </>
-      )}
+                    {guest.guestName}
+                  </p>
+                  {guest.bringingNote ? (
+                    <p
+                      className="text-xs leading-relaxed break-words mt-0.5"
+                      style={{ color: 'var(--theme-text-muted)' }}
+                    >
+                      {guest.bringingNote}
+                    </p>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {safeTab === 'awaiting' ? (
+        <div
+          id="guest-panel-awaiting"
+          role="tabpanel"
+          aria-labelledby="guest-tab-awaiting"
+          className="space-y-2"
+        >
+          <div className="flex flex-wrap gap-2">
+            {rsvps.awaitingNames.map((name) => (
+              <button
+                key={name}
+                type="button"
+                onClick={() => onSelectAwaitingName(name)}
+                className="rounded-full border px-3 py-1 text-xs font-medium transition hover:opacity-90 cursor-pointer"
+                style={{
+                  backgroundColor: 'var(--theme-surface-bg)',
+                  borderColor: 'var(--theme-hairline)',
+                  color: 'var(--theme-text-primary)',
+                }}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>
+            Tap your name to jump straight to RSVP.
+          </p>
+        </div>
+      ) : null}
     </section>
   );
 }

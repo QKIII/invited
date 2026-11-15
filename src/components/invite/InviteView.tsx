@@ -1,88 +1,54 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import {
-  CalendarPlus,
-  Check,
-  ChevronDown,
-  Clock,
-  Download,
+  ArrowUpRight,
+  Calendar,
   ExternalLink,
   MapPin,
-  Pencil,
-  Share2,
   Sparkles,
-  Users,
   Video,
 } from 'lucide-react';
 import { CoverArt } from '@/components/covers/CoverArt';
 import { AmbientBackdrop } from '@/components/effects/AmbientBackdrop';
 import {
-  CalendarDateTile,
-  formatDistinctLocation,
-} from '@/components/invite/CalendarDateTile';
-import { EventWall } from '@/components/invite/EventWall';
-import { GuestList } from '@/components/invite/GuestList';
-import { getGuestTokenStorageKey, RsvpPanel } from '@/components/invite/RsvpPanel';
-import { SafeRichHtml } from '@/components/invite/SafeRichHtml';
-import { SubscribeControl } from '@/components/invite/SubscribeControl';
+  getCachedGuestRsvp,
+  getDeviceProfile,
+  getDeviceProfileServerSnapshot,
+  getSavedGuestToken,
+  saveCachedGuestRsvp,
+  subscribeDeviceProfile,
+} from '@/lib/client/deviceProfile';
+import {
+  getSavedHostKey,
+  rememberHostEvent,
+  rememberVisitedEvent,
+  saveHostKey,
+} from '@/lib/client/recentEvents';
+import { ensureTemporal, formatEventDateTime, type FormattedEventDateTime } from '@/lib/polyfills/temporal';
+import { stripHtmlToText } from '@/lib/sanitize';
+import { resolveThemeCssVars } from '@/lib/themes/presets';
+import type { CommentRecord, EventDetailResponse, RsvpRecord } from '@/types/invite';
+import { CalendarDateTile, formatDistinctLocation } from './CalendarDateTile';
 import {
   buildExternalCalendarUrls,
   buildMapsSearchUrl,
   isSafeExternalHttpUrl,
-} from '@/components/invite/calendarLinks';
-import { formatEventDateTime, type FormattedEventDateTime } from '@/lib/polyfills/temporal';
-import { rememberHostEvent, rememberVisitedEvent } from '@/lib/client/recentEvents';
-import { getThemePreset, resolveThemeCssVars } from '@/lib/themes/presets';
-import type { CommentRecord, EventDetailResponse, RsvpRecord } from '@/types/invite';
+} from './calendarLinks';
+import { EventWall } from './EventWall';
+import { GuestAvatar } from './GuestAvatar';
+import { GuestList } from './GuestList';
+import { RsvpPanel } from './RsvpPanel';
+import { SafeRichHtml } from './SafeRichHtml';
+import { SubscribeControl } from './SubscribeControl';
 
-const HOST_KEYS_STORAGE = 'invited_host_keys';
+const subscribeNoop = () => () => {};
 
 interface InviteViewProps {
   initialDetail: EventDetailResponse;
   initialFormattedDate: FormattedEventDateTime;
   initialEditKey?: string | null;
-}
-
-function readStoredHostKey(eventId: string): string | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.localStorage.getItem(HOST_KEYS_STORAGE);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      const value = (parsed as Record<string, unknown>)[eventId];
-      return typeof value === 'string' && value.trim() ? value.trim() : null;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-function writeStoredHostKey(eventId: string, editKey: string): void {
-  if (typeof window === 'undefined' || !editKey.trim()) return;
-  try {
-    const raw = window.localStorage.getItem(HOST_KEYS_STORAGE);
-    const parsed = raw ? (JSON.parse(raw) as Record<string, string>) : {};
-    const next =
-      parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? { ...parsed } : {};
-    next[eventId] = editKey.trim();
-    window.localStorage.setItem(HOST_KEYS_STORAGE, JSON.stringify(next));
-  } catch {
-    // Ignore private mode / storage quota issues
-  }
-}
-
-function readStoredGuestToken(eventId: string): string | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const token = window.localStorage.getItem(getGuestTokenStorageKey(eventId));
-    return token && token.trim() ? token.trim() : null;
-  } catch {
-    return null;
-  }
 }
 
 export function InviteView({
@@ -91,8 +57,7 @@ export function InviteView({
   initialEditKey = null,
 }: InviteViewProps) {
   const [detail, setDetail] = useState<EventDetailResponse>(initialDetail);
-  const [formattedDate, setFormattedDate] =
-    useState<FormattedEventDateTime>(initialFormattedDate);
+  const [formattedDate, setFormattedDate] = useState<FormattedEventDateTime>(initialFormattedDate);
   const [editKey, setEditKey] = useState<string | null>(initialEditKey);
   const [guestToken, setGuestToken] = useState<string | null>(null);
   const [rsvpGuestName, setRsvpGuestName] = useState<string>(
@@ -100,177 +65,165 @@ export function InviteView({
   );
   const [isEditingRsvp, setIsEditingRsvp] = useState<boolean>(false);
   const [subscribeSignal, setSubscribeSignal] = useState<number>(0);
-  const [shareLabel, setShareLabel] = useState<'Share' | 'Link copied!'>('Share');
+  const [shareCopied, setShareCopied] = useState<boolean>(false);
+  const shareOrigin = useSyncExternalStore(
+    subscribeNoop,
+    () => window.location.origin,
+    () => 'https://invited.local',
+  );
   const [calendarUrls, setCalendarUrls] = useState<{
     googleUrl: string;
     outlookUrl: string;
   } | null>(null);
 
-  const rsvpNameInputRef = useRef<HTMLInputElement | null>(null);
-  const shareTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const event = detail.event;
-  const preset = useMemo(() => getThemePreset(event.style.themeId), [event.style.themeId]);
-  const cssVars = useMemo(() => resolveThemeCssVars(event.style), [event.style]);
-  const colorMode = event.style.colorMode ?? preset.colorMode;
-
-  const refreshDetail = useCallback(
-    async (overrideTokens?: { editKey?: string | null; guestToken?: string | null }) => {
-      const activeEditKey =
-        overrideTokens && 'editKey' in overrideTokens ? overrideTokens.editKey : editKey;
-      const activeGuestToken =
-        overrideTokens && 'guestToken' in overrideTokens
-          ? overrideTokens.guestToken
-          : guestToken;
-
-      const headers: Record<string, string> = {};
-      if (activeEditKey) headers['x-edit-key'] = activeEditKey;
-      if (activeGuestToken) headers['x-guest-token'] = activeGuestToken;
-
-      const res = await fetch(`/api/events/${encodeURIComponent(event.id)}`, {
-        cache: 'no-store',
-        headers,
-      });
-      if (!res.ok) return;
-      const next = (await res.json()) as EventDetailResponse;
-      setDetail(next);
-      if (next.viewerRsvp?.guestName) {
-        setRsvpGuestName((current) => current || next.viewerRsvp?.guestName || '');
-      }
-    },
-    [event.id, editKey, guestToken],
+  const rsvpNameInputRef = useRef<HTMLInputElement>(null);
+  const deviceProfile = useSyncExternalStore(
+    subscribeDeviceProfile,
+    getDeviceProfile,
+    getDeviceProfileServerSnapshot,
   );
 
-  // Hydrate viewer-local timezone and external calendar URLs
-  useEffect(() => {
-    let cancelled = false;
+  const event = detail.event;
+  const themeVars = useMemo(
+    () => resolveThemeCssVars(event.style) as React.CSSProperties,
+    [event.style],
+  );
 
-    const viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    void formatEventDateTime(event.startIso, event.endIso, event.timeZone, viewerTz).then(
-      (resolved) => {
-        if (!cancelled) {
-          setFormattedDate(resolved);
-        }
-      },
-    );
+  const refreshDetail = useCallback(
+    async (overrides?: { editKey?: string | null; guestToken?: string | null }) => {
+      const effectiveEditKey =
+        overrides && 'editKey' in overrides ? overrides.editKey : editKey;
+      const effectiveToken =
+        overrides && 'guestToken' in overrides ? overrides.guestToken : guestToken;
 
-    const shareUrl = window.location.origin + `/e/${encodeURIComponent(event.id)}`;
-    void buildExternalCalendarUrls(event, shareUrl).then((urls) => {
-      if (!cancelled) {
-        setCalendarUrls(urls);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [event]);
-
-  // Hydrate saved host/guest tokens and record the visit in My Events
-  useEffect(() => {
-    let cancelled = false;
-
-    const hydrateTokens = async () => {
-      const baseEvent = initialDetail.event;
-      if (initialEditKey && initialDetail.isHost) {
-        writeStoredHostKey(baseEvent.id, initialEditKey);
-      }
-      const storedHostKey = initialEditKey || readStoredHostKey(baseEvent.id);
-      const storedGuestToken = readStoredGuestToken(baseEvent.id);
-
-      if (!cancelled) {
-        if (storedHostKey) setEditKey(storedHostKey);
-        if (storedGuestToken) setGuestToken(storedGuestToken);
-      }
-
-      let resolvedEvent = baseEvent;
-      let resolvedIsHost = initialDetail.isHost;
-
-      if (storedGuestToken || (storedHostKey && !initialDetail.isHost)) {
+      try {
         const headers: Record<string, string> = {};
-        if (storedHostKey) headers['x-edit-key'] = storedHostKey;
-        if (storedGuestToken) headers['x-guest-token'] = storedGuestToken;
+        if (effectiveEditKey) headers['x-edit-key'] = effectiveEditKey;
+        if (effectiveToken) headers['x-guest-token'] = effectiveToken;
 
-        const res = await fetch(`/api/events/${encodeURIComponent(baseEvent.id)}`, {
-          cache: 'no-store',
+        const res = await fetch(`/api/events/${event.id}`, {
           headers,
+          cache: 'no-store',
         });
-        if (cancelled) return;
-        if (res.ok) {
-          const next = (await res.json()) as EventDetailResponse;
-          if (cancelled) return;
-          resolvedEvent = next.event;
-          resolvedIsHost = next.isHost;
-          setDetail(next);
-          if (next.viewerRsvp?.guestName) {
-            setRsvpGuestName((curr) => curr || next.viewerRsvp?.guestName || '');
-          }
+        if (!res.ok) return;
+        const fresh = (await res.json()) as EventDetailResponse;
+        setDetail(fresh);
+        if (fresh.viewerRsvp) {
+          saveCachedGuestRsvp(event.id, fresh.viewerRsvp);
+          setRsvpGuestName(fresh.viewerRsvp.guestName);
+        } else if (effectiveToken) {
+          saveCachedGuestRsvp(event.id, null);
         }
+      } catch {
+        // Keep current rendered detail if offline
+      }
+    },
+    [editKey, event.id, guestToken],
+  );
+
+  // Client hydration: edit key, guest token, local cache, viewer timezone, recent events
+  useEffect(() => {
+    let cancelled = false;
+
+    queueMicrotask(() => {
+      if (cancelled) return;
+
+      const storedEditKey = initialEditKey || getSavedHostKey(event.id);
+      if (storedEditKey) {
+        saveHostKey(event.id, storedEditKey);
+        setEditKey(storedEditKey);
       }
 
-      if (cancelled) return;
-      if (resolvedIsHost && storedHostKey) {
+      const storedToken = getSavedGuestToken(event.id);
+      if (storedToken) {
+        setGuestToken(storedToken);
+      }
+
+      const cachedRsvp = getCachedGuestRsvp(event.id);
+      if (cachedRsvp && !initialDetail.viewerRsvp) {
+        setDetail((prev) =>
+          prev.viewerRsvp ? prev : { ...prev, viewerRsvp: cachedRsvp },
+        );
+        setRsvpGuestName(cachedRsvp.guestName);
+      }
+
+      if (storedEditKey && initialDetail.isHost) {
         rememberHostEvent({
-          id: resolvedEvent.id,
-          title: resolvedEvent.title,
-          startIso: resolvedEvent.startIso,
-          timeZone: resolvedEvent.timeZone,
-          locationName: resolvedEvent.locationName,
-          themeId: resolvedEvent.style.themeId,
-          editKey: storedHostKey,
+          id: event.id,
+          title: event.title,
+          startIso: event.startIso,
+          timeZone: event.timeZone,
+          locationName: event.locationName,
+          themeId: event.style.themeId,
+          editKey: storedEditKey,
         });
       } else {
         rememberVisitedEvent({
-          id: resolvedEvent.id,
-          title: resolvedEvent.title,
-          startIso: resolvedEvent.startIso,
-          timeZone: resolvedEvent.timeZone,
-          locationName: resolvedEvent.locationName,
-          themeId: resolvedEvent.style.themeId,
+          id: event.id,
+          title: event.title,
+          startIso: event.startIso,
+          timeZone: event.timeZone,
+          locationName: event.locationName,
+          themeId: event.style.themeId,
         });
       }
-    };
 
-    void hydrateTokens();
+      if (storedToken || (!initialDetail.isHost && storedEditKey)) {
+        void refreshDetail({
+          editKey: storedEditKey,
+          guestToken: storedToken,
+        });
+      }
+    });
+
+    void (async () => {
+      try {
+        await ensureTemporal();
+        const viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const localized = await formatEventDateTime(
+          event.startIso,
+          event.endIso,
+          event.timeZone,
+          viewerTz,
+        );
+        if (!cancelled) {
+          setFormattedDate(localized);
+        }
+      } catch {
+        // Keep initial SSR date formatting
+      }
+    })();
 
     return () => {
       cancelled = true;
     };
-  }, [initialDetail, initialEditKey]);
+    // Only run hydration effect cleanly on initial mount / event id switch
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event.id, initialEditKey]);
 
+  // Keep My Invites history in sync if background refresh discovers host role
   useEffect(() => {
-    return () => {
-      if (shareTimerRef.current) clearTimeout(shareTimerRef.current);
-    };
-  }, []);
-
-  const handleShare = async () => {
-    const shareUrl = `${window.location.origin}/e/${encodeURIComponent(event.id)}`;
-    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-      try {
-        await navigator.share({
-          title: event.title,
-          text: `You're invited to ${event.title} (${formattedDate.fullLabel})`,
-          url: shareUrl,
-        });
-        return;
-      } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') {
-          return;
-        }
-      }
+    if (detail.isHost && editKey) {
+      rememberHostEvent({
+        id: event.id,
+        title: event.title,
+        startIso: event.startIso,
+        timeZone: event.timeZone,
+        locationName: event.locationName,
+        themeId: event.style.themeId,
+        editKey,
+      });
     }
-
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      setShareLabel('Link copied!');
-      if (shareTimerRef.current) clearTimeout(shareTimerRef.current);
-      shareTimerRef.current = setTimeout(() => setShareLabel('Share'), 2400);
-    } catch {
-      // Fallback: prompt selection if clipboard API is blocked
-      window.prompt('Copy invitation link:', shareUrl);
-    }
-  };
+  }, [
+    detail.isHost,
+    editKey,
+    event.id,
+    event.locationName,
+    event.startIso,
+    event.style.themeId,
+    event.timeZone,
+    event.title,
+  ]);
 
   const handleRsvpSuccess = ({
     rsvp,
@@ -291,28 +244,19 @@ export function InviteView({
       });
     } else {
       setDetail((prev) => {
-        const nextYes = prev.rsvps.yes.filter((item) => item.id !== rsvp.id);
-        const nextNo = prev.rsvps.no.filter((item) => item.id !== rsvp.id);
-        if (rsvp.status === 'yes') {
-          nextYes.unshift(rsvp);
-        } else {
-          nextNo.unshift(rsvp);
-        }
+        const filteredYes = prev.rsvps.yes.filter((item) => item.id !== rsvp.id);
+        const filteredNo = prev.rsvps.no.filter((item) => item.id !== rsvp.id);
+        const nextYes = rsvp.status === 'yes' ? [rsvp, ...filteredYes] : filteredYes;
+        const nextNo = rsvp.status === 'no' ? [rsvp, ...filteredNo] : filteredNo;
         const totalHeadcount = nextYes.reduce((sum, item) => sum + 1 + item.plusOnes, 0);
-        const respondedNames = new Set(
-          [...nextYes, ...nextNo].map((item) => item.guestName.trim().toLowerCase()),
-        );
-        const awaitingNames = prev.event.invitedNames.filter(
-          (name) => !respondedNames.has(name.trim().toLowerCase()),
-        );
         return {
           ...prev,
           viewerRsvp: rsvp,
           rsvps: {
+            ...prev.rsvps,
             yes: nextYes,
             no: nextNo,
             totalHeadcount,
-            awaitingNames,
           },
         };
       });
@@ -339,442 +283,408 @@ export function InviteView({
     }, 250);
   };
 
-  const handleCommentsChange = (comments: CommentRecord[]) => {
-    setDetail((prev) => ({ ...prev, comments }));
+  const handleCommentsChange = (nextComments: CommentRecord[]) => {
+    setDetail((prev) => ({
+      ...prev,
+      comments: nextComments,
+    }));
   };
 
+  useEffect(() => {
+    let cancelled = false;
+    const shareUrl = `${shareOrigin}/e/${event.id}`;
+    void buildExternalCalendarUrls(event, shareUrl)
+      .then((urls) => {
+        if (!cancelled) {
+          setCalendarUrls(urls);
+        }
+      })
+      .catch(() => {
+        // Fallback links stay hidden if Temporal calendar formatting fails
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [event, shareOrigin]);
+
+  async function handleShareInvite() {
+    const shareUrl = `${shareOrigin}/e/${event.id}`;
+    const nav = typeof navigator !== 'undefined' ? navigator : null;
+    try {
+      if (nav && typeof nav.share === 'function') {
+        await nav.share({ title: event.title, url: shareUrl });
+        return;
+      }
+      if (nav?.clipboard) {
+        await nav.clipboard.writeText(shareUrl);
+        setShareCopied(true);
+        setTimeout(() => setShareCopied(false), 2200);
+      }
+    } catch {
+      // User dismissed share sheet
+    }
+  }
+
+  const heroLocation = formatDistinctLocation(event.locationName, event.locationAddress);
   const mapsUrl = buildMapsSearchUrl(event.locationName, event.locationAddress);
-  const { primaryLocation, secondaryAddress } = formatDistinctLocation(
-    event.locationName,
-    event.locationAddress,
-  );
-  const hasVirtualLink = isSafeExternalHttpUrl(event.virtualUrl);
-  const hasLocationCard = Boolean(
-    primaryLocation || secondaryAddress || hasVirtualLink,
-  );
-  const activeHostKey = editKey || initialEditKey;
-  const editHref = activeHostKey
-    ? `/e/${encodeURIComponent(event.id)}/edit?key=${encodeURIComponent(activeHostKey)}`
-    : `/e/${encodeURIComponent(event.id)}/edit`;
+  const safeVirtualUrl = isSafeExternalHttpUrl(event.virtualUrl)
+    ? event.virtualUrl!.trim()
+    : null;
+  const mapQuery = [heroLocation.primaryLocation, heroLocation.secondaryAddress]
+    .filter(Boolean)
+    .join(', ');
+
+  const plainDescription = stripHtmlToText(event.descriptionHtml ?? '');
+  const hasMeaningfulDescription = Boolean(plainDescription.trim());
+
+  const activeEditHref =
+    detail.isHost && editKey
+      ? `/e/${event.id}/edit?key=${encodeURIComponent(editKey)}`
+      : null;
+
+  const recognizedHeaderName = detail.viewerRsvp?.guestName || deviceProfile?.name || '';
+  const hasCover = event.style.coverLayout !== 'none';
 
   return (
     <div
-      className="relative min-h-screen overflow-x-clip"
       style={{
-        ...(cssVars as React.CSSProperties),
-        colorScheme: colorMode,
+        ...themeVars,
         backgroundColor: 'var(--theme-page-bg)',
         color: 'var(--theme-text-primary)',
-        fontFamily: 'var(--theme-font-body)',
+        fontFamily: 'var(--font-invite-body), var(--font-sans), sans-serif',
       }}
+      className="min-h-screen relative overflow-x-hidden"
     >
-      <AmbientBackdrop
-        effectId={event.style.effectId}
-        accentColor={cssVars['--theme-accent']}
-        colorMode={colorMode}
-        className="fixed inset-0 z-0"
-      />
+      <AmbientBackdrop effectId={event.style.effectId} />
 
-      {/* Top compact chrome (<12% height) */}
-      <header className="relative z-10 mx-auto max-w-4xl px-4 pt-5 pb-2 flex flex-wrap items-center justify-between gap-2">
+      {/* Minimal 48px single-row header */}
+      <header className="relative z-10 h-12 max-w-[480px] lg:max-w-[920px] mx-auto px-4 lg:px-8 flex items-center justify-between gap-2">
         <Link
           href="/"
-          className="invite-pill inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-xs sm:text-sm font-medium min-h-[44px] backdrop-blur-md transition-opacity hover:opacity-85"
-          style={{
-            backgroundColor: 'var(--theme-card-bg)',
-            borderColor: 'var(--theme-border)',
-            color: 'var(--theme-text-primary)',
-          }}
+          className="inline-flex items-center gap-1.5 text-sm font-semibold tracking-tight hover:opacity-80 transition shrink-0"
+          style={{ color: 'var(--theme-text-primary)' }}
         >
-          <span
-            className="font-semibold tracking-tight"
-            style={{ fontFamily: 'var(--theme-font-heading)' }}
-          >
-            invited
-          </span>
-          <span className="hidden sm:inline" style={{ color: 'var(--theme-text-muted)' }}>
-            · Create your own invite
-          </span>
+          <Sparkles className="h-3.5 w-3.5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+          <span>invited</span>
         </Link>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {detail.isHost && (
-            <Link
-              href={editHref}
-              className="invite-on-accent inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs sm:text-sm font-semibold min-h-[44px] shadow-sm transition-opacity hover:opacity-90"
-              style={{ backgroundColor: 'var(--theme-accent)' }}
-            >
-              <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>You are the Host · Edit Event</span>
-            </Link>
-          )}
-
-          <button
-            type="button"
-            onClick={() => void handleShare()}
-            className="invite-pill inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs sm:text-sm font-medium min-h-[44px] backdrop-blur-md transition-opacity hover:opacity-85 cursor-pointer"
-            style={{
-              backgroundColor: 'var(--theme-card-bg)',
-              borderColor: 'var(--theme-border)',
-              color: 'var(--theme-text-primary)',
-            }}
+        <nav className="flex items-center gap-2 min-w-0">
+          <Link
+            href="/create"
+            className="text-xs sm:text-sm font-medium opacity-80 hover:opacity-100 px-2 py-1 whitespace-nowrap transition"
+            style={{ color: 'var(--theme-text-primary)' }}
           >
-            {shareLabel === 'Link copied!' ? (
-              <Check
-                className="h-4 w-4"
-                style={{ color: 'var(--theme-accent)' }}
-                aria-hidden="true"
-              />
-            ) : (
-              <Share2 className="h-4 w-4" aria-hidden="true" />
-            )}
-            <span>{shareLabel}</span>
-          </button>
+            Create Invite
+          </Link>
 
           <SubscribeControl
             eventId={event.id}
             eventTitle={event.title}
             subscriberCount={detail.subscriberCount}
             openSignal={subscribeSignal}
-            onSubscribed={() => {
-              void refreshDetail();
-            }}
+            onSubscribed={() => void refreshDetail()}
             variant="pill"
           />
-        </div>
+
+          {recognizedHeaderName ? (
+            <GuestAvatar name={recognizedHeaderName} size="sm" className="shrink-0" />
+          ) : null}
+        </nav>
       </header>
 
-      <main className="relative z-10 mx-auto max-w-4xl px-4 pt-2 pb-14 space-y-6">
-        {/* Main Editorial Hero Card */}
-        <article
-          className="invite-card rounded-3xl border shadow-2xl overflow-hidden backdrop-blur-xl"
-          style={{
-            backgroundColor: 'color-mix(in srgb, var(--theme-card-bg) 86%, transparent)',
-            borderColor: 'var(--theme-border)',
-          }}
+      <main className="relative z-10 max-w-[480px] lg:max-w-[920px] mx-auto px-4 lg:px-8 pt-2 sm:pt-4 pb-16">
+        <div
+          className={
+            hasCover
+              ? 'grid grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)] gap-5 lg:gap-12 items-start'
+              : 'max-w-[540px] mx-auto space-y-6'
+          }
         >
-          {event.style.coverLayout === 'banner' && (
-            <div className="w-full max-h-[360px] overflow-hidden border-b" style={{ borderColor: 'var(--theme-border)' }}>
+          {/* Left / Top Visual Column */}
+          {hasCover ? (
+            <div className="space-y-6 lg:sticky lg:top-8 min-w-0">
               <CoverArt
                 coverPresetId={event.style.coverPresetId}
                 customCoverUrl={event.style.customCoverUrl}
-                layout="banner"
+                layout={event.style.coverLayout === 'banner' ? 'banner' : 'square'}
                 title={event.title}
-                accentColor={cssVars['--theme-accent']}
-                className="rounded-none border-0 shadow-none"
+                className="w-full"
               />
+
+              {event.hostName ? (
+                <section className="hidden lg:block space-y-3">
+                  <h2
+                    className="text-sm font-medium pb-2 border-b"
+                    style={{
+                      color: 'var(--theme-text-muted)',
+                      borderColor: 'var(--theme-hairline)',
+                      fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
+                    }}
+                  >
+                    Hosted By
+                  </h2>
+                  <div className="flex items-center gap-2.5">
+                    <GuestAvatar name={event.hostName} size="sm" />
+                    <span
+                      className="text-sm font-medium truncate"
+                      style={{ color: 'var(--theme-text-primary)' }}
+                    >
+                      {event.hostName}
+                    </span>
+                  </div>
+                </section>
+              ) : null}
             </div>
-          )}
+          ) : null}
 
-          <div className="p-5 sm:p-8 space-y-7">
-            {/* Hero Title + Optional Square Cover */}
-            <div
-              className={
-                event.style.coverLayout === 'square'
-                  ? 'grid grid-cols-1 md:grid-cols-[240px_1fr] gap-6 items-center'
-                  : 'space-y-4'
-              }
-            >
-              {event.style.coverLayout === 'square' && (
-                <div className="mx-auto md:mx-0 w-full max-w-[240px]">
-                  <CoverArt
-                    coverPresetId={event.style.coverPresetId}
-                    customCoverUrl={event.style.customCoverUrl}
-                    layout="square"
-                    title={event.title}
-                    accentColor={cssVars['--theme-accent']}
-                  />
-                </div>
-              )}
-
-              <div className="space-y-3.5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium"
-                    style={{
-                      backgroundColor: 'var(--theme-surface-bg)',
-                      borderColor: 'var(--theme-border)',
-                    }}
-                  >
-                    <span aria-hidden="true">{preset.emoji}</span>
-                    <span>{preset.name}</span>
-                  </span>
-
-                  <span
-                    className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium"
-                    style={{
-                      backgroundColor: 'var(--theme-surface-bg)',
-                      borderColor: 'var(--theme-border)',
-                    }}
-                  >
-                    <Users
-                      className="h-3.5 w-3.5"
-                      style={{ color: 'var(--theme-accent)' }}
-                      aria-hidden="true"
-                    />
-                    <span className="tabular-nums">{detail.rsvps.totalHeadcount} Going</span>
-                  </span>
-                </div>
-
-                <h1
-                  className="text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight leading-[1.12]"
+          {/* Right / Main Flow Column */}
+          <div className="min-w-0 space-y-6">
+            {/* Subtle Host Manage Access Strip */}
+            {activeEditHref ? (
+              <div
+                className="rounded-2xl border backdrop-blur-md px-4 py-3 flex items-center justify-between gap-3"
+                style={{
+                  backgroundColor: 'var(--theme-glass-bg)',
+                  borderColor: 'var(--theme-hairline)',
+                }}
+              >
+                <p
+                  className="text-xs sm:text-sm leading-snug min-w-0"
+                  style={{ color: 'var(--theme-text-muted)' }}
+                >
+                  You have manage access for this event.
+                </p>
+                <Link
+                  href={activeEditHref}
+                  className="shrink-0 inline-flex items-center gap-1 rounded-full px-3.5 py-1.5 text-xs sm:text-sm font-semibold transition hover:opacity-90"
                   style={{
-                    fontFamily: 'var(--theme-font-heading)',
-                    textWrap: 'balance',
+                    backgroundColor: 'var(--theme-accent)',
+                    color: 'var(--theme-on-accent)',
+                  }}
+                >
+                  <span>Manage</span>
+                  <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                </Link>
+              </div>
+            ) : null}
+
+            {/* Unboxed Hero Title + Host + Date + Location */}
+            <header className="space-y-4">
+              <div className="space-y-2">
+                <h1
+                  className="text-[28px] sm:text-[34px] font-bold leading-[1.12] tracking-tight break-words"
+                  style={{
+                    color: 'var(--theme-text-primary)',
+                    fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
                   }}
                 >
                   {event.title}
                 </h1>
 
-                {event.hostName && (
-                  <p className="inline-flex items-center gap-2 text-sm sm:text-base">
+                {event.hostName ? (
+                  <div className="flex items-center gap-2">
+                    <GuestAvatar name={event.hostName} size="xs" />
                     <span
-                      className="inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold invite-on-accent"
-                      style={{ backgroundColor: 'var(--theme-accent)' }}
-                      aria-hidden="true"
+                      className="text-sm font-medium truncate"
+                      style={{ color: 'var(--theme-text-muted)' }}
                     >
-                      <Sparkles className="h-3.5 w-3.5" />
+                      Hosted by {event.hostName}
                     </span>
-                    <span style={{ color: 'var(--theme-text-muted)' }}>
-                      Hosted by{' '}
-                      <strong
-                        className="font-semibold"
-                        style={{ color: 'var(--theme-text-primary)' }}
-                      >
-                        {event.hostName}
-                      </strong>
-                    </span>
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Timezone-Aware Date/Time & Location Cards */}
-            <div
-              className={`grid grid-cols-1 ${hasLocationCard ? 'md:grid-cols-2' : ''} gap-4`}
-            >
-              {/* Date & Time Card */}
-              <div
-                className="rounded-2xl border p-4 sm:p-5 flex flex-col justify-between gap-4"
-                style={{
-                  backgroundColor: 'var(--theme-surface-bg)',
-                  borderColor: 'var(--theme-border)',
-                }}
-              >
-                <div className="flex items-start gap-3.5">
-                  <CalendarDateTile
-                    startIso={event.startIso}
-                    timeZone={event.timeZone}
-                    size="md"
-                  />
-                  <div className="min-w-0 space-y-1">
-                    <p className="font-semibold text-base leading-snug">
-                      {formattedDate.dateLabel}
-                    </p>
-                    <p className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>
-                      {formattedDate.timeLabel}
-                    </p>
-                    {formattedDate.viewerTimeLabel && (
-                      <p
-                        className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium mt-1"
-                        style={{
-                          backgroundColor: 'var(--theme-card-bg)',
-                          borderColor: 'var(--theme-border)',
-                        }}
-                      >
-                        <Clock
-                          className="h-3.5 w-3.5 shrink-0"
-                          style={{ color: 'var(--theme-accent)' }}
-                          aria-hidden="true"
-                        />
-                        <span>{formattedDate.viewerTimeLabel}</span>
-                      </p>
-                    )}
                   </div>
-                </div>
+                ) : null}
+              </div>
 
+              <div className="space-y-3 pt-1">
+                {/* Date / Time Row with Popover Calendar Menu */}
                 <div>
                   <button
                     type="button"
                     popoverTarget="calendar-menu"
-                    className="inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium min-h-[48px] transition-opacity hover:opacity-85 cursor-pointer"
-                    style={{
-                      backgroundColor: 'var(--theme-card-bg)',
-                      borderColor: 'var(--theme-border)',
-                    }}
+                    className="w-full flex items-center gap-3.5 text-left group cursor-pointer"
                   >
-                    <CalendarPlus
-                      className="h-4 w-4"
-                      style={{ color: 'var(--theme-accent)' }}
-                      aria-hidden="true"
+                    <CalendarDateTile
+                      startIso={event.startIso}
+                      timeZone={event.timeZone}
+                      size="sm"
                     />
-                    <span>Add to Calendar</span>
-                    <ChevronDown className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className="text-sm sm:text-base font-medium leading-snug group-hover:underline break-words"
+                        style={{ color: 'var(--theme-text-primary)' }}
+                      >
+                        {formattedDate.dateLabel}
+                      </p>
+                      <p
+                        className="text-xs sm:text-sm leading-snug break-words"
+                        style={{ color: 'var(--theme-text-muted)' }}
+                      >
+                        {formattedDate.timeLabel}
+                      </p>
+                      {formattedDate.viewerTimeLabel ? (
+                        <p
+                          className="text-xs leading-snug break-words mt-0.5 opacity-80"
+                          style={{ color: 'var(--theme-text-muted)' }}
+                        >
+                          {formattedDate.viewerTimeLabel}
+                        </p>
+                      ) : null}
+                    </div>
                   </button>
 
                   <div
                     id="calendar-menu"
                     popover="auto"
-                    className="m-auto w-[min(90vw,19rem)] rounded-2xl border p-3 shadow-2xl space-y-1.5"
+                    className="m-auto rounded-2xl border p-2 shadow-2xl w-[min(18rem,calc(100%-2rem))]"
                     style={{
-                      backgroundColor: 'var(--theme-card-bg)',
+                      backgroundColor: 'var(--theme-surface-bg)',
                       borderColor: 'var(--theme-border)',
                       color: 'var(--theme-text-primary)',
                     }}
                   >
-                    <div className="flex items-center justify-between px-2 py-1">
-                      <span className="text-xs font-semibold uppercase tracking-wider opacity-75">
-                        Add to Calendar
-                      </span>
-                      <button
-                        type="button"
-                        popoverTarget="calendar-menu"
-                        popoverTargetAction="hide"
-                        className="text-xs px-2 py-1 rounded-md hover:opacity-80 cursor-pointer"
-                        style={{ color: 'var(--theme-text-muted)' }}
-                      >
-                        Close
-                      </button>
-                    </div>
-
-                    <a
-                      href={`/api/events/${encodeURIComponent(event.id)}/ics`}
-                      download
-                      className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium min-h-[48px] transition-colors hover:opacity-85"
-                      style={{ backgroundColor: 'var(--theme-surface-bg)' }}
+                    <p
+                      className="px-3 py-1.5 text-xs font-medium border-b mb-1"
+                      style={{
+                        color: 'var(--theme-text-muted)',
+                        borderColor: 'var(--theme-hairline)',
+                      }}
                     >
-                      <Download
-                        className="h-4 w-4 shrink-0"
-                        style={{ color: 'var(--theme-accent)' }}
-                        aria-hidden="true"
-                      />
-                      <span>Download .ics (Apple / Outlook)</span>
+                      Add to Calendar
+                    </p>
+                    {calendarUrls ? (
+                      <a
+                        href={calendarUrls.googleUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm hover:bg-white/10 transition"
+                      >
+                        <span>Google Calendar</span>
+                        <ExternalLink className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
+                      </a>
+                    ) : null}
+                    <a
+                      href={`/api/events/${event.id}/ics`}
+                      className="flex items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm hover:bg-white/10 transition"
+                    >
+                      <span>Apple / iCal (.ics)</span>
+                      <Calendar className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
                     </a>
-
-                    {calendarUrls && (
-                      <>
-                        <a
-                          href={calendarUrls.googleUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center justify-between gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium min-h-[48px] transition-colors hover:opacity-85"
-                          style={{ backgroundColor: 'var(--theme-surface-bg)' }}
-                        >
-                          <span>Google Calendar</span>
-                          <ExternalLink className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
-                        </a>
-
-                        <a
-                          href={calendarUrls.outlookUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center justify-between gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium min-h-[48px] transition-colors hover:opacity-85"
-                          style={{ backgroundColor: 'var(--theme-surface-bg)' }}
-                        >
-                          <span>Outlook.com</span>
-                          <ExternalLink className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
-                        </a>
-                      </>
-                    )}
+                    {calendarUrls ? (
+                      <a
+                        href={calendarUrls.outlookUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm hover:bg-white/10 transition"
+                      >
+                        <span>Outlook</span>
+                        <ExternalLink className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
+                      </a>
+                    ) : null}
                   </div>
                 </div>
-              </div>
 
-              {/* Location / Virtual Link Card */}
-              {hasLocationCard && (
-                <div
-                  className="rounded-2xl border p-4 sm:p-5 flex flex-col justify-between gap-4"
-                  style={{
-                    backgroundColor: 'var(--theme-surface-bg)',
-                    borderColor: 'var(--theme-border)',
-                  }}
-                >
-                  <div className="flex items-start gap-3.5">
-                    <div
-                      className="invite-on-accent inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
-                      style={{ backgroundColor: 'var(--theme-accent)' }}
-                      aria-hidden="true"
-                    >
-                      {event.locationName || event.locationAddress ? (
-                        <MapPin className="h-5 w-5" />
-                      ) : (
-                        <Video className="h-5 w-5" />
-                      )}
-                    </div>
-                    <div className="min-w-0 space-y-1">
-                      <p className="font-semibold text-base leading-snug break-words">
-                        {primaryLocation ||
-                          (hasVirtualLink ? 'Virtual Event' : 'Location Details')}
-                      </p>
-                      {secondaryAddress && (
-                        <p
-                          className="text-sm break-words"
-                          style={{ color: 'var(--theme-text-muted)' }}
-                        >
-                          {secondaryAddress}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    {mapsUrl && (
+                {/* Hero Location Row */}
+                {heroLocation.primaryLocation || heroLocation.secondaryAddress ? (
+                  <div data-testid="hero-location">
+                    {mapsUrl ? (
                       <a
                         href={mapsUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium min-h-[48px] transition-opacity hover:opacity-85"
-                        style={{
-                          backgroundColor: 'var(--theme-card-bg)',
-                          borderColor: 'var(--theme-border)',
-                        }}
+                        className="flex items-center gap-3.5 group"
                       >
-                        <MapPin
-                          className="h-4 w-4"
-                          style={{ color: 'var(--theme-accent)' }}
+                        <div
                           aria-hidden="true"
-                        />
-                        <span>View Map</span>
-                        <ExternalLink className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
+                          className="h-10 w-10 rounded-xl border flex items-center justify-center shrink-0 backdrop-blur-sm"
+                          style={{
+                            backgroundColor: 'var(--theme-glass-bg)',
+                            borderColor: 'var(--theme-hairline)',
+                            color: 'var(--theme-text-muted)',
+                          }}
+                        >
+                          <MapPin className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p
+                            className="text-sm sm:text-base font-medium leading-snug group-hover:underline break-words"
+                            style={{ color: 'var(--theme-text-primary)' }}
+                          >
+                            {heroLocation.primaryLocation || heroLocation.secondaryAddress} ↗
+                          </p>
+                          {heroLocation.primaryLocation && heroLocation.secondaryAddress ? (
+                            <p
+                              className="text-xs sm:text-sm leading-snug break-words"
+                              style={{ color: 'var(--theme-text-muted)' }}
+                            >
+                              {heroLocation.secondaryAddress}
+                            </p>
+                          ) : null}
+                        </div>
                       </a>
-                    )}
-
-                    {hasVirtualLink && event.virtualUrl && (
-                      <a
-                        href={event.virtualUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="invite-on-accent inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold min-h-[48px] transition-opacity hover:opacity-90"
-                        style={{ backgroundColor: 'var(--theme-accent)' }}
-                      >
-                        <Video className="h-4 w-4" aria-hidden="true" />
-                        <span>Join Online</span>
-                        <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-                      </a>
+                    ) : (
+                      <div className="flex items-center gap-3.5">
+                        <div
+                          aria-hidden="true"
+                          className="h-10 w-10 rounded-xl border flex items-center justify-center shrink-0 backdrop-blur-sm"
+                          style={{
+                            backgroundColor: 'var(--theme-glass-bg)',
+                            borderColor: 'var(--theme-hairline)',
+                            color: 'var(--theme-text-muted)',
+                          }}
+                        >
+                          <MapPin className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p
+                            className="text-sm sm:text-base font-medium leading-snug break-words"
+                            style={{ color: 'var(--theme-text-primary)' }}
+                          >
+                            {heroLocation.primaryLocation || heroLocation.secondaryAddress}
+                          </p>
+                        </div>
+                      </div>
                     )}
                   </div>
-                </div>
-              )}
-            </div>
+                ) : null}
 
-            {/* Event Description */}
-            {event.descriptionHtml.trim() && (
-              <section
-                aria-label="About this event"
-                className="rounded-2xl border p-5 sm:p-6"
-                style={{
-                  backgroundColor: 'var(--theme-surface-bg)',
-                  borderColor: 'var(--theme-border)',
-                }}
-              >
-                <SafeRichHtml
-                  html={event.descriptionHtml}
-                  className="invite-prose text-base sm:text-[1.0625rem]"
-                />
-              </section>
-            )}
+                {/* Virtual Link Row */}
+                {safeVirtualUrl ? (
+                  <a
+                    href={safeVirtualUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3.5 group"
+                  >
+                    <div
+                      aria-hidden="true"
+                      className="h-10 w-10 rounded-xl border flex items-center justify-center shrink-0 backdrop-blur-sm"
+                      style={{
+                        backgroundColor: 'var(--theme-glass-bg)',
+                        borderColor: 'var(--theme-hairline)',
+                        color: 'var(--theme-text-muted)',
+                      }}
+                    >
+                      <Video className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className="text-sm sm:text-base font-medium leading-snug group-hover:underline truncate"
+                        style={{ color: 'var(--theme-text-primary)' }}
+                      >
+                        Join Virtual Event ↗
+                      </p>
+                      <p
+                        className="text-xs truncate"
+                        style={{ color: 'var(--theme-text-muted)' }}
+                      >
+                        {safeVirtualUrl}
+                      </p>
+                    </div>
+                  </a>
+                ) : null}
+              </div>
+            </header>
 
-            {/* Strict Binary RSVP Panel */}
+            {/* Primary Registration / RSVP Frosted Card */}
             <RsvpPanel
               event={event}
               awaitingNames={detail.rsvps.awaitingNames}
@@ -788,14 +698,91 @@ export function InviteView({
               onRsvpSuccess={handleRsvpSuccess}
               onWithdrawRsvp={handleWithdrawRsvp}
               onOpenSubscribe={() => setSubscribeSignal((n) => n + 1)}
+              onShareInvite={() => void handleShareInvite()}
+              shareCopied={shareCopied}
               nameInputRef={rsvpNameInputRef}
             />
-          </div>
-        </article>
 
-        {/* Guest List & Event Wall */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <div className="lg:col-span-5">
+            {/* Flat Hairline Section: About Event */}
+            {hasMeaningfulDescription ? (
+              <section className="space-y-3">
+                <h2
+                  className="text-sm font-medium pb-2 border-b"
+                  style={{
+                    color: 'var(--theme-text-muted)',
+                    borderColor: 'var(--theme-hairline)',
+                    fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
+                  }}
+                >
+                  About Event
+                </h2>
+                <SafeRichHtml
+                  html={event.descriptionHtml}
+                  className="invite-prose text-sm sm:text-base leading-relaxed"
+                />
+              </section>
+            ) : null}
+
+            {/* Flat Hairline Section: Location + Rounded Google Map */}
+            {mapQuery && mapsUrl ? (
+              <section data-testid="location-section" className="space-y-3">
+                <h2
+                  className="text-sm font-medium pb-2 border-b"
+                  style={{
+                    color: 'var(--theme-text-muted)',
+                    borderColor: 'var(--theme-hairline)',
+                    fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
+                  }}
+                >
+                  Location
+                </h2>
+                <div className="space-y-0.5">
+                  {heroLocation.primaryLocation ? (
+                    <p
+                      className="text-sm sm:text-base font-medium break-words"
+                      style={{ color: 'var(--theme-text-primary)' }}
+                    >
+                      {heroLocation.primaryLocation}
+                    </p>
+                  ) : null}
+                  {heroLocation.secondaryAddress ? (
+                    <p
+                      className="text-xs sm:text-sm break-words"
+                      style={{ color: 'var(--theme-text-muted)' }}
+                    >
+                      {heroLocation.secondaryAddress}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div
+                  className="relative rounded-2xl overflow-hidden border h-44 sm:h-52"
+                  style={{
+                    borderColor: 'var(--theme-hairline)',
+                    backgroundColor: 'var(--theme-surface-bg)',
+                  }}
+                >
+                  <iframe
+                    title={`Map of ${mapQuery}`}
+                    src={`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=14&output=embed`}
+                    className="w-full h-full border-0"
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                  <a
+                    href={mapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="absolute top-3 right-3 inline-flex items-center gap-1 rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-semibold text-slate-900 shadow-md hover:bg-white transition"
+                  >
+                    <span>Maps</span>
+                    <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </a>
+                </div>
+              </section>
+            ) : null}
+
+            {/* Flat Hairline Section: Guest List */}
             <GuestList
               event={event}
               rsvps={detail.rsvps}
@@ -803,42 +790,60 @@ export function InviteView({
               viewerRsvp={detail.viewerRsvp}
               onSelectAwaitingName={handleSelectAwaitingName}
             />
-          </div>
 
-          <div className="lg:col-span-7">
+            {/* Flat Hairline Section: Activity Wall */}
             <EventWall
               eventId={event.id}
               comments={detail.comments}
               isHost={detail.isHost}
               editKey={editKey}
               guestToken={guestToken}
-              defaultAuthorName={
-                detail.viewerRsvp?.guestName ||
-                (detail.isHost ? event.hostName : undefined)
-              }
+              defaultAuthorName={detail.viewerRsvp?.guestName ?? rsvpGuestName}
               viewerRsvpStatus={detail.viewerRsvp?.status}
               onCommentsChange={handleCommentsChange}
-              onRefreshDetail={refreshDetail}
+              onRefreshDetail={() => refreshDetail()}
             />
+
+            {/* Mobile Hosted By Section */}
+            {event.hostName ? (
+              <section className="lg:hidden space-y-3">
+                <h2
+                  className="text-sm font-medium pb-2 border-b"
+                  style={{
+                    color: 'var(--theme-text-muted)',
+                    borderColor: 'var(--theme-hairline)',
+                    fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
+                  }}
+                >
+                  Hosted By
+                </h2>
+                <div className="flex items-center gap-2.5">
+                  <GuestAvatar name={event.hostName} size="sm" />
+                  <span
+                    className="text-sm font-medium truncate"
+                    style={{ color: 'var(--theme-text-primary)' }}
+                  >
+                    {event.hostName}
+                  </span>
+                </div>
+              </section>
+            ) : null}
           </div>
         </div>
       </main>
 
-      <footer className="relative z-10 mx-auto max-w-4xl px-4 pb-10 text-center">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-medium min-h-[44px] backdrop-blur-md transition-opacity hover:opacity-85"
-          style={{
-            backgroundColor: 'var(--theme-card-bg)',
-            borderColor: 'var(--theme-border)',
-            color: 'var(--theme-text-muted)',
-          }}
-        >
-          <span>
-            Made with{' '}
-            <strong style={{ color: 'var(--theme-text-primary)' }}>invited</strong> — Create
-            a free, account-free invite →
-          </span>
+      {/* Quiet minimal footer */}
+      <footer
+        className="relative z-10 max-w-[480px] lg:max-w-[920px] mx-auto px-4 lg:px-8 pt-6 pb-10 border-t flex items-center justify-between gap-4 text-xs"
+        style={{
+          borderColor: 'var(--theme-hairline)',
+          color: 'var(--theme-text-muted)',
+        }}
+      >
+        <span className="font-semibold tracking-tight">invited</span>
+        <Link href="/create" className="hover:underline inline-flex items-center gap-1">
+          <span>Create a free invite</span>
+          <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
         </Link>
       </footer>
     </div>

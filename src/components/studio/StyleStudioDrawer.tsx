@@ -5,7 +5,6 @@ import {
   Check,
   ChevronDown,
   Image as ImageIcon,
-  Palette,
   RefreshCw,
   Sliders,
   Sparkles,
@@ -29,33 +28,25 @@ interface StyleStudioDrawerProps {
   onChange: (next: InviteStyleConfig) => void;
   eventId?: string;
   editKey?: string;
+  section?: 'themes' | 'customize' | 'covers' | 'all';
 }
 
-const QUICK_THEME_IDS = [
-  'aurora-midnight',
-  'cozy-christmas',
-  'sacred-nativity',
-  'spooky-halloween',
-  'warm-thanksgiving',
-  'birthday-confetti',
-];
-
 const ACCENT_SWATCHES = [
+  '#7dd3fc',
   '#34d399',
   '#f59e0b',
   '#ef4444',
   '#fb7185',
   '#a78bfa',
-  '#38bdf8',
   '#d97706',
   '#10b981',
 ];
 
 const SURFACE_SWATCHES = [
+  '#0c316e',
   '#0f172a',
   '#1a1423',
   '#14211b',
-  '#1f1612',
   '#faf7f2',
   '#f8fafc',
 ];
@@ -84,25 +75,17 @@ export function StyleStudioDrawer({
   onChange,
   eventId,
   editKey,
+  section = 'all',
 }: StyleStudioDrawerProps) {
-  const [themeCategory, setThemeCategory] = useState<
-    'all' | ThemePreset['category']
-  >('all');
+  const [themeCategory, setThemeCategory] = useState<'all' | ThemePreset['category']>('all');
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const activePreset = getThemePreset(style.themeId);
-  const activeFont =
-    FONT_PAIRINGS.find((f) => f.id === style.fontId) ?? FONT_PAIRINGS[0];
-  const activeEffect =
-    EFFECT_OPTIONS.find((e) => e.id === style.effectId) ?? EFFECT_OPTIONS[0];
-  const activeCover =
-    COVER_PRESETS.find((c) => c.id === style.coverPresetId) ?? COVER_PRESETS[0];
-
-  const quickThemes = QUICK_THEME_IDS.map((id) =>
-    THEME_PRESETS.find((t) => t.id === id),
-  ).filter((t): t is ThemePreset => Boolean(t));
+  const activeFont = FONT_PAIRINGS.find((f) => f.id === style.fontId) ?? FONT_PAIRINGS[0];
+  const activeEffect = EFFECT_OPTIONS.find((e) => e.id === style.effectId) ?? EFFECT_OPTIONS[0];
+  const activeCover = COVER_PRESETS.find((c) => c.id === style.coverPresetId) ?? COVER_PRESETS[0];
 
   const filteredThemes =
     themeCategory === 'all'
@@ -142,9 +125,7 @@ export function StyleStudioDrawer({
       formData.append('file', file);
 
       const headers: Record<string, string> = {};
-      if (editKey) {
-        headers['x-edit-key'] = editKey;
-      }
+      if (editKey) headers['x-edit-key'] = editKey;
 
       let res = await fetch('/api/uploads/cover', {
         method: 'POST',
@@ -180,17 +161,13 @@ export function StyleStudioDrawer({
       onChange({
         ...style,
         customCoverUrl: uploadedUrl,
-        coverLayout: style.coverLayout === 'none' ? 'banner' : style.coverLayout,
+        coverLayout: style.coverLayout === 'none' ? 'square' : style.coverLayout,
       });
     } catch (err) {
-      setUploadError(
-        err instanceof Error ? err.message : 'Cover photo upload failed.',
-      );
+      setUploadError(err instanceof Error ? err.message : 'Cover photo upload failed.');
     } finally {
       setUploadingCover(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -198,495 +175,362 @@ export function StyleStudioDrawer({
   const currentSurface = style.customSurfaceHex || activePreset.surfaceBg;
   const currentColorMode = style.colorMode || activePreset.colorMode;
 
-  return (
-    <section
-      aria-labelledby="style-studio-heading"
-      className="invite-card rounded-3xl border border-white/12 bg-white/[0.04] p-5 sm:p-6 space-y-5"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2
-            id="style-studio-heading"
-            className="text-lg font-semibold text-white"
-          >
-            Theme &amp; Atmosphere
-          </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Auto-matched to your occasion — expand any drawer below to customize.
-          </p>
-        </div>
-      </div>
+  const showThemes = section === 'all' || section === 'themes';
+  const showCovers = section === 'all' || section === 'covers';
+  const showCustomize = section === 'all' || section === 'customize';
 
-      {/* Auto-Matched Curated Theme Card + Quick Switcher */}
-      <div className="rounded-2xl border border-white/15 bg-slate-950/60 p-4 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <span
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/15 text-xl shadow-inner"
-              style={{
-                backgroundColor: currentSurface,
-                borderColor: currentAccent,
-              }}
-              aria-hidden="true"
-            >
-              {activePreset.emoji}
+  return (
+    <div
+      className="rounded-2xl border backdrop-blur-md p-3.5 space-y-3"
+      style={{
+        backgroundColor: 'var(--theme-glass-bg)',
+        borderColor: 'var(--theme-border)',
+        color: 'var(--theme-text-primary)',
+      }}
+    >
+      {showThemes ? (
+        <div className="space-y-2.5">
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Theme categories">
+            {CATEGORY_TABS.map((tab) => {
+              const active = themeCategory === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setThemeCategory(tab.id)}
+                  className="rounded-full border px-2.5 py-1 text-xs font-medium transition cursor-pointer"
+                  style={
+                    active
+                      ? {
+                          backgroundColor: 'var(--theme-accent)',
+                          borderColor: 'var(--theme-accent)',
+                          color: 'var(--theme-on-accent)',
+                        }
+                      : {
+                          backgroundColor: 'transparent',
+                          borderColor: 'var(--theme-hairline)',
+                          color: 'var(--theme-text-muted)',
+                        }
+                  }
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="grid grid-cols-2 gap-1.5 max-h-60 overflow-y-auto pr-0.5">
+            {filteredThemes.map((preset) => {
+              const isSelected = style.themeId === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  aria-pressed={isSelected}
+                  onClick={() => applyThemePreset(preset)}
+                  className="flex items-center gap-2 rounded-xl border p-2 text-left transition cursor-pointer min-w-0"
+                  style={{
+                    backgroundColor: isSelected
+                      ? 'var(--theme-surface-bg)'
+                      : 'transparent',
+                    borderColor: isSelected
+                      ? 'var(--theme-accent)'
+                      : 'var(--theme-hairline)',
+                  }}
+                >
+                  <span
+                    className="h-6 w-6 shrink-0 rounded-lg border flex items-center justify-center text-xs"
+                    style={{
+                      background: `linear-gradient(135deg, ${preset.pageBg} 0%, ${preset.cardBg} 65%, ${preset.accent} 100%)`,
+                      borderColor: 'var(--theme-hairline)',
+                    }}
+                  >
+                    {preset.emoji}
+                  </span>
+                  <span
+                    className="text-xs font-medium truncate flex-1"
+                    style={{ color: 'var(--theme-text-primary)' }}
+                  >
+                    {preset.name}
+                  </span>
+                  {isSelected ? (
+                    <Check
+                      className="h-3.5 w-3.5 shrink-0"
+                      style={{ color: 'var(--theme-accent)' }}
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {showCovers ? (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-medium" style={{ color: 'var(--theme-text-muted)' }}>
+              Cover Artwork ({style.customCoverUrl ? 'Custom Photo' : activeCover.name})
             </span>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <p className="text-sm font-semibold text-white truncate">
-                  {activePreset.name}
-                </p>
-                <span
-                  aria-hidden="true"
-                  className="h-2.5 w-2.5 rounded-full shrink-0"
-                  style={{ backgroundColor: currentAccent }}
+            {style.customCoverUrl ? (
+              <button
+                type="button"
+                onClick={() => onChange({ ...style, customCoverUrl: undefined })}
+                className="inline-flex items-center gap-1 text-xs font-medium text-rose-300 hover:opacity-80 cursor-pointer"
+              >
+                <Trash2 className="h-3 w-3" aria-hidden="true" />
+                Remove photo
+              </button>
+            ) : null}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              ref={fileInputRef}
+              id="custom-cover-upload"
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              onChange={(e) => void handleCoverUpload(e)}
+              className="sr-only"
+            />
+            <label
+              htmlFor="custom-cover-upload"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-dashed px-3 py-1.5 text-xs font-medium transition hover:opacity-90"
+              style={{
+                borderColor: 'var(--theme-border)',
+                color: 'var(--theme-text-primary)',
+              }}
+            >
+              <Upload className="h-3.5 w-3.5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+              <span>{uploadingCover ? 'Uploading...' : 'Upload Photo'}</span>
+            </label>
+
+            {style.customCoverUrl ? (
+              <div
+                className="h-8 w-8 overflow-hidden rounded-lg border"
+                style={{ borderColor: 'var(--theme-hairline)' }}
+              >
+                <CoverArt
+                  coverPresetId={style.coverPresetId}
+                  customCoverUrl={style.customCoverUrl}
+                  layout="square"
+                  className="h-full w-full object-cover"
                 />
               </div>
-              <p className="text-xs text-slate-400 truncate">
-                {activeFont?.name} · {activeEffect?.emoji} {activeEffect?.name}
-              </p>
-            </div>
+            ) : null}
           </div>
 
-          <span className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-1 text-[11px] font-medium text-emerald-200">
-            Active Style
-          </span>
-        </div>
+          {uploadError ? (
+            <p className="text-xs text-rose-400" role="alert">
+              {uploadError}
+            </p>
+          ) : null}
 
-        <div className="space-y-1.5">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-slate-400">
-            Quick Switch
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {(quickThemes.length > 0 ? quickThemes : THEME_PRESETS.slice(0, 6)).map(
-              (preset) => {
-                const isSelected = preset.id === style.themeId;
-                return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    data-selected={isSelected}
-                    aria-pressed={isSelected}
-                    onClick={() => applyThemePreset(preset)}
-                    className={`invite-pill inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition min-h-[40px] ${
-                      isSelected
-                        ? 'border-emerald-400/70 bg-emerald-400/15 text-white'
-                        : 'border-white/12 bg-white/[0.04] text-slate-300 hover:bg-white/[0.1] hover:text-white'
-                    }`}
-                  >
-                    <span aria-hidden="true">{preset.emoji}</span>
-                    <span>{preset.name}</span>
-                  </button>
-                );
-              },
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Progressive Disclosure Drawers */}
-      <div className="space-y-2.5">
-        {/* 1. Occasion & Holiday Themes */}
-        <details className="group rounded-2xl border border-white/12 bg-slate-950/45 overflow-hidden">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 text-sm font-medium text-white hover:bg-white/[0.04] transition min-h-[52px]">
-            <span className="inline-flex items-center gap-2.5">
-              <Palette className="h-4 w-4 text-emerald-300" aria-hidden="true" />
-              <span>Occasion &amp; Holiday Themes</span>
-            </span>
-            <span className="inline-flex items-center gap-2">
-              <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs text-slate-300">
-                {activePreset.emoji} {activePreset.name}
-              </span>
-              <ChevronDown
-                className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180"
-                aria-hidden="true"
-              />
-            </span>
-          </summary>
-
-          <div className="border-t border-white/10 p-4 space-y-4">
-            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter themes by occasion">
-              {CATEGORY_TABS.map((cat) => (
+          <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto pr-0.5">
+            {COVER_PRESETS.map((cover) => {
+              const isSelected = !style.customCoverUrl && style.coverPresetId === cover.id;
+              return (
                 <button
-                  key={cat.id}
+                  key={cover.id}
                   type="button"
-                  aria-pressed={themeCategory === cat.id}
-                  onClick={() => setThemeCategory(cat.id)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition min-h-[36px] ${
-                    themeCategory === cat.id
-                      ? 'bg-white text-slate-950'
-                      : 'bg-white/[0.06] text-slate-300 hover:bg-white/[0.12]'
-                  }`}
+                  aria-pressed={isSelected}
+                  onClick={() =>
+                    onChange({
+                      ...style,
+                      coverPresetId: cover.id,
+                      customCoverUrl: undefined,
+                      coverLayout: style.coverLayout === 'none' ? 'square' : style.coverLayout,
+                    })
+                  }
+                  className="flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-left text-xs font-medium transition cursor-pointer min-w-0"
+                  style={{
+                    backgroundColor: isSelected ? 'var(--theme-surface-bg)' : 'transparent',
+                    borderColor: isSelected ? 'var(--theme-accent)' : 'var(--theme-hairline)',
+                    color: 'var(--theme-text-primary)',
+                  }}
                 >
-                  {cat.label}
+                  <span aria-hidden="true">{cover.emoji}</span>
+                  <span className="truncate">{cover.name}</span>
                 </button>
-              ))}
-            </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {filteredThemes.map((preset) => {
-                const isSelected = preset.id === style.themeId;
+      {showCustomize ? (
+        <div className="space-y-2">
+          {/* Typography */}
+          <details className="group rounded-xl border overflow-hidden" style={{ borderColor: 'var(--theme-hairline)' }}>
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-xs font-medium">
+              <span className="inline-flex items-center gap-2">
+                <Type className="h-3.5 w-3.5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+                <span>Typography</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5 opacity-75">
+                <span>{activeFont.name}</span>
+                <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" aria-hidden="true" />
+              </span>
+            </summary>
+
+            <div className="border-t p-2.5 grid grid-cols-2 gap-1.5" style={{ borderColor: 'var(--theme-hairline)' }}>
+              {FONT_PAIRINGS.map((font) => {
+                const isSelected = style.fontId === font.id;
                 return (
                   <button
-                    key={preset.id}
+                    key={font.id}
                     type="button"
-                    data-selected={isSelected}
                     aria-pressed={isSelected}
-                    onClick={() => applyThemePreset(preset)}
-                    className={`flex items-start gap-3 rounded-2xl border p-3 text-left transition min-h-[56px] ${
-                      isSelected
-                        ? 'border-emerald-400/70 bg-emerald-400/12'
-                        : 'border-white/10 bg-white/[0.03] hover:border-white/25 hover:bg-white/[0.06]'
-                    }`}
+                    onClick={() => onChange({ ...style, fontId: font.id })}
+                    className="rounded-xl border p-2 text-left transition cursor-pointer"
+                    style={{
+                      backgroundColor: isSelected ? 'var(--theme-surface-bg)' : 'transparent',
+                      borderColor: isSelected ? 'var(--theme-accent)' : 'var(--theme-hairline)',
+                    }}
                   >
-                    <span
-                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-base"
-                      style={{
-                        backgroundColor: preset.cardBg,
-                        borderColor: preset.accent,
-                      }}
-                      aria-hidden="true"
+                    <p
+                      style={{ fontFamily: toCssFontVar(font.headingVar) }}
+                      className="text-sm font-semibold truncate"
                     >
-                      {preset.emoji}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-white truncate">
-                          {preset.name}
-                        </p>
-                        {isSelected ? (
-                          <Check
-                            className="h-4 w-4 text-emerald-300 shrink-0"
-                            aria-hidden="true"
-                          />
-                        ) : null}
-                      </div>
-                      <p className="text-xs text-slate-400 line-clamp-1 mt-0.5">
-                        {preset.description}
-                      </p>
-                    </div>
+                      {font.name}
+                    </p>
+                    <p
+                      style={{
+                        fontFamily: toCssFontVar(font.bodyVar),
+                        color: 'var(--theme-text-muted)',
+                      }}
+                      className="text-[11px] truncate"
+                    >
+                      {font.sample}
+                    </p>
                   </button>
                 );
               })}
             </div>
-          </div>
-        </details>
+          </details>
 
-        {/* 2. Cover Artwork & Layout */}
-        <details className="group rounded-2xl border border-white/12 bg-slate-950/45 overflow-hidden">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 text-sm font-medium text-white hover:bg-white/[0.04] transition min-h-[52px]">
-            <span className="inline-flex items-center gap-2.5">
-              <ImageIcon className="h-4 w-4 text-sky-300" aria-hidden="true" />
-              <span>Cover Artwork &amp; Layout</span>
-            </span>
-            <span className="inline-flex items-center gap-2">
-              <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs text-slate-300">
-                {style.customCoverUrl
-                  ? 'Custom Photo'
-                  : `${activeCover?.emoji ?? ''} ${activeCover?.name ?? style.coverPresetId}`}{' '}
-                · {style.coverLayout}
+          {/* Ambient Effect */}
+          <details className="group rounded-xl border overflow-hidden" style={{ borderColor: 'var(--theme-hairline)' }}>
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-xs font-medium">
+              <span className="inline-flex items-center gap-2">
+                <Sparkles className="h-3.5 w-3.5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+                <span>Effect</span>
               </span>
-              <ChevronDown
-                className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180"
-                aria-hidden="true"
-              />
-            </span>
-          </summary>
-
-          <div className="border-t border-white/10 p-4 space-y-4">
-            <fieldset className="space-y-2">
-              <legend className="text-xs font-medium uppercase tracking-wider text-slate-400">
-                Cover Layout
-              </legend>
-              <div className="grid grid-cols-3 gap-2">
-                {(
-                  [
-                    { value: 'square', label: 'Square 1:1' },
-                    { value: 'banner', label: 'Banner 16:9' },
-                    { value: 'none', label: 'Minimal' },
-                  ] as Array<{ value: CoverLayout; label: string }>
-                ).map((option) => {
-                  const selected = style.coverLayout === option.value;
-                  return (
-                    <label
-                      key={option.value}
-                      data-selected={selected}
-                      className={`flex cursor-pointer items-center justify-center rounded-xl border px-3 py-2.5 text-xs sm:text-sm font-medium transition min-h-[48px] [@media(pointer:coarse)]:min-h-[52px] ${
-                        selected
-                          ? 'border-emerald-400/70 bg-emerald-400/15 text-white'
-                          : 'border-white/12 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="coverLayout"
-                        value={option.value}
-                        checked={selected}
-                        onChange={() =>
-                          onChange({ ...style, coverLayout: option.value })
-                        }
-                        className="sr-only"
-                      />
-                      <span>{option.label}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </fieldset>
-
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-medium uppercase tracking-wider text-slate-400">
-                  Upload Custom Cover Photo
+              <span className="inline-flex items-center gap-1.5 opacity-75">
+                <span>
+                  {activeEffect.emoji} {activeEffect.name}
                 </span>
-                {style.customCoverUrl ? (
+                <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" aria-hidden="true" />
+              </span>
+            </summary>
+
+            <div className="border-t p-2.5 grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto" style={{ borderColor: 'var(--theme-hairline)' }}>
+              {EFFECT_OPTIONS.map((effect) => {
+                const isSelected = style.effectId === effect.id;
+                return (
                   <button
+                    key={effect.id}
                     type="button"
-                    onClick={() =>
-                      onChange({ ...style, customCoverUrl: undefined })
-                    }
-                    className="inline-flex items-center gap-1 text-xs font-medium text-rose-300 hover:text-rose-200 min-h-[36px]"
+                    aria-pressed={isSelected}
+                    onClick={() => onChange({ ...style, effectId: effect.id })}
+                    className="flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-left text-xs transition cursor-pointer min-w-0"
+                    style={{
+                      backgroundColor: isSelected ? 'var(--theme-surface-bg)' : 'transparent',
+                      borderColor: isSelected ? 'var(--theme-accent)' : 'var(--theme-hairline)',
+                    }}
                   >
-                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                    Remove custom photo
+                    <span aria-hidden="true">{effect.emoji}</span>
+                    <span className="truncate font-medium">{effect.name}</span>
                   </button>
-                ) : null}
-              </div>
+                );
+              })}
+            </div>
+          </details>
 
-              <div className="flex flex-wrap items-center gap-3">
-                <input
-                  ref={fileInputRef}
-                  id="custom-cover-upload"
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp,image/gif"
-                  onChange={(e) => void handleCoverUpload(e)}
-                  className="sr-only"
+          {/* Cover Layout & Colors */}
+          <details className="group rounded-xl border overflow-hidden" style={{ borderColor: 'var(--theme-hairline)' }}>
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-xs font-medium">
+              <span className="inline-flex items-center gap-2">
+                <Sliders className="h-3.5 w-3.5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+                <span>Layout &amp; Colors</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5 opacity-75">
+                <span
+                  aria-hidden="true"
+                  className="h-3 w-3 rounded-full border"
+                  style={{
+                    backgroundColor: currentAccent,
+                    borderColor: 'var(--theme-hairline)',
+                  }}
                 />
-                <label
-                  htmlFor="custom-cover-upload"
-                  className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-white/25 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-slate-200 hover:border-emerald-400/60 hover:bg-white/[0.08] transition min-h-[48px] [@media(pointer:coarse)]:min-h-[52px]"
-                >
-                  <Upload className="h-4 w-4 text-emerald-300" aria-hidden="true" />
-                  <span>
-                    {uploadingCover ? 'Uploading photo...' : 'Upload Photo (PNG/JPG/WebP)'}
-                  </span>
-                </label>
+                <span className="capitalize">{style.coverLayout}</span>
+                <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" aria-hidden="true" />
+              </span>
+            </summary>
 
-                {style.customCoverUrl ? (
-                  <div className="h-12 w-12 overflow-hidden rounded-xl border border-white/20">
-                    <CoverArt
-                      coverPresetId={style.coverPresetId}
-                      customCoverUrl={style.customCoverUrl}
-                      layout="square"
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
-                ) : null}
+            <div className="border-t p-3 space-y-3" style={{ borderColor: 'var(--theme-hairline)' }}>
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-medium" style={{ color: 'var(--theme-text-muted)' }}>
+                  Cover Frame
+                </span>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(
+                    [
+                      { value: 'square', label: 'Square 1:1' },
+                      { value: 'banner', label: 'Wide 16:9' },
+                      { value: 'none', label: 'No Cover' },
+                    ] as Array<{ value: CoverLayout; label: string }>
+                  ).map((option) => {
+                    const selected = style.coverLayout === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => onChange({ ...style, coverLayout: option.value })}
+                        className="rounded-xl border px-2 py-1.5 text-xs font-medium transition cursor-pointer"
+                        style={
+                          selected
+                            ? {
+                                backgroundColor: 'var(--theme-accent)',
+                                borderColor: 'var(--theme-accent)',
+                                color: 'var(--theme-on-accent)',
+                              }
+                            : {
+                                backgroundColor: 'transparent',
+                                borderColor: 'var(--theme-hairline)',
+                                color: 'var(--theme-text-muted)',
+                              }
+                        }
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              {uploadError ? (
-                <p className="text-xs text-rose-300" role="alert">
-                  {uploadError}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="space-y-2">
-              <span className="text-xs font-medium uppercase tracking-wider text-slate-400">
-                Curated Cover Artwork
-              </span>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {COVER_PRESETS.map((cover) => {
-                  const isSelected =
-                    !style.customCoverUrl && style.coverPresetId === cover.id;
-                  return (
-                    <button
-                      key={cover.id}
-                      type="button"
-                      data-selected={isSelected}
-                      aria-pressed={isSelected}
-                      onClick={() =>
-                        onChange({
-                          ...style,
-                          coverPresetId: cover.id,
-                          customCoverUrl: undefined,
-                          coverLayout:
-                            style.coverLayout === 'none'
-                              ? 'square'
-                              : style.coverLayout,
-                        })
-                      }
-                      className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs font-medium transition min-h-[48px] ${
-                        isSelected
-                          ? 'border-emerald-400/70 bg-emerald-400/15 text-white'
-                          : 'border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/[0.08]'
-                      }`}
-                    >
-                      <span className="text-base" aria-hidden="true">
-                        {cover.emoji}
-                      </span>
-                      <span className="truncate">{cover.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </details>
-
-        {/* 3. Typography Pairing */}
-        <details className="group rounded-2xl border border-white/12 bg-slate-950/45 overflow-hidden">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 text-sm font-medium text-white hover:bg-white/[0.04] transition min-h-[52px]">
-            <span className="inline-flex items-center gap-2.5">
-              <Type className="h-4 w-4 text-amber-300" aria-hidden="true" />
-              <span>Typography Pairing</span>
-            </span>
-            <span className="inline-flex items-center gap-2">
-              <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs text-slate-300">
-                {activeFont?.name}
-              </span>
-              <ChevronDown
-                className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180"
-                aria-hidden="true"
-              />
-            </span>
-          </summary>
-
-          <div className="border-t border-white/10 p-4 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            {FONT_PAIRINGS.map((font) => {
-              const isSelected = style.fontId === font.id;
-              return (
-                <button
-                  key={font.id}
-                  type="button"
-                  data-selected={isSelected}
-                  aria-pressed={isSelected}
-                  onClick={() => onChange({ ...style, fontId: font.id })}
-                  className={`rounded-2xl border p-3.5 text-left transition min-h-[68px] ${
-                    isSelected
-                      ? 'border-emerald-400/70 bg-emerald-400/12'
-                      : 'border-white/10 bg-white/[0.03] hover:border-white/25 hover:bg-white/[0.06]'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span
-                      style={{ fontFamily: toCssFontVar(font.headingVar) }}
-                      className="text-lg font-semibold text-white"
-                    >
-                      {font.name}
-                    </span>
-                    {isSelected ? (
-                      <Check
-                        className="h-4 w-4 text-emerald-300 shrink-0"
-                        aria-hidden="true"
-                      />
-                    ) : null}
-                  </div>
-                  <p
-                    style={{ fontFamily: toCssFontVar(font.bodyVar) }}
-                    className="text-xs text-slate-400 mt-1"
-                  >
-                    {font.sample}
-                  </p>
-                </button>
-              );
-            })}
-          </div>
-        </details>
-
-        {/* 4. Ambient & Seasonal Effects */}
-        <details className="group rounded-2xl border border-white/12 bg-slate-950/45 overflow-hidden">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 text-sm font-medium text-white hover:bg-white/[0.04] transition min-h-[52px]">
-            <span className="inline-flex items-center gap-2.5">
-              <Sparkles className="h-4 w-4 text-violet-300" aria-hidden="true" />
-              <span>Ambient &amp; Seasonal Effects</span>
-            </span>
-            <span className="inline-flex items-center gap-2">
-              <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs text-slate-300">
-                {activeEffect?.emoji} {activeEffect?.name}
-              </span>
-              <ChevronDown
-                className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180"
-                aria-hidden="true"
-              />
-            </span>
-          </summary>
-
-          <div className="border-t border-white/10 p-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {EFFECT_OPTIONS.map((effect) => {
-              const isSelected = style.effectId === effect.id;
-              return (
-                <button
-                  key={effect.id}
-                  type="button"
-                  data-selected={isSelected}
-                  aria-pressed={isSelected}
-                  onClick={() => onChange({ ...style, effectId: effect.id })}
-                  className={`flex items-start gap-2.5 rounded-xl border p-3 text-left transition min-h-[56px] ${
-                    isSelected
-                      ? 'border-emerald-400/70 bg-emerald-400/12'
-                      : 'border-white/10 bg-white/[0.03] hover:bg-white/[0.06]'
-                  }`}
-                >
-                  <span className="text-lg leading-none mt-0.5" aria-hidden="true">
-                    {effect.emoji}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-white">
-                      {effect.name}
-                    </p>
-                    <p className="text-xs text-slate-400 line-clamp-1">
-                      {effect.description}
-                    </p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </details>
-
-        {/* 5. Fine-Tune Accent & Surface Colors */}
-        <details className="group rounded-2xl border border-white/12 bg-slate-950/45 overflow-hidden">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 text-sm font-medium text-white hover:bg-white/[0.04] transition min-h-[52px]">
-            <span className="inline-flex items-center gap-2.5">
-              <Sliders className="h-4 w-4 text-rose-300" aria-hidden="true" />
-              <span>Fine-Tune Accent &amp; Surface Colors</span>
-            </span>
-            <span className="inline-flex items-center gap-2">
-              <span
-                aria-hidden="true"
-                className="h-3.5 w-3.5 rounded-full border border-white/30"
-                style={{ backgroundColor: currentAccent }}
-              />
-              <ChevronDown
-                className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180"
-                aria-hidden="true"
-              />
-            </span>
-          </summary>
-
-          <div className="border-t border-white/10 p-4 space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <label
                   htmlFor="custom-accent-color"
-                  className="block text-xs font-medium uppercase tracking-wider text-slate-400"
+                  className="block text-[11px] font-medium"
+                  style={{ color: 'var(--theme-text-muted)' }}
                 >
                   Accent Color
                 </label>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
                   {ACCENT_SWATCHES.map((hex) => (
                     <button
                       key={hex}
                       type="button"
                       aria-label={`Set accent color ${hex}`}
-                      onClick={() =>
-                        onChange({ ...style, customAccentHex: hex })
-                      }
-                      className={`h-8 w-8 rounded-full border-2 transition ${
+                      onClick={() => onChange({ ...style, customAccentHex: hex })}
+                      className={`h-6 w-6 rounded-full border-2 transition cursor-pointer ${
                         currentAccent.toLowerCase() === hex.toLowerCase()
-                          ? 'border-white scale-110'
-                          : 'border-white/20 hover:scale-105'
+                          ? 'scale-110 border-white'
+                          : 'border-white/25'
                       }`}
                       style={{ backgroundColor: hex }}
                     />
@@ -695,34 +539,31 @@ export function StyleStudioDrawer({
                     id="custom-accent-color"
                     type="color"
                     value={currentAccent}
-                    onChange={(e) =>
-                      onChange({ ...style, customAccentHex: e.target.value })
-                    }
-                    className="h-9 w-11 cursor-pointer rounded-lg border border-white/20 bg-transparent p-0.5"
+                    onChange={(e) => onChange({ ...style, customAccentHex: e.target.value })}
+                    className="h-6 w-8 cursor-pointer rounded border bg-transparent"
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <label
                   htmlFor="custom-surface-color"
-                  className="block text-xs font-medium uppercase tracking-wider text-slate-400"
+                  className="block text-[11px] font-medium"
+                  style={{ color: 'var(--theme-text-muted)' }}
                 >
-                  Card Surface Color
+                  Surface Color
                 </label>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
                   {SURFACE_SWATCHES.map((hex) => (
                     <button
                       key={hex}
                       type="button"
                       aria-label={`Set surface color ${hex}`}
-                      onClick={() =>
-                        onChange({ ...style, customSurfaceHex: hex })
-                      }
-                      className={`h-8 w-8 rounded-full border-2 transition ${
+                      onClick={() => onChange({ ...style, customSurfaceHex: hex })}
+                      className={`h-6 w-6 rounded-full border-2 transition cursor-pointer ${
                         currentSurface.toLowerCase() === hex.toLowerCase()
-                          ? 'border-emerald-400 scale-110'
-                          : 'border-white/25 hover:scale-105'
+                          ? 'scale-110 border-white'
+                          : 'border-white/25'
                       }`}
                       style={{ backgroundColor: hex }}
                     />
@@ -731,53 +572,67 @@ export function StyleStudioDrawer({
                     id="custom-surface-color"
                     type="color"
                     value={currentSurface}
-                    onChange={(e) =>
-                      onChange({ ...style, customSurfaceHex: e.target.value })
-                    }
-                    className="h-9 w-11 cursor-pointer rounded-lg border border-white/20 bg-transparent p-0.5"
+                    onChange={(e) => onChange({ ...style, customSurfaceHex: e.target.value })}
+                    className="h-6 w-8 cursor-pointer rounded border bg-transparent"
                   />
                 </div>
               </div>
-            </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-              <div className="inline-flex items-center gap-1.5 rounded-xl border border-white/12 bg-white/[0.04] p-1">
-                {(['dark', 'light'] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    aria-pressed={currentColorMode === mode}
-                    onClick={() => onChange({ ...style, colorMode: mode })}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-medium capitalize transition min-h-[36px] ${
-                      currentColorMode === mode
-                        ? 'bg-white text-slate-950'
-                        : 'text-slate-300 hover:text-white'
-                    }`}
-                  >
-                    {mode} canvas
-                  </button>
-                ))}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <div
+                  className="inline-flex items-center gap-1 rounded-lg border p-0.5"
+                  style={{ borderColor: 'var(--theme-hairline)' }}
+                >
+                  {(['dark', 'light'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      aria-pressed={currentColorMode === mode}
+                      onClick={() => onChange({ ...style, colorMode: mode })}
+                      className="rounded-md px-2.5 py-1 text-xs font-medium capitalize transition cursor-pointer"
+                      style={
+                        currentColorMode === mode
+                          ? {
+                              backgroundColor: 'var(--theme-accent)',
+                              color: 'var(--theme-on-accent)',
+                            }
+                          : {
+                              color: 'var(--theme-text-muted)',
+                            }
+                      }
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    onChange({
+                      ...style,
+                      customAccentHex: undefined,
+                      customSurfaceHex: undefined,
+                      colorMode: activePreset.colorMode,
+                    })
+                  }
+                  className="inline-flex items-center gap-1 text-xs font-medium opacity-80 hover:opacity-100 cursor-pointer"
+                  style={{ color: 'var(--theme-text-muted)' }}
+                >
+                  <RefreshCw className="h-3 w-3" aria-hidden="true" />
+                  Reset
+                </button>
               </div>
-
-              <button
-                type="button"
-                onClick={() =>
-                  onChange({
-                    ...style,
-                    customAccentHex: undefined,
-                    customSurfaceHex: undefined,
-                    colorMode: activePreset.colorMode,
-                  })
-                }
-                className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-xs font-medium text-slate-300 hover:bg-white/10 transition min-h-[40px]"
-              >
-                <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-                Reset to theme colors
-              </button>
             </div>
-          </div>
-        </details>
-      </div>
-    </section>
+          </details>
+
+          {section === 'customize' ? (
+            <div className="pt-1">
+              <ImageIcon className="sr-only" aria-hidden="true" />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 }

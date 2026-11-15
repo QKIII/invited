@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Bell, BellRing, Calendar, Check, Mail, X } from 'lucide-react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { Bell, Calendar, Check, Mail, Sparkles, X } from 'lucide-react';
+import { getDeviceProfile, saveDeviceProfile } from '@/lib/client/deviceProfile';
 import { setupDialogLightDismiss } from '@/lib/polyfills/ui';
 
 interface SubscribeControlProps {
@@ -19,7 +20,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const rawData = window.atob(base64);
   const buffer = new ArrayBuffer(rawData.length);
   const outputArray = new Uint8Array(buffer);
-  for (let i = 0; i < rawData.length; i += 1) {
+  for (let i = 0; i < rawData.length; ++i) {
     outputArray[i] = rawData.charCodeAt(i);
   }
   return outputArray;
@@ -33,18 +34,22 @@ export function SubscribeControl({
   onSubscribed,
   variant = 'pill',
 }: SubscribeControlProps) {
-  const dialogRef = useRef<HTMLDialogElement | null>(null);
-  const lastOpenSignalRef = useRef<number>(openSignal);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const emailInputId = useId();
+  const lastOpenSignalRef = useRef(openSignal);
 
-  const [vapidPublicKey, setVapidPublicKey] = useState<string | null | undefined>(undefined);
-  const [pushSupported, setPushSupported] = useState<boolean>(false);
-  const [pushBusy, setPushBusy] = useState<boolean>(false);
-  const [pushDone, setPushDone] = useState<boolean>(false);
+  const [pushSupported, setPushSupported] = useState(false);
+  const [vapidPublicKey, setVapidPublicKey] = useState<string | null | undefined>(
+    undefined,
+  );
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushDone, setPushDone] = useState(false);
   const [pushMessage, setPushMessage] = useState<string | null>(null);
 
-  const [email, setEmail] = useState<string>('');
-  const [emailBusy, setEmailBusy] = useState<boolean>(false);
-  const [emailDone, setEmailDone] = useState<boolean>(false);
+  const [email, setEmail] = useState('');
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailDone, setEmailDone] = useState(false);
   const [emailMessage, setEmailMessage] = useState<string | null>(null);
 
   const checkCapabilities = useCallback(async () => {
@@ -69,13 +74,22 @@ export function SubscribeControl({
     }
   }, [vapidPublicKey]);
 
-  const openModal = useCallback(() => {
+  const openDialog = useCallback(() => {
     const dialog = dialogRef.current;
-    if (dialog && !dialog.open) {
+    if (!dialog) return;
+    const profile = getDeviceProfile();
+    if (profile?.email && !email) {
+      setEmail(profile.email);
+    }
+    if (!dialog.open) {
       dialog.showModal();
     }
     void checkCapabilities();
-  }, [checkCapabilities]);
+  }, [checkCapabilities, email]);
+
+  const closeDialog = useCallback(() => {
+    dialogRef.current?.close();
+  }, []);
 
   useEffect(() => {
     return setupDialogLightDismiss(dialogRef.current);
@@ -84,46 +98,20 @@ export function SubscribeControl({
   useEffect(() => {
     if (openSignal > lastOpenSignalRef.current) {
       lastOpenSignalRef.current = openSignal;
-      const dialog = dialogRef.current;
-      if (dialog && !dialog.open) {
-        dialog.showModal();
-      }
-      void fetch('/api/push/vapid-public-key', { cache: 'no-store' })
-        .then((res) => (res.ok ? res.json() : { publicKey: null }))
-        .then((data: { publicKey?: string | null }) => {
-          const supported =
-            typeof window !== 'undefined' &&
-            'serviceWorker' in navigator &&
-            'PushManager' in window &&
-            'Notification' in window;
-          setPushSupported(supported);
-          setVapidPublicKey(data.publicKey ?? null);
-        })
-        .catch(() => {
-          setVapidPublicKey(null);
-        });
+      openDialog();
     }
-  }, [openSignal]);
+  }, [openSignal, openDialog]);
 
-  const handleEnablePush = async () => {
-    setPushMessage(null);
-    if (!pushSupported) {
-      setPushMessage('This browser does not support Web Push notifications.');
-      return;
-    }
-    if (!vapidPublicKey) {
-      setPushMessage(
-        'Push notifications are not enabled on this server yet — try Email updates or Calendar reminders below.',
-      );
-      return;
-    }
-
+  async function handleEnablePush() {
+    if (!pushSupported || !vapidPublicKey) return;
     setPushBusy(true);
+    setPushMessage(null);
+
     try {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
         setPushMessage(
-          'Notification permission was not granted. You can still get updates via Email or Calendar below.',
+          'Notifications blocked in browser settings. Use Email or Calendar below.',
         );
         return;
       }
@@ -150,32 +138,27 @@ export function SubscribeControl({
 
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string };
-        setPushMessage(err.error || 'Could not save browser notification subscription.');
+        setPushMessage(err.error || 'Could not enable push alerts.');
         return;
       }
 
       setPushDone(true);
-      setPushMessage("You're subscribed to browser alerts for this event!");
+      setPushMessage("You're subscribed to browser alerts for this event.");
       onSubscribed?.();
     } catch {
-      setPushMessage(
-        'Could not activate browser notifications. Try Email updates or Calendar reminders below.',
-      );
+      setPushMessage('Could not subscribe to push notifications on this device.');
     } finally {
       setPushBusy(false);
     }
-  };
+  }
 
-  const handleEmailSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  async function handleEmailSubscribe(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setEmailMessage(null);
     const trimmed = email.trim();
-    if (!trimmed) {
-      setEmailMessage('Please enter a valid email address.');
-      return;
-    }
-
+    if (!trimmed) return;
     setEmailBusy(true);
+    setEmailMessage(null);
+
     try {
       const res = await fetch(`/api/events/${encodeURIComponent(eventId)}/subscribe`, {
         method: 'POST',
@@ -187,53 +170,59 @@ export function SubscribeControl({
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
-        setEmailMessage(data.error || 'Could not save your email.');
+        setEmailMessage(data.error || 'Please enter a valid email address.');
         return;
       }
+      saveDeviceProfile({ email: trimmed });
       setEmailDone(true);
-      setEmail('');
-      setEmailMessage('Saved privately! We will only keep this for event updates.');
+      setEmailMessage('Saved! We will keep this only for updates to this event.');
       onSubscribed?.();
     } catch {
-      setEmailMessage('Network error while saving your email.');
+      setEmailMessage('Network error saving your email.');
     } finally {
       setEmailBusy(false);
     }
-  };
+  }
+
+  const pushAvailable = pushSupported && Boolean(vapidPublicKey);
 
   return (
     <>
       {variant === 'pill' ? (
         <button
           type="button"
-          onClick={openModal}
-          className="invite-pill inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs sm:text-sm font-medium min-h-[44px] transition-opacity hover:opacity-85 cursor-pointer"
+          onClick={openDialog}
+          aria-label="Event notifications and reminders"
+          className="h-8 inline-flex items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition hover:opacity-90 cursor-pointer shrink-0"
           style={{
-            backgroundColor: 'var(--theme-card-bg)',
-            borderColor: 'var(--theme-border)',
+            backgroundColor: 'var(--theme-glass-bg)',
+            borderColor: 'var(--theme-hairline)',
             color: 'var(--theme-text-primary)',
           }}
-          aria-label="Get event updates (optional)"
         >
-          {pushDone || emailDone ? (
-            <BellRing className="h-4 w-4" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-          ) : (
-            <Bell className="h-4 w-4" aria-hidden="true" />
-          )}
-          <span className="hidden sm:inline">Updates</span>
+          <Bell className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span className="hidden sm:inline">Reminders</span>
+          {subscriberCount > 0 ? (
+            <span
+              className="hidden sm:inline text-[11px] tabular-nums opacity-75"
+              style={{ color: 'var(--theme-text-muted)' }}
+            >
+              {subscriberCount}
+            </span>
+          ) : null}
         </button>
       ) : (
         <button
           type="button"
-          onClick={openModal}
-          className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium min-h-[48px] transition-opacity hover:opacity-85 cursor-pointer"
+          onClick={openDialog}
+          className="inline-flex items-center justify-center gap-2 rounded-xl border px-3.5 py-2 text-xs sm:text-sm font-medium transition hover:opacity-90 cursor-pointer"
           style={{
-            backgroundColor: 'var(--theme-card-bg)',
+            backgroundColor: 'var(--theme-surface-bg)',
             borderColor: 'var(--theme-border)',
             color: 'var(--theme-text-primary)',
           }}
         >
-          <Bell className="h-4 w-4" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+          <Bell className="h-4 w-4 shrink-0" aria-hidden="true" />
           <span>Get Event Updates (Optional)</span>
         </button>
       )}
@@ -241,130 +230,106 @@ export function SubscribeControl({
       <dialog
         ref={dialogRef}
         closedby="any"
-        aria-labelledby="subscribe-dialog-title"
-        className="m-auto w-[min(92vw,32rem)] rounded-2xl border p-0 shadow-2xl"
+        aria-labelledby={titleId}
+        className="w-[calc(100%-2rem)] max-w-md mx-auto my-auto rounded-2xl border p-5 shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm"
         style={{
-          backgroundColor: 'var(--theme-card-bg)',
-          borderColor: 'var(--theme-border)',
-          color: 'var(--theme-text-primary)',
+          backgroundColor: 'var(--theme-surface-bg, #0f172a)',
+          borderColor: 'var(--theme-border, rgba(255,255,255,0.15))',
+          color: 'var(--theme-text-primary, #f8fafc)',
         }}
       >
-        <div className="p-5 sm:p-6 space-y-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2
-                id="subscribe-dialog-title"
-                className="text-xl font-semibold tracking-tight"
-                style={{ fontFamily: 'var(--theme-font-heading)' }}
-              >
-                Get Event Updates (Optional)
-              </h2>
-              <p className="text-sm mt-1" style={{ color: 'var(--theme-text-muted)' }}>
-                Stay in the loop for <span className="font-medium">{eventTitle}</span> — zero
-                accounts required.
-                {subscriberCount > 0 ? ` (${subscriberCount} subscribed)` : ''}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => dialogRef.current?.close()}
-              aria-label="Close updates dialog"
-              className="inline-flex h-11 w-11 min-w-[44px] min-h-[44px] shrink-0 items-center justify-center rounded-full border transition-opacity hover:opacity-80 cursor-pointer"
-              style={{ borderColor: 'var(--theme-border)' }}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2
+              id={titleId}
+              className="text-lg font-semibold leading-snug"
+              style={{
+                fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
+              }}
             >
-              <X className="h-4 w-4" aria-hidden="true" />
-            </button>
+              Event Reminders
+            </h2>
+            <p
+              className="mt-0.5 text-xs truncate"
+              style={{ color: 'var(--theme-text-muted)' }}
+            >
+              {eventTitle} · No account needed
+            </p>
           </div>
 
-          {/* Option A: Browser Push Notifications */}
-          <div
-            className="rounded-xl border p-4 space-y-3"
-            style={{
-              backgroundColor: 'var(--theme-surface-bg)',
-              borderColor: 'var(--theme-border)',
-            }}
+          <button
+            type="button"
+            onClick={closeDialog}
+            aria-label="Close reminders dialog"
+            className="h-8 w-8 rounded-full border flex items-center justify-center shrink-0 opacity-75 hover:opacity-100 cursor-pointer"
+            style={{ borderColor: 'var(--theme-hairline)' }}
           >
-            <div className="flex items-center gap-2 font-semibold text-sm">
-              <BellRing className="h-4 w-4" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-              <span>Browser Push Alerts (Free, Instant)</span>
-            </div>
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
 
-            {vapidPublicKey === undefined ? (
-              <p className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>
-                Checking push availability...
-              </p>
-            ) : !pushSupported ? (
-              <p className="text-xs leading-relaxed" style={{ color: 'var(--theme-text-muted)' }}>
-                Web Push isn&apos;t available in this browser context. Use Email updates or the
-                Calendar reminder below instead.
-              </p>
-            ) : !vapidPublicKey ? (
-              <p className="text-xs leading-relaxed" style={{ color: 'var(--theme-text-muted)' }}>
-                Server push notifications aren&apos;t configured right now. Use Email updates or
-                Calendar reminders below!
-              </p>
-            ) : (
-              <div className="space-y-2.5">
-                <p className="text-xs leading-relaxed" style={{ color: 'var(--theme-text-muted)' }}>
-                  Get notified right in your browser if the time, location, or host notes change.
-                </p>
+        <div className="mt-4 space-y-4">
+          {pushAvailable ? (
+            <div
+              className="rounded-xl border p-3.5 space-y-2"
+              style={{
+                backgroundColor: 'var(--theme-card-bg)',
+                borderColor: 'var(--theme-hairline)',
+              }}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Sparkles
+                    className="h-4 w-4 shrink-0"
+                    style={{ color: 'var(--theme-accent)' }}
+                    aria-hidden="true"
+                  />
+                  <span className="text-sm font-medium truncate">Browser push alerts</span>
+                </div>
                 <button
                   type="button"
                   disabled={pushBusy || pushDone}
                   onClick={() => void handleEnablePush()}
-                  className="invite-on-accent inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold min-h-[48px] transition-opacity hover:opacity-90 disabled:opacity-65 cursor-pointer"
-                  style={{ backgroundColor: 'var(--theme-accent)' }}
+                  className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition disabled:opacity-60 cursor-pointer"
+                  style={{
+                    backgroundColor: 'var(--theme-accent)',
+                    color: 'var(--theme-on-accent)',
+                  }}
                 >
-                  {pushDone ? (
-                    <>
-                      <Check className="h-4 w-4" aria-hidden="true" />
-                      <span>Push Alerts Enabled</span>
-                    </>
-                  ) : (
-                    <>
-                      <Bell className="h-4 w-4" aria-hidden="true" />
-                      <span>{pushBusy ? 'Enabling...' : 'Enable Push Notifications'}</span>
-                    </>
-                  )}
+                  {pushDone ? 'Enabled' : pushBusy ? 'Enabling...' : 'Enable'}
                 </button>
               </div>
-            )}
+              {pushMessage ? (
+                <p className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>
+                  {pushMessage}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
 
-            {pushMessage && (
-              <p className="text-xs font-medium" role="status">
-                {pushMessage}
-              </p>
-            )}
-          </div>
-
-          {/* Option B: Optional Private Email */}
-          <form
-            onSubmit={handleEmailSubmit}
-            className="rounded-xl border p-4 space-y-3"
-            style={{
-              backgroundColor: 'var(--theme-surface-bg)',
-              borderColor: 'var(--theme-border)',
-            }}
-          >
-            <label htmlFor="subscribe-email-input" className="flex items-center gap-2 font-semibold text-sm">
-              <Mail className="h-4 w-4" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-              <span>Email for event updates (optional, kept private)</span>
+          <form onSubmit={handleEmailSubscribe} className="space-y-2">
+            <label
+              htmlFor={emailInputId}
+              className="flex items-center gap-1.5 text-xs font-medium"
+              style={{ color: 'var(--theme-text-muted)' }}
+            >
+              <Mail className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>Email reminders (optional)</span>
             </label>
-            <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex items-center gap-2">
               <input
-                id="subscribe-email-input"
+                id={emailInputId}
                 type="email"
                 required
                 autoComplete="email"
                 value={email}
                 onChange={(e) => {
                   setEmail(e.target.value);
-                  if (emailMessage) setEmailMessage(null);
+                  if (emailDone) setEmailDone(false);
                 }}
                 placeholder="you@example.com"
-                className="flex-1 rounded-xl border px-3.5 py-2.5 min-h-[48px] focus:outline-none focus-visible:ring-2"
+                className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
                 style={{
-                  fontSize: 'max(1rem, 1em)',
                   backgroundColor: 'var(--theme-card-bg)',
                   borderColor: 'var(--theme-border)',
                   color: 'var(--theme-text-primary)',
@@ -372,50 +337,39 @@ export function SubscribeControl({
               />
               <button
                 type="submit"
-                disabled={emailBusy}
-                className="inline-flex items-center justify-center rounded-xl border px-4 py-2.5 text-sm font-semibold min-h-[48px] transition-opacity hover:opacity-85 disabled:opacity-50 cursor-pointer"
+                disabled={emailBusy || !email.trim()}
+                className="shrink-0 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold transition disabled:opacity-50 cursor-pointer inline-flex items-center gap-1.5"
                 style={{
-                  backgroundColor: 'var(--theme-card-bg)',
-                  borderColor: 'var(--theme-border)',
+                  backgroundColor: 'var(--theme-accent)',
+                  color: 'var(--theme-on-accent)',
                 }}
               >
-                {emailBusy ? 'Saving...' : emailDone ? 'Saved ✓' : 'Notify Me'}
+                {emailDone ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : null}
+                <span>{emailDone ? 'Saved' : emailBusy ? '...' : 'Save'}</span>
               </button>
             </div>
-            {emailMessage && (
-              <p className="text-xs font-medium" role="status">
+            {emailMessage ? (
+              <p className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>
                 {emailMessage}
               </p>
-            )}
+            ) : null}
           </form>
 
-          {/* Option C: Calendar Reminder (.ics) */}
-          <div
-            className="rounded-xl border p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-            style={{
-              backgroundColor: 'var(--theme-surface-bg)',
-              borderColor: 'var(--theme-border)',
-            }}
-          >
-            <div className="space-y-0.5">
-              <p className="font-semibold text-sm flex items-center gap-2">
-                <Calendar className="h-4 w-4" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-                <span>Calendar Reminder</span>
-              </p>
-              <p className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>
-                Includes automatic 24-hour &amp; 1-hour native alerts.
-              </p>
-            </div>
+          <div className="pt-2 border-t" style={{ borderColor: 'var(--theme-hairline)' }}>
             <a
-              href={`/api/events/${encodeURIComponent(eventId)}/ics`}
-              download
-              className="inline-flex items-center justify-center rounded-xl border px-4 py-2.5 text-sm font-semibold min-h-[48px] shrink-0 transition-opacity hover:opacity-85"
+              href={`/api/events/${eventId}/ics`}
+              className="flex items-center justify-between gap-2 rounded-xl border px-3.5 py-2.5 text-xs sm:text-sm font-medium transition hover:opacity-90"
               style={{
                 backgroundColor: 'var(--theme-card-bg)',
-                borderColor: 'var(--theme-border)',
+                borderColor: 'var(--theme-hairline)',
+                color: 'var(--theme-text-primary)',
               }}
             >
-              Download .ics
+              <span className="inline-flex items-center gap-2">
+                <Calendar className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>Download Calendar Invite (.ics)</span>
+              </span>
+              <span className="text-xs opacity-60">↓</span>
             </a>
           </div>
         </div>

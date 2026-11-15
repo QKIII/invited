@@ -1,6 +1,7 @@
 import type { AmbientEffectId, FontPairingId, InviteStyleConfig } from '@/types/invite';
 import {
   ensureReadableAccentOnSurface,
+  hexToRgb,
   isValidHex,
   mixHex,
   normalizeHex,
@@ -51,18 +52,18 @@ export const THEME_PRESETS: ThemePreset[] = [
     name: 'Frosty Winter',
     category: 'holiday',
     emoji: '❄️',
-    description: 'Crisp alpine slate with drifting snow and frosted twilight tones.',
+    description: 'Royal winter night blue with soft snowfall bokeh and crisp icy clarity.',
     colorMode: 'dark',
-    pageBg: '#091322',
-    surfaceBg: '#0f1e35',
-    cardBg: '#152846',
-    textPrimary: '#f4f9ff',
-    textMuted: '#aac2e0',
+    pageBg: '#082556',
+    surfaceBg: '#0c316e',
+    cardBg: '#113a7d',
+    textPrimary: '#f8fbff',
+    textMuted: '#bdd5fa',
     accent: '#7dd3fc',
-    border: '#29436b',
-    defaultFontId: 'editorial-serif',
+    border: '#2c5ba8',
+    defaultFontId: 'modern-sans',
     defaultEffectId: 'snowfall',
-    defaultCoverPresetId: 'snowy-pines',
+    defaultCoverPresetId: 'you-are-invited',
   },
   {
     id: 'cozy-christmas',
@@ -503,6 +504,7 @@ export const COVER_PRESETS: Array<{
   category: string;
   emoji: string;
 }> = [
+  { id: 'you-are-invited', name: 'You Are Invited', category: 'Editorial', emoji: '💌' },
   { id: 'aurora-ridge', name: 'Northern Lights Ridge', category: 'Ambient', emoji: '🌌' },
   { id: 'snowy-pines', name: 'Snowy Pine Cabin', category: 'Holiday', emoji: '❄️' },
   { id: 'christmas-evergreen', name: 'Christmas Tree & Ornaments', category: 'Holiday', emoji: '🎄' },
@@ -582,11 +584,20 @@ export function resolveThemeCssVars(style: InviteStyleConfig): Record<string, st
 
   const font =
     FONT_PAIRINGS.find((item) => item.id === style.fontId) ?? FONT_PAIRINGS[0];
+  const glassRgb = hexToRgb(mixHex(cardBg, '#ffffff', 0.05));
+  const glassBg =
+    colorMode === 'light'
+      ? 'rgba(255, 255, 255, 0.86)'
+      : `rgba(${glassRgb.r}, ${glassRgb.g}, ${glassRgb.b}, 0.72)`;
+  const hairline =
+    colorMode === 'light' ? 'rgba(15, 23, 42, 0.11)' : 'rgba(255, 255, 255, 0.14)';
 
   return {
     '--theme-page-bg': pageBg,
     '--theme-surface-bg': surfaceBg,
     '--theme-card-bg': cardBg,
+    '--theme-glass-bg': glassBg,
+    '--theme-hairline': hairline,
     '--theme-text-primary': textPrimary,
     '--theme-text-muted': textMuted,
     '--theme-accent': accent,
