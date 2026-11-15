@@ -1,0 +1,149 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-ui-body), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-studio-mono), ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-ui-body), ui-sans-serif, system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  dialog:modal {
+    overscroll-behavior: contain;
+  }
+
+  dialog::backdrop {
+    overflow: hidden;
+    overscroll-behavior: contain;
+    background-color: rgb(0 0 0 / 0.55);
+    backdrop-filter: blur(4px);
+  }
+
+  [popover]:is(:popover-open, .\:popover-open) {
+    display: block;
+  }
+
+  input:not(input[type="range"]):user-invalid,
+  textarea:user-invalid {
+    border-color: #ef4444;
+  }
+}
+
+.invite-on-accent {
+  color: var(--theme-on-accent, #ffffff);
+}
+
+@supports (color: contrast-color(#000000)) {
+  .invite-on-accent {
+    color: contrast-color(var(--theme-accent, #18181b));
+  }
+}
+
+.invite-prose {
+  text-wrap: pretty;
+  line-height: 1.68;
+  overflow-wrap: break-word;
+}
+
+.invite-prose :is(h1, h2, h3, h4) {
+  text-wrap: balance;
+  font-weight: 600;
+  line-height: 1.25;
+  margin-top: 1.35em;
+  margin-bottom: 0.55em;
+}
+
+.invite-prose :is(h1, h2, h3, h4):first-child {
+  margin-top: 0;
+}
+
+.invite-prose p {
+  margin-block: 0.75em;
+}
+
+.invite-prose p:first-child {
+  margin-top: 0;
+}
+
+.invite-prose p:last-child {
+  margin-bottom: 0;
+}
+
+.invite-prose ul,
+.invite-prose ol {
+  padding-inline-start: 1.45rem;
+  margin-block: 0.85em;
+}
+
+.invite-prose ul {
+  list-style-type: disc;
+}
+
+.invite-prose ol {
+  list-style-type: decimal;
+}
+
+.invite-prose li {
+  margin-block: 0.3em;
+}
+
+.invite-prose blockquote {
+  border-inline-start: 3px solid var(--theme-accent, currentColor);
+  padding-inline-start: 1rem;
+  margin-block: 1em;
+  font-style: italic;
+  opacity: 0.9;
+}
+
+.invite-prose a {
+  color: var(--theme-accent, inherit);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+
+.invite-prose a:hover {
+  opacity: 0.85;
+}
+
+.invite-prose hr {
+  border: 0;
+  border-top: 1px solid currentColor;
+  opacity: 0.2;
+  margin-block: 1.25em;
+}
+
+@media (forced-colors: active) {
+  button,
+  [role="button"],
+  [role="tab"],
+  [role="radio"],
+  [role="option"],
+  .invite-card,
+  .invite-pill,
+  dialog,
+  [popover] {
+    border: 1px solid ButtonBorder;
+  }
+
+  [aria-selected="true"],
+  [aria-pressed="true"],
+  [aria-checked="true"],
+  [data-selected="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}

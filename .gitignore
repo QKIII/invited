@@ -18,3 +18,9 @@ build/
 *.log
 .vercel/
 .firebase/
+
+# Local storage & test coverage
+.data/
+coverage/
+next-env.d.ts
+*.tsbuildinfo
