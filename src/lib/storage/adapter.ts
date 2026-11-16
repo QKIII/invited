@@ -5,6 +5,7 @@ import {
   BlobPreconditionFailedError,
   del,
   get,
+  head,
   list,
   put,
 } from '@vercel/blob';
@@ -163,6 +164,12 @@ export async function putJson<T>(key: string, data: T): Promise<void> {
   await atomicWriteFile(fullPath, serialized);
 }
 
+function normalizeEtag(etag?: string | null): string | undefined {
+  if (!etag) return undefined;
+  const trimmed = etag.trim().replace(/^W\//i, '');
+  return trimmed || undefined;
+}
+
 /**
  * Reads and parses JSON stored at `key` along with its Blob ETag (when available).
  */
@@ -176,6 +183,7 @@ export async function getJsonWithEtag<T>(
       const result = await get(normalized, {
         access: 'private',
         useCache: false,
+        headers: { 'accept-encoding': 'identity' },
       });
       if (!result || result.statusCode === 304 || !result.stream) {
         return { data: null };
@@ -183,7 +191,7 @@ export async function getJsonWithEtag<T>(
       const text = await new Response(result.stream).text();
       return {
         data: JSON.parse(text) as T,
-        etag: result.blob.etag,
+        etag: normalizeEtag(result.blob.etag),
       };
     } catch (err) {
       if (isBlobMissing(err)) {
@@ -248,7 +256,22 @@ export async function updateJsonAtomically<T>(
 
     const MAX_ATTEMPTS = 6;
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
-      const { data, etag } = await getJsonWithEtag<T>(normalized);
+      // On retry after a precondition failure, query head() before get() so
+      // compressed CDN ETags or replication lag cannot trap writes in a 500 loop.
+      let headEtag: string | undefined;
+      if (attempt > 0) {
+        try {
+          const meta = await head(normalized);
+          headEtag = normalizeEtag(meta.etag);
+        } catch (err) {
+          if (!isBlobMissing(err)) {
+            throw err;
+          }
+        }
+      }
+
+      const { data, etag: getEtag } = await getJsonWithEtag<T>(normalized);
+      const effectiveEtag = headEtag ?? getEtag;
       const current = data !== null ? data : structuredClone(defaultValue);
       const next = await mutator(current);
       if (Object.is(next, current)) {
@@ -259,9 +282,9 @@ export async function updateJsonAtomically<T>(
       try {
         await put(normalized, serialized, {
           access: 'private',
-          allowOverwrite: data !== null || Boolean(etag),
+          allowOverwrite: data !== null || Boolean(effectiveEtag),
           addRandomSuffix: false,
-          ...(etag ? { ifMatch: etag } : {}),
+          ...(effectiveEtag ? { ifMatch: effectiveEtag } : {}),
           contentType: 'application/json; charset=utf-8',
         });
         return next;

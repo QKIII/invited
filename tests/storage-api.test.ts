@@ -84,6 +84,26 @@ const blobMock = vi.hoisted(() => ({
       }));
     return { blobs, hasMore: false };
   }),
+  head: vi.fn(async (pathnameOrUrl: string) => {
+    const key = pathnameOrUrl.replace(/^https:\/\/blob\.example\//, '');
+    const item = blobMock.store.get(key);
+    if (!item) {
+      throw Object.assign(new Error('Blob not found'), {
+        name: 'BlobNotFoundError',
+      });
+    }
+    return {
+      url: `https://blob.example/${key}`,
+      downloadUrl: `https://blob.example/${key}?download=1`,
+      pathname: key,
+      size: item.body.length,
+      contentType: item.contentType,
+      contentDisposition: 'inline',
+      cacheControl: 'no-cache',
+      uploadedAt: new Date(),
+      etag: item.etag,
+    };
+  }),
   del: vi.fn(async (target: string | string[]) => {
     const paths = Array.isArray(target) ? target : [target];
     for (const p of paths) {
@@ -98,6 +118,7 @@ vi.mock('@vercel/blob', async (importOriginal) => {
     ...actual,
     put: blobMock.put,
     get: blobMock.get,
+    head: blobMock.head,
     list: blobMock.list,
     del: blobMock.del,
   };
@@ -836,6 +857,7 @@ describe('storage, crypto, sanitizer, calendar & API routes', () => {
     expect(blobMock.get).toHaveBeenCalledWith('events/evt1/meta.json', {
       access: 'private',
       useCache: false,
+      headers: { 'accept-encoding': 'identity' },
     });
     expect(readBack).toEqual({ id: 'evt1', title: 'Hi' });
     expect(await storageGetJson('events/evt1/missing.json')).toBeNull();
@@ -1115,6 +1137,84 @@ describe('storage, crypto, sanitizer, calendar & API routes', () => {
       else process.env.RESEND_API_KEY = prevKey;
       if (prevFrom === undefined) delete process.env.INVITED_FROM_EMAIL;
       else process.env.INVITED_FROM_EMAIL = prevFrom;
+    }
+  });
+
+  it('recovers via head() when compressed >1KB Blob get() returns a mismatched weak ETag', async () => {
+    blobMock.store.clear();
+    blobMock.head.mockClear();
+    blobMock.get.mockClear();
+    process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_test_token';
+    const origGetImpl = blobMock.get.getMockImplementation()!;
+
+    try {
+      const createRes = await createEventRoute(
+        jsonRequest('http://localhost/api/events', 'POST', {
+          title: 'Christmas Breakfast',
+          startIso: '2026-12-05T14:30:00Z',
+          timeZone: 'America/New_York',
+          hostName: 'Ivan',
+        }),
+      );
+      expect(createRes.status).toBe(201);
+      const { id } = (await createRes.json()) as { id: string };
+
+      const longNote = 'Bringing breakfast casserole, muffins, fresh fruit, and coffee for everyone! '.repeat(3);
+      for (const name of ['Guest One', 'Guest Two', 'Guest Three', 'Guest Four']) {
+        const res = await postRsvpRoute(
+          jsonRequest(`http://localhost/api/events/${id}/rsvps`, 'POST', {
+            guestName: name,
+            status: 'yes',
+            plusOnes: 0,
+            bringingNote: longNote,
+            postToWall: false,
+          }),
+          { params: Promise.resolve({ id }) },
+        );
+        expect(res.status).toBe(200);
+      }
+
+      const rsvpBlob = blobMock.store.get(`events/${id}/rsvps.json`);
+      expect(rsvpBlob!.body.length).toBeGreaterThan(1024);
+
+      // Simulate CDN HTTP compression altering get()'s response ETag header while head() holds the canonical origin ETag
+      blobMock.get.mockImplementation(async (pathname: string) => {
+        const res = await origGetImpl(pathname);
+        if (res && pathname.endsWith('/rsvps.json')) {
+          return {
+            ...res,
+            blob: { ...res.blob, etag: `W/"${res.blob.etag}-br"` },
+          };
+        }
+        return res;
+      });
+      blobMock.head.mockClear();
+
+      const fifthRes = await postRsvpRoute(
+        jsonRequest(`http://localhost/api/events/${id}/rsvps`, 'POST', {
+          guestName: 'Guest Five',
+          status: 'yes',
+          plusOnes: 0,
+          postToWall: false,
+        }),
+        { params: Promise.resolve({ id }) },
+      );
+      expect(fifthRes.status).toBe(200);
+      expect(blobMock.head).toHaveBeenCalledWith(`events/${id}/rsvps.json`);
+
+      const getRes = await getEventRoute(
+        new Request(`http://localhost/api/events/${id}`),
+        { params: Promise.resolve({ id }) },
+      );
+      expect(getRes.status).toBe(200);
+      const detail = (await getRes.json()) as {
+        rsvps: { yes: Array<{ guestName: string }>; totalHeadcount: number };
+      };
+      expect(detail.rsvps.yes).toHaveLength(5);
+      expect(detail.rsvps.totalHeadcount).toBe(5);
+    } finally {
+      blobMock.get.mockImplementation(origGetImpl);
+      delete process.env.BLOB_READ_WRITE_TOKEN;
     }
   });
 });
