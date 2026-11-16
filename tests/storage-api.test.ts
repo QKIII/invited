@@ -1228,7 +1228,7 @@ describe('storage, crypto, sanitizer, calendar & API routes', () => {
     process.env.RESEND_API_KEY = 're_test_key_tiers';
     delete process.env.INVITED_FROM_EMAIL;
     process.env.INVITED_REPLY_TO = 'host-reply@example.com';
-    process.env.NEXT_PUBLIC_APP_URL = 'https://invites.ivanw.me';
+    process.env.NEXT_PUBLIC_APP_URL = 'https://invited.ivanw.me';
 
     blobMock.seq = 0;
     blobMock.store.clear();

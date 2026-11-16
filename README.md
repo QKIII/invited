@@ -34,7 +34,7 @@ cp .env.example .env.local
 | `RESEND_API_KEY` | Optional | Resend API key for transactional email confirmations and event updates (3,000 free emails/month). |
 | `INVITED_FROM_EMAIL` | Optional | Verified sender header for outbound email (defaults to `"invited <updates@invites.ivanw.me>"`). |
 | `INVITED_REPLY_TO` | Optional | Optional `Reply-To` address added to outbound Resend notification emails. |
-| `NEXT_PUBLIC_APP_URL` | Optional | Canonical public origin for invite/unsubscribe links (defaults to `https://invites.ivanw.me`). |
+| `NEXT_PUBLIC_APP_URL` | Optional | Canonical public origin for invite/unsubscribe links (defaults to `https://invited.ivanw.me`). |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Optional | Public VAPID key exposed to browser push subscribers (`npx web-push generate-vapid-keys --json`). |
 | `VAPID_PRIVATE_KEY` | Optional | Server-side VAPID private key for sending Web Push notifications. |
 | `VAPID_SUBJECT` | Optional | Contact URI for VAPID claims (defaults to `mailto:hello@invited.app`). |
@@ -48,7 +48,7 @@ To send live RSVP confirmations and event update emails to arbitrary guests:
    ```sh
    RESEND_API_KEY=re_your_api_key
    INVITED_FROM_EMAIL="invited <updates@invites.ivanw.me>"
-   NEXT_PUBLIC_APP_URL=https://invites.ivanw.me
+   NEXT_PUBLIC_APP_URL=https://invited.ivanw.me
    # Optional:
    INVITED_REPLY_TO=host-replies@invites.ivanw.me
    ```
