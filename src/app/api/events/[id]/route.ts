@@ -47,12 +47,27 @@ export async function PATCH(req: Request, context: RouteContext) {
       (typeof body.editKey === 'string' ? body.editKey : null);
 
     const updated = await updateEvent(id, editKey, body);
+    let baseUrl: string | null = null;
+    try {
+      baseUrl = new URL(req.url).origin;
+    } catch {
+      baseUrl = null;
+    }
 
-    await notifyEventSubscribers(id, {
-      title: `Event updated: ${updated.title}`,
-      body: 'The host updated the event details.',
-      url: `/e/${id}`,
-    }).catch(() => {});
+    await notifyEventSubscribers(
+      id,
+      {
+        title: `Event updated: ${updated.title}`,
+        body: 'The host updated the event details.',
+        url: `/e/${id}`,
+      },
+      {
+        includeEmail: true,
+        eventTitle: updated.title,
+        emailSubject: `Updated: ${updated.title}`,
+        baseUrl,
+      },
+    ).catch(() => {});
 
     return NextResponse.json(updated, {
       status: 200,

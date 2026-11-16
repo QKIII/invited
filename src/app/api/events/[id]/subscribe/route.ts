@@ -1,13 +1,26 @@
 import { NextResponse } from 'next/server';
+import {
+  isEmailConfigured,
+  sendSubscriptionConfirmationEmail,
+} from '@/lib/notifications/email';
 import { ValidationError } from '@/lib/storage/errors';
 import {
   addSubscriber,
+  getEventDetail,
   removeSubscriberByTarget,
   type PushSubscriptionPayload,
 } from '@/lib/storage/events';
 import { handleRouteError, readJsonBody } from '@/lib/storage/http';
 
 type RouteContext = { params: Promise<{ id: string }> };
+
+function requestOrigin(req: Request): string | null {
+  try {
+    return new URL(req.url).origin;
+  } catch {
+    return null;
+  }
+}
 
 export async function POST(req: Request, context: RouteContext) {
   try {
@@ -36,13 +49,36 @@ export async function POST(req: Request, context: RouteContext) {
     }
 
     if (inferredKind === 'email' && typeof body.email === 'string') {
+      const normalizedEmail = body.email.trim().toLowerCase();
       const sub = await addSubscriber(id, {
         kind: 'email',
-        email: body.email,
+        email: normalizedEmail,
         label: body.label,
       });
+
+      let emailSent = false;
+      const emailConfigured = isEmailConfigured();
+      if (emailConfigured) {
+        const detail = await getEventDetail(id);
+        if (detail) {
+          const emailRes = await sendSubscriptionConfirmationEmail({
+            to: normalizedEmail,
+            event: detail.event,
+            subId: sub.id,
+            baseUrl: requestOrigin(req),
+          });
+          emailSent = emailRes.sent;
+        }
+      }
+
       return NextResponse.json(
-        { subscribed: true, id: sub.id, kind: sub.kind },
+        {
+          subscribed: true,
+          id: sub.id,
+          kind: sub.kind,
+          emailSent,
+          emailConfigured,
+        },
         { status: 201, headers: { 'Cache-Control': 'no-store' } },
       );
     }

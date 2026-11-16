@@ -85,11 +85,22 @@
     overscroll-behavior: contain;
   }
 
-  dialog::backdrop {
+  dialog:not([data-live-sheet="true"])::backdrop {
     overflow: hidden;
     overscroll-behavior: contain;
-    background-color: rgb(0 0 0 / 0.55);
+    background-color: rgb(0 0 0 / 0.52);
     backdrop-filter: blur(4px);
+    transition-property: background-color, backdrop-filter, display, overlay;
+    transition-duration: 0.24s;
+    transition-timing-function: ease-out;
+    transition-behavior: allow-discrete;
+  }
+
+  dialog[data-live-sheet="true"]::backdrop {
+    overflow: hidden;
+    overscroll-behavior: contain;
+    background-color: transparent !important;
+    backdrop-filter: none !important;
   }
 
   [popover]:is(:popover-open, .\:popover-open) {
@@ -100,6 +111,81 @@
   textarea:user-invalid {
     border-color: #ef4444;
   }
+}
+
+/* Directional top & bottom top-layer choreography using @starting-style and discrete overlay transitions */
+.sheet-from-top,
+.sheet-from-bottom,
+.popover-reveal {
+  opacity: 0;
+  transition-property: opacity, transform, display, overlay;
+  transition-duration: 0.28s;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  transition-behavior: allow-discrete;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sheet-from-top {
+    transform: translate3d(0, -1.5rem, 0) scale(0.985);
+  }
+  .sheet-from-bottom {
+    transform: translate3d(0, 100%, 0);
+  }
+  .popover-reveal {
+    transform: translate3d(0, 0.5rem, 0) scale(0.97);
+  }
+}
+
+:is(
+  .sheet-from-top:is([open], :popover-open, .\:popover-open),
+  .sheet-from-bottom:is([open], :popover-open, .\:popover-open),
+  .popover-reveal:is(:popover-open, .\:popover-open)
+):where(:not([data-closing])) {
+  opacity: 1;
+  @starting-style {
+    opacity: 0;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    transform: translate3d(0, 0, 0) scale(1);
+    @starting-style {
+      transform: var(--sheet-enter-transform, translate3d(0, 100%, 0));
+    }
+  }
+}
+
+.sheet-from-top:is([open], :popover-open, .\:popover-open):where(:not([data-closing])) {
+  --sheet-enter-transform: translate3d(0, -1.5rem, 0) scale(0.985);
+}
+
+.sheet-from-bottom:is([open], :popover-open, .\:popover-open):where(:not([data-closing])) {
+  --sheet-enter-transform: translate3d(0, 100%, 0);
+}
+
+.popover-reveal:is(:popover-open, .\:popover-open):where(:not([data-closing])) {
+  --sheet-enter-transform: translate3d(0, 0.5rem, 0) scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-from-top,
+  .sheet-from-bottom,
+  .popover-reveal {
+    transition-duration: 0.1s;
+  }
+}
+
+/* Frosted Glass Invite Card Surface */
+.invite-glass-card {
+  background-color: var(--theme-card-surface, var(--theme-card-solid, var(--theme-card-bg)));
+  border-color: var(--theme-border);
+  -webkit-backdrop-filter: blur(var(--theme-glass-blur, 24px)) saturate(var(--theme-glass-sat, 175%));
+  backdrop-filter: blur(var(--theme-glass-blur, 24px)) saturate(var(--theme-glass-sat, 175%));
+  box-shadow: var(
+    --theme-card-shadow,
+    0 24px 60px -15px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 0 var(--theme-card-specular, rgba(255, 255, 255, 0.18))
+  );
+  transition: background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
 .invite-on-accent {

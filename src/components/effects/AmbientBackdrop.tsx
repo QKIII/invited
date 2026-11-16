@@ -3,6 +3,11 @@
 import React, { useEffect, useRef } from 'react';
 import type { AmbientEffectId } from '@/types/invite';
 import styles from './AmbientBackdrop.module.css';
+import {
+  initWebGLBackdrop,
+  shouldUse2DParticleLayer,
+  type WebGLBackdropController,
+} from './webglBackdrop';
 
 interface Particle {
   x: number;
@@ -51,6 +56,10 @@ interface ShootingStar {
 
 const POSITION_RE = /\b(?:fixed|absolute|relative|sticky|static)\b/;
 
+function isStaticEffect(effectId: AmbientEffectId): boolean {
+  return effectId === 'none' || effectId === 'static-glow' || effectId === 'static-grain';
+}
+
 function getPalette(effectId: AmbientEffectId, accentColor?: string, isLight?: boolean): string[] {
   const accent = accentColor || '#34d399';
   switch (effectId) {
@@ -61,6 +70,8 @@ function getPalette(effectId: AmbientEffectId, accentColor?: string, isLight?: b
         ? ['#64748b', '#94a3b8', '#38bdf8', accent]
         : ['#bae6fd', '#7dd3fc', '#94a3b8', accent];
     case 'prism-gradient':
+    case 'liquid-chrome':
+    case 'cyber-grid':
       return isLight
         ? ['#ffffff', accent, '#38bdf8', '#f472b6']
         : ['#ffffff', '#e0f2fe', accent, '#fde68a'];
@@ -92,7 +103,6 @@ function getPalette(effectId: AmbientEffectId, accentColor?: string, isLight?: b
       return ['#fbbf24', '#f97316', '#fb7185', '#fde68a', accent];
     case 'aurora':
       return ['#a7f3d0', '#bae6fd', '#e9d5ff', '#ffffff'];
-    case 'none':
     default:
       return [accent];
   }
@@ -179,7 +189,9 @@ function createParticles(
   const countByEffect: Partial<Record<AmbientEffectId, number>> = {
     snowfall: 68,
     'rain-glass': 64,
-    'prism-gradient': 24,
+    'prism-gradient': 20,
+    'liquid-chrome': 18,
+    'cyber-grid': 16,
     'christmas-lights': 42,
     'starlight-radiance': 46,
     'halloween-bats': 16,
@@ -189,8 +201,8 @@ function createParticles(
     'lullaby-stars': 44,
     'floating-hearts': 28,
     'champagne-sparkle': 54,
-    'warm-bokeh': 28,
-    aurora: 34,
+    'warm-bokeh': 26,
+    aurora: 30,
   };
 
   const count = countByEffect[effectId] ?? 0;
@@ -212,7 +224,7 @@ function createParticles(
         color: pick(),
         shape: isDropletOrb ? 'bokeh' : 'raindrop',
       });
-    } else if (effectId === 'prism-gradient') {
+    } else if (effectId === 'prism-gradient' || effectId === 'liquid-chrome' || effectId === 'cyber-grid') {
       const isSoftOrb = i % 3 === 0;
       particles.push({
         x: rand(0, width),
@@ -346,7 +358,6 @@ function createParticles(
         shape: 'confetti',
       });
     } else {
-      // snowfall: bokeh snow orbs + delicate crystalline snowflakes + soft drifting powder
       const mod = i % 7;
       const shape: Particle['shape'] =
         mod === 0 ? 'bokeh' : mod === 3 ? 'crystal' : 'circle';
@@ -394,6 +405,7 @@ const STRING_LIGHT_BULBS = Array.from({ length: 14 }, (_, idx) => {
 
 export function AmbientBackdrop({
   effectId,
+  pageBg,
   accentColor,
   secondaryColor,
   colorMode = 'dark',
@@ -401,22 +413,136 @@ export function AmbientBackdrop({
   className = '',
 }: {
   effectId: AmbientEffectId;
+  pageBg?: string;
   accentColor?: string;
   secondaryColor?: string;
   colorMode?: 'dark' | 'light';
   fixedViewport?: boolean;
   className?: string;
 }): React.JSX.Element {
+  const webglCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const webglControllerRef = useRef<WebGLBackdropController | null>(null);
+
   const isLight = colorMode === 'light';
   const accent = accentColor || (isLight ? '#2c6b4a' : '#34d399');
   const secondary = secondaryColor || accent;
+  const resolvedPageBg = pageBg || (isLight ? '#f4f6f9' : '#08152d');
+  const staticMode = isStaticEffect(effectId);
 
+  // Persistent GPU WebGL shader layer across all animated effect switches (avoids shader recompilation hitch)
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || effectId === 'none') {
+    const glCanvas = webglCanvasRef.current;
+    if (!glCanvas || staticMode) {
+      webglControllerRef.current?.destroy();
+      webglControllerRef.current = null;
       return;
     }
+
+    const mediaQuery =
+      typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+        ? window.matchMedia('(prefers-reduced-motion: reduce)')
+        : null;
+
+    let reducedMotion = mediaQuery?.matches ?? false;
+    let isDocumentHidden = typeof document !== 'undefined' ? document.hidden : false;
+    let width = glCanvas.parentElement?.clientWidth || window.innerWidth || 960;
+    let height = glCanvas.parentElement?.clientHeight || window.innerHeight || 640;
+
+    if (!webglControllerRef.current) {
+      const controller = initWebGLBackdrop(glCanvas, {
+        bgHex: resolvedPageBg,
+        accentHex: accent,
+        secondaryHex: secondary,
+        isLight,
+        effectId,
+        reducedMotion,
+      });
+      webglControllerRef.current = controller;
+      controller?.resize(width, height);
+    } else {
+      webglControllerRef.current.updateParams({
+        bgHex: resolvedPageBg,
+        accentHex: accent,
+        secondaryHex: secondary,
+        isLight,
+        effectId,
+        reducedMotion,
+      });
+    }
+
+    const controller = webglControllerRef.current;
+    if (!controller) return;
+
+    const handleResize = () => {
+      const nextWidth = glCanvas.parentElement?.clientWidth || window.innerWidth || 960;
+      const nextHeight = glCanvas.parentElement?.clientHeight || window.innerHeight || 640;
+      if (Math.abs(nextWidth - width) < 2 && Math.abs(nextHeight - height) < 140) {
+        return;
+      }
+      width = Math.max(1, nextWidth);
+      height = Math.max(1, nextHeight);
+      controller.resize(width, height);
+    };
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && glCanvas.parentElement) {
+      ro = new ResizeObserver(handleResize);
+      ro.observe(glCanvas.parentElement);
+    } else {
+      window.addEventListener('resize', handleResize);
+    }
+
+    const handleVisibility = () => {
+      isDocumentHidden = document.hidden;
+      if (isDocumentHidden) controller.pause();
+      else controller.resume();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    const handleMotion = (e: MediaQueryListEvent) => {
+      reducedMotion = e.matches;
+      controller.updateParams({
+        bgHex: resolvedPageBg,
+        accentHex: accent,
+        secondaryHex: secondary,
+        isLight,
+        effectId,
+        reducedMotion,
+      });
+    };
+    mediaQuery?.addEventListener('change', handleMotion);
+
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', handleResize);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      mediaQuery?.removeEventListener('change', handleMotion);
+    };
+  }, [effectId, resolvedPageBg, accent, secondary, isLight, staticMode]);
+
+  useEffect(() => {
+    return () => {
+      webglControllerRef.current?.destroy();
+      webglControllerRef.current = null;
+    };
+  }, []);
+
+  // 2D Particle foreground canvas (active for particle effects, and automatically active as fallback if WebGL is unavailable)
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || staticMode) {
+      return;
+    }
+
+    const needsParticles =
+      shouldUse2DParticleLayer(effectId) || webglControllerRef.current === null;
+    if (!needsParticles) {
+      const ctx = canvas.getContext('2d');
+      ctx?.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
+
     const ctx = canvas.getContext('2d');
     if (!ctx) {
       return;
@@ -467,7 +593,6 @@ export function AmbientBackdrop({
       const nextWidth = parent?.clientWidth || window.innerWidth || 960;
       const nextHeight = parent?.clientHeight || window.innerHeight || 640;
 
-      // Ignore minor vertical chrome/address-bar transitions on mobile scroll so animations never flash or reset
       if (
         initialized &&
         !force &&
@@ -747,7 +872,7 @@ export function AmbientBackdrop({
       document.removeEventListener('visibilitychange', onVisibilityChange);
       mediaQuery?.removeEventListener('change', onMotionChange);
     };
-  }, [effectId, accent, isLight]);
+  }, [effectId, accent, isLight, staticMode]);
 
   const hasPosition = fixedViewport || POSITION_RE.test(className);
   const positioningClass = fixedViewport
@@ -764,127 +889,85 @@ export function AmbientBackdrop({
       data-effect-id={effectId}
       style={fixedViewport ? { backgroundColor: 'var(--theme-page-bg)' } : undefined}
     >
-      {/* Rich multi-layer atmospheric radial wash */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background: isLight
-            ? `radial-gradient(ellipse 90% 60% at 50% 0%, ${accent}22, transparent 70%), radial-gradient(ellipse 75% 50% at 85% 95%, ${secondary}18, transparent 70%)`
-            : `radial-gradient(ellipse 95% 65% at 50% 0%, ${accent}34, transparent 72%), radial-gradient(ellipse 80% 55% at 85% 95%, ${secondary}28, transparent 75%)`,
-        }}
-      />
+      {/* WebGL Shader Layer */}
+      {!staticMode ? (
+        <canvas
+          ref={webglCanvasRef}
+          data-webgl-backdrop="true"
+          className="absolute inset-0 h-full w-full"
+        />
+      ) : null}
 
-      {/* Fluid Color Wave Mesh (prism-gradient) */}
-      {effectId === 'prism-gradient' && (
-        <div className="absolute inset-0">
+      {/* Atmospheric gradient wash fallback + Static Glow */}
+      {effectId !== 'none' ? (
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              effectId === 'static-glow'
+                ? isLight
+                  ? `radial-gradient(ellipse 92% 62% at 22% 8%, ${accent}38, transparent 68%), radial-gradient(ellipse 84% 58% at 86% 90%, ${secondary}32, transparent 70%)`
+                  : `radial-gradient(ellipse 92% 62% at 22% 8%, ${accent}55, transparent 68%), radial-gradient(ellipse 84% 58% at 86% 90%, ${secondary}48, transparent 70%)`
+                : isLight
+                  ? `radial-gradient(ellipse 90% 60% at 50% 0%, ${accent}20, transparent 70%), radial-gradient(ellipse 75% 50% at 85% 95%, ${secondary}16, transparent 70%)`
+                  : `radial-gradient(ellipse 95% 65% at 50% 0%, ${accent}28, transparent 72%), radial-gradient(ellipse 80% 55% at 85% 95%, ${secondary}22, transparent 75%)`,
+          }}
+        />
+      ) : null}
+
+      {/* Static Paper Grain texture */}
+      {effectId === 'static-grain' && (
+        <div className={`absolute inset-0 ${styles.paperGrainOverlay}`} />
+      )}
+
+      {/* CSS atmospheric ribbons (soft complement + instant SSR first paint) */}
+      {(effectId === 'prism-gradient' || effectId === 'liquid-chrome') && (
+        <div className="absolute inset-0 opacity-60">
           <div
             className={`${styles.prismOrbA} absolute -top-[18%] -left-[12%] h-[68%] w-[85%] rounded-full blur-3xl`}
             style={{
               background: isLight
-                ? `radial-gradient(circle, ${accent}36 0%, #38bdf826 55%, transparent 78%)`
-                : `radial-gradient(circle, ${accent}66 0%, #38bdf838 55%, transparent 78%)`,
+                ? `radial-gradient(circle, ${accent}30 0%, #38bdf822 55%, transparent 78%)`
+                : `radial-gradient(circle, ${accent}4a 0%, #38bdf832 55%, transparent 78%)`,
             }}
           />
           <div
             className={`${styles.prismOrbB} absolute top-[18%] -right-[16%] h-[72%] w-[88%] rounded-full blur-3xl`}
             style={{
               background: isLight
-                ? `radial-gradient(circle, ${secondary}32 0%, #f472b624 55%, transparent 78%)`
-                : `radial-gradient(circle, ${secondary}5c 0%, #ec48993a 55%, transparent 78%)`,
-            }}
-          />
-          <div
-            className={`${styles.prismOrbC} absolute -bottom-[22%] left-[8%] h-[64%] w-[78%] rounded-full blur-3xl`}
-            style={{
-              background: isLight
-                ? `radial-gradient(circle, #fde68a28 0%, ${accent}22 50%, transparent 75%)`
-                : `radial-gradient(circle, #6366f14a 0%, ${accent}34 55%, transparent 76%)`,
-            }}
-          />
-          <div
-            className={`${styles.prismOrbD} absolute top-[40%] left-[20%] h-[46%] w-[60%] rounded-full blur-3xl`}
-            style={{
-              background: isLight
-                ? `radial-gradient(circle, #38bdf820 0%, transparent 70%)`
-                : `radial-gradient(circle, #fbbf2424 0%, transparent 72%)`,
+                ? `radial-gradient(circle, ${secondary}2c 0%, #f472b620 55%, transparent 78%)`
+                : `radial-gradient(circle, ${secondary}48 0%, #ec489932 55%, transparent 78%)`,
             }}
           />
         </div>
       )}
 
-      {/* Rain on glass atmospheric mist */}
-      {effectId === 'rain-glass' && (
-        <div className="absolute inset-0">
-          <div
-            className={`${styles.mistLayer} absolute -top-[10%] left-[-10%] h-[55%] w-[120%] rounded-full blur-3xl`}
-            style={{
-              background: isLight
-                ? `linear-gradient(180deg, ${accent}20 0%, #bae6fd24 55%, transparent 100%)`
-                : `linear-gradient(180deg, ${accent}32 0%, #0284c728 55%, transparent 100%)`,
-            }}
-          />
-        </div>
-      )}
-
-      {/* Aurora Borealis ribbons */}
       {effectId === 'aurora' && (
-        <div className="absolute inset-0">
+        <div className="absolute inset-0 opacity-55">
           <div
             className={`${styles.auroraRibbonA} absolute -top-1/4 -left-1/4 h-[72%] w-[125%] rounded-full blur-3xl`}
             style={{
               background: isLight
-                ? `linear-gradient(125deg, ${accent}28 0%, #38bdf824 48%, #a855f71c 100%)`
-                : `linear-gradient(125deg, ${accent}58 0%, #22d3ee48 48%, #a855f742 100%)`,
-            }}
-          />
-          <div
-            className={`${styles.auroraRibbonB} absolute top-[10%] -right-1/4 h-[62%] w-[115%] rounded-full blur-3xl`}
-            style={{
-              background: isLight
-                ? `linear-gradient(235deg, #a855f71c 0%, ${accent}22 55%, #38bdf818 100%)`
-                : `linear-gradient(235deg, #c084fc4a 0%, ${accent}3d 55%, #06b6d438 100%)`,
-            }}
-          />
-          <div
-            className={`${styles.auroraRibbonC} absolute bottom-[-20%] left-[10%] h-[54%] w-[85%] rounded-full blur-3xl`}
-            style={{
-              background: isLight
-                ? `radial-gradient(circle, ${accent}18 0%, transparent 70%)`
-                : `radial-gradient(circle, ${accent}32 0%, #3b82f624 45%, transparent 75%)`,
+                ? `linear-gradient(125deg, ${accent}22 0%, #38bdf820 48%, #a855f716 100%)`
+                : `linear-gradient(125deg, ${accent}42 0%, #22d3ee36 48%, #a855f730 100%)`,
             }}
           />
         </div>
       )}
 
-      {/* Sacred Star of Bethlehem radiating beams */}
       {effectId === 'starlight-radiance' && (
         <div className="absolute inset-0">
           <div
             className={`${styles.starlightBeam} absolute -top-24 left-1/2 h-[520px] w-[520px] -translate-x-1/2 rounded-full blur-3xl`}
             style={{
               background: isLight
-                ? 'radial-gradient(circle, rgba(245, 196, 81, 0.28) 0%, transparent 70%)'
-                : 'radial-gradient(circle, rgba(245, 196, 81, 0.38) 0%, rgba(251, 191, 36, 0.14) 44%, transparent 74%)',
+                ? 'radial-gradient(circle, rgba(245, 196, 81, 0.24) 0%, transparent 70%)'
+                : 'radial-gradient(circle, rgba(245, 196, 81, 0.32) 0%, rgba(251, 191, 36, 0.12) 44%, transparent 74%)',
             }}
           />
         </div>
       )}
 
-      {/* Halloween twilight mist */}
-      {effectId === 'halloween-bats' && (
-        <div className="absolute inset-0">
-          <div
-            className={`${styles.mistLayer} absolute bottom-0 -left-1/4 h-1/2 w-[150%] blur-3xl`}
-            style={{
-              background: isLight
-                ? 'radial-gradient(ellipse at 50% 100%, rgba(126, 34, 206, 0.14), transparent 70%)'
-                : 'radial-gradient(ellipse at 50% 100%, rgba(168, 85, 247, 0.24), rgba(251, 146, 60, 0.12) 45%, transparent 74%)',
-            }}
-          />
-        </div>
-      )}
-
-      {/* Festive Christmas string lights along top edge */}
       {effectId === 'christmas-lights' && (
         <svg
           className="absolute top-0 left-0 h-16 w-full opacity-85"
@@ -906,10 +989,10 @@ export function AmbientBackdrop({
         </svg>
       )}
 
-      {/* GPU Canvas particles */}
-      {effectId !== 'none' && (
+      {/* 2D Particle / Fallback Canvas */}
+      {!staticMode ? (
         <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
-      )}
+      ) : null}
     </div>
   );
 }

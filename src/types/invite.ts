@@ -3,6 +3,8 @@ export type RsvpStatus = 'yes' | 'no'; // STRICTLY binary — never 'maybe'
 export type AmbientEffectId =
   | 'aurora'
   | 'prism-gradient'
+  | 'liquid-chrome'
+  | 'cyber-grid'
   | 'snowfall'
   | 'rain-glass'
   | 'christmas-lights'
@@ -16,6 +18,8 @@ export type AmbientEffectId =
   | 'floating-hearts'
   | 'champagne-sparkle'
   | 'warm-bokeh'
+  | 'static-glow'
+  | 'static-grain'
   | 'none';
 
 export type FontPairingId =
@@ -24,11 +28,14 @@ export type FontPairingId =
   | 'expressive-display'
   | 'sacred-classic'
   | 'playful-rounded'
-  | 'studio-mono';
+  | 'studio-mono'
+  | 'y2k-display';
 
 export type CoverLayout = 'square' | 'banner' | 'none';
 
 export type CtaStyleMode = 'gradient' | 'solid';
+
+export type CardSurfaceStyle = 'glass' | 'clear' | 'solid' | 'y2k';
 
 export interface InviteStyleConfig {
   themeId: string;
@@ -37,6 +44,7 @@ export interface InviteStyleConfig {
   coverPresetId: string;
   customCoverUrl?: string;
   coverLayout: CoverLayout;
+  cardStyle?: CardSurfaceStyle;
   customSurfaceHex?: string;
   customAccentHex?: string;
   customCtaEndHex?: string;

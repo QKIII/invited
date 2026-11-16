@@ -77,10 +77,12 @@ describe('WCAG 2.1 contrast utilities', () => {
 });
 
 describe('curated themes, fonts, effects, and covers', () => {
-  it('includes 18 curated presets covering ambient, holiday, milestone, and editorial', () => {
-    expect(THEME_PRESETS.length).toBeGreaterThanOrEqual(18);
+  it('includes 22 curated presets covering expressive, ambient, holiday, milestone, and editorial', () => {
+    expect(THEME_PRESETS.length).toBeGreaterThanOrEqual(22);
     const categories = new Set(THEME_PRESETS.map((p) => p.category));
-    expect(categories).toEqual(new Set(['ambient', 'holiday', 'milestone', 'editorial']));
+    expect(categories).toEqual(
+      new Set(['expressive', 'ambient', 'holiday', 'milestone', 'editorial']),
+    );
   });
 
   it('guarantees WCAG AA >= 4.5 contrast on textPrimary and readable accents across EVERY preset', () => {
@@ -109,7 +111,7 @@ describe('curated themes, fonts, effects, and covers', () => {
     }
   });
 
-  it('covers all 6 font pairings, 16 ambient effects, and 40 curated covers across 5 mediums', () => {
+  it('covers all 7 font pairings, 20 animated/static backgrounds, and 40 curated covers across 5 mediums', () => {
     const expectedFonts: FontPairingId[] = [
       'editorial-serif',
       'modern-sans',
@@ -117,12 +119,15 @@ describe('curated themes, fonts, effects, and covers', () => {
       'sacred-classic',
       'playful-rounded',
       'studio-mono',
+      'y2k-display',
     ];
     expect(FONT_PAIRINGS.map((f) => f.id)).toEqual(expectedFonts);
 
     const expectedEffects: AmbientEffectId[] = [
       'prism-gradient',
       'aurora',
+      'liquid-chrome',
+      'cyber-grid',
       'snowfall',
       'rain-glass',
       'christmas-lights',
@@ -136,9 +141,13 @@ describe('curated themes, fonts, effects, and covers', () => {
       'floating-hearts',
       'champagne-sparkle',
       'halloween-bats',
+      'static-glow',
+      'static-grain',
       'none',
     ];
     expect(EFFECT_OPTIONS.map((e) => e.id)).toEqual(expectedEffects);
+    expect(EFFECT_OPTIONS.filter((e) => e.animated)).toHaveLength(17);
+    expect(EFFECT_OPTIONS.filter((e) => !e.animated)).toHaveLength(3);
 
     expect(COVER_PRESETS).toHaveLength(40);
     expect(COVER_PRESETS.filter((c) => c.styleGroup === 'hand-drawn')).toHaveLength(8);
@@ -449,7 +458,6 @@ describe('deterministic NLP event prompt parser', () => {
     );
     expect(withNote.locationName).toBe('Mt. Olive Chapel');
     expect(withNote.hostName).toBe('Rev. Thomas');
-    expect(withNote.descriptionHtml).toContain('Note from the host:');
     expect(withNote.descriptionHtml).toContain('Candles provided!');
   });
 
@@ -459,7 +467,6 @@ describe('deterministic NLP event prompt parser', () => {
       const parsed = parseEventPrompt(sample.prompt, REF_DATE, NY_TZ);
       expect(parsed.title.length).toBeGreaterThan(2);
       expect(Date.parse(parsed.startIso)).not.toBeNaN();
-      expect(parsed.descriptionHtml).toContain('<p>');
       expect(parsed.rsvpNotePrompt.length).toBeGreaterThan(5);
     }
   });
@@ -527,7 +534,18 @@ describe('AmbientBackdrop and CoverArt components', () => {
     expect(wrapper.getAttribute('aria-hidden')).toBe('true');
     expect(wrapper.className).toContain('pointer-events-none');
     expect(wrapper.dataset.effectId).toBe('aurora');
+    expect(wrapper.querySelector('canvas[data-webgl-backdrop="true"]')).not.toBeNull();
     expect(getContextSpy).toHaveBeenCalled();
+
+    act(() => {
+      root.render(
+        React.createElement(AmbientBackdrop, {
+          effectId: 'static-glow',
+          colorMode: 'light',
+        }),
+      );
+    });
+    expect(wrapper.querySelector('canvas')).toBeNull();
 
     act(() => {
       root.render(
@@ -678,7 +696,7 @@ describe('AmbientBackdrop and CoverArt components', () => {
       resizeCallback?.();
     });
 
-    const canvas = container.querySelector('canvas')!;
+    const canvas = container.querySelectorAll('canvas')[1] ?? container.querySelector('canvas')!;
     const setTransformCallsAfterBaseline = (fakeCtx.setTransform as ReturnType<typeof vi.fn>).mock.calls.length;
     expect(canvas.height).toBeGreaterThan(0);
 

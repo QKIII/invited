@@ -1319,20 +1319,9 @@ export function parseEventPrompt(
     fallbackTitle,
   );
 
-  // 6. Build occasion-tailored HTML description & RSVP note prompt.
+  // 6. Preserve only an explicit user note (never inject synthetic AI boilerplate descriptions).
   const detectedOccasionLabel = occasionRule?.label ?? 'Evening Gathering';
-  const descriptionHtml = occasionRule
-    ? occasionRule.buildDescription({
-        title,
-        location: locationResult.locationName,
-        extraNote,
-      })
-    : [
-        `<p>You're invited to <strong>${escapeHtml(title)}</strong> — let us know if you can make it!</p>`,
-        extraNote ? `<p>${escapeHtml(extraNote)}</p>` : '',
-      ]
-        .filter(Boolean)
-        .join('');
+  const descriptionHtml = extraNote ? `<p>${escapeHtml(extraNote)}</p>` : '';
 
   const rsvpNotePrompt =
     occasionRule?.rsvpNotePrompt ?? 'Bringing a dish, drink, or quick note for the host?';
@@ -1344,6 +1333,7 @@ export function parseEventPrompt(
     coverPresetId: themePreset.defaultCoverPresetId,
     coverLayout: occasionRule?.coverLayout ?? 'banner',
     colorMode: themePreset.colorMode,
+    ...(themePreset.defaultCardStyle ? { cardStyle: themePreset.defaultCardStyle } : {}),
   };
 
   const confidenceChips: Array<{ icon: string; label: string; value: string }> = [

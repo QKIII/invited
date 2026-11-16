@@ -23,6 +23,7 @@ import {
 import { validateCoverImage } from '@/lib/storage/media';
 import type {
   AmbientEffectId,
+  CardSurfaceStyle,
   CommentRecord,
   CoverLayout,
   CtaStyleMode,
@@ -52,11 +53,14 @@ const VALID_FONT_IDS = new Set<FontPairingId>([
   'sacred-classic',
   'playful-rounded',
   'studio-mono',
+  'y2k-display',
 ]);
 
 const VALID_EFFECT_IDS = new Set<AmbientEffectId>([
   'aurora',
   'prism-gradient',
+  'liquid-chrome',
+  'cyber-grid',
   'snowfall',
   'rain-glass',
   'christmas-lights',
@@ -70,10 +74,13 @@ const VALID_EFFECT_IDS = new Set<AmbientEffectId>([
   'floating-hearts',
   'champagne-sparkle',
   'warm-bokeh',
+  'static-glow',
+  'static-grain',
   'none',
 ]);
 
 const VALID_COVER_LAYOUTS = new Set<CoverLayout>(['square', 'banner', 'none']);
+const VALID_CARD_STYLES = new Set<CardSurfaceStyle>(['glass', 'clear', 'solid', 'y2k']);
 
 const SAFE_ID_RE = /^[a-zA-Z0-9_-]{1,80}$/;
 const HEX_COLOR_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -382,12 +389,20 @@ function normalizeStyle(
         ? undefined
         : base.colorMode;
 
+  const cardStyle =
+    incoming.cardStyle && VALID_CARD_STYLES.has(incoming.cardStyle)
+      ? incoming.cardStyle
+      : isFullStyleReplacement
+        ? undefined
+        : base.cardStyle;
+
   return {
     themeId,
     fontId,
     effectId,
     coverPresetId,
     coverLayout,
+    ...(cardStyle ? { cardStyle } : {}),
     ...(customCoverUrl ? { customCoverUrl } : {}),
     ...(customSurfaceHex ? { customSurfaceHex } : {}),
     ...(customAccentHex ? { customAccentHex } : {}),

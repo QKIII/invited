@@ -7,6 +7,7 @@ import {
   Nunito,
   Plus_Jakarta_Sans,
   Space_Mono,
+  Syne,
 } from "next/font/google";
 import { PolyfillBootstrap } from "@/components/PolyfillBootstrap";
 import "./globals.css";
@@ -48,6 +49,13 @@ const studioMono = Space_Mono({
   weight: ["400", "700"],
   style: ["normal", "italic"],
   variable: "--font-studio-mono",
+  display: "swap",
+});
+
+const y2kDisplay = Syne({
+  subsets: ["latin"],
+  weight: ["600", "700", "800"],
+  variable: "--font-y2k-display",
   display: "swap",
 });
 
@@ -95,6 +103,7 @@ export default function RootLayout({
     sacredClassic.variable,
     playfulRounded.variable,
     studioMono.variable,
+    y2kDisplay.variable,
     uiBody.variable,
   ].join(" ");
 

@@ -38,9 +38,8 @@ export function GuestList({
     return (
       <section
         aria-labelledby={headingId}
-        className="rounded-3xl border shadow-xl p-5 sm:p-6 space-y-3"
+        className="invite-glass-card rounded-3xl border p-5 sm:p-6 space-y-3"
         style={{
-          backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
           borderColor: 'var(--theme-border)',
         }}
       >
@@ -91,9 +90,8 @@ export function GuestList({
   return (
     <section
       aria-labelledby={headingId}
-      className="rounded-3xl border shadow-xl p-5 sm:p-6 space-y-3.5"
+      className="invite-glass-card rounded-3xl border p-5 sm:p-6 space-y-3.5"
       style={{
-        backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
         borderColor: 'var(--theme-border)',
       }}
     >

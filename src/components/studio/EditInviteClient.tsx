@@ -284,6 +284,7 @@ export function EditInviteClient({
       <AmbientBackdrop
         fixedViewport
         effectId={effectiveStyle.effectId}
+        pageBg={themeVars['--theme-page-bg']}
         accentColor={themeVars['--theme-accent']}
         secondaryColor={themeVars['--theme-cta-end']}
         colorMode={backdropMode}
@@ -386,9 +387,8 @@ export function EditInviteClient({
 
         {detail && activeTab === 'manage' ? (
           <div
-            className="rounded-3xl border shadow-2xl p-5 sm:p-6"
+            className="invite-glass-card rounded-3xl border p-5 sm:p-6"
             style={{
-              backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
               borderColor: 'var(--theme-border)',
               color: 'var(--theme-text-primary)',
             }}

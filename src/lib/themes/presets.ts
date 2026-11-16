@@ -1,5 +1,10 @@
 import type { InviteIconName } from '@/components/icons/InviteIcons';
-import type { AmbientEffectId, FontPairingId, InviteStyleConfig } from '@/types/invite';
+import type {
+  AmbientEffectId,
+  CardSurfaceStyle,
+  FontPairingId,
+  InviteStyleConfig,
+} from '@/types/invite';
 import {
   ensureReadableAccentOnSurface,
   hexToRgb,
@@ -21,7 +26,7 @@ export type CoverStyleGroup =
 export interface ThemePreset {
   id: string;
   name: string;
-  category: 'ambient' | 'holiday' | 'milestone' | 'editorial';
+  category: 'expressive' | 'ambient' | 'holiday' | 'milestone' | 'editorial';
   icon: InviteIconName;
   description: string;
   colorMode: 'dark' | 'light';
@@ -37,6 +42,7 @@ export interface ThemePreset {
   defaultFontId: FontPairingId;
   defaultEffectId: AmbientEffectId;
   defaultCoverPresetId: string;
+  defaultCardStyle?: CardSurfaceStyle;
 }
 
 export const THEME_PRESETS: ThemePreset[] = [
@@ -399,6 +405,91 @@ export const THEME_PRESETS: ThemePreset[] = [
     defaultFontId: 'modern-sans',
     defaultEffectId: 'prism-gradient',
     defaultCoverPresetId: 'handdrawn-pizza-games',
+    defaultCardStyle: 'glass',
+  },
+  {
+    id: 'y2k-chrome',
+    name: 'Y2K Chrome',
+    category: 'expressive',
+    icon: 'champagne',
+    description: 'Iridescent chrome waves, neon pink, and electric blue glass.',
+    colorMode: 'dark',
+    pageBg: '#0b0624',
+    surfaceBg: '#160d3d',
+    cardBg: '#1d124d',
+    textPrimary: '#fdf4ff',
+    textMuted: '#e2c5ff',
+    accent: '#ff5ce1',
+    ctaStart: '#ff3cac',
+    ctaEnd: '#00d2ff',
+    border: '#7c5cff',
+    defaultFontId: 'y2k-display',
+    defaultEffectId: 'liquid-chrome',
+    defaultCoverPresetId: 'vector-starburst-night',
+    defaultCardStyle: 'y2k',
+  },
+  {
+    id: 'neon-arcade',
+    name: 'Cyber Glow',
+    category: 'expressive',
+    icon: 'firework',
+    description: 'High-contrast synth grid and lime-cyan glass for parties.',
+    colorMode: 'dark',
+    pageBg: '#040914',
+    surfaceBg: '#0a1324',
+    cardBg: '#0f1b33',
+    textPrimary: '#f0fdf4',
+    textMuted: '#a8bbd4',
+    accent: '#a3e635',
+    ctaStart: '#84cc16',
+    ctaEnd: '#06b6d4',
+    border: '#2563eb',
+    defaultFontId: 'y2k-display',
+    defaultEffectId: 'cyber-grid',
+    defaultCoverPresetId: 'vector-mountain-moon',
+    defaultCardStyle: 'clear',
+  },
+  {
+    id: 'sunset-disco',
+    name: 'Sunset Club',
+    category: 'expressive',
+    icon: 'sun',
+    description: 'Warm tangerine and magenta mesh over translucent plum glass.',
+    colorMode: 'dark',
+    pageBg: '#1c0817',
+    surfaceBg: '#2b0d24',
+    cardBg: '#38122f',
+    textPrimary: '#fff1f2',
+    textMuted: '#fbcfe8',
+    accent: '#fb923c',
+    ctaStart: '#f97316',
+    ctaEnd: '#ec4899',
+    border: '#7a2962',
+    defaultFontId: 'expressive-display',
+    defaultEffectId: 'prism-gradient',
+    defaultCoverPresetId: 'vector-paper-cutouts',
+    defaultCardStyle: 'glass',
+  },
+  {
+    id: 'risograph-zine',
+    name: 'Indie Zine',
+    category: 'expressive',
+    icon: 'arch',
+    description: 'Cream paper grain with bold cobalt and crimson print ink.',
+    colorMode: 'light',
+    pageBg: '#efe6d5',
+    surfaceBg: '#f7f1e6',
+    cardBg: '#fcf9f2',
+    textPrimary: '#172554',
+    textMuted: '#3b4f7c',
+    accent: '#dc2626',
+    ctaStart: '#1d4ed8',
+    ctaEnd: '#dc2626',
+    border: '#1d4ed8',
+    defaultFontId: 'studio-mono',
+    defaultEffectId: 'static-grain',
+    defaultCoverPresetId: 'pattern-retro-checker',
+    defaultCardStyle: 'solid',
   },
 ];
 
@@ -468,129 +559,44 @@ export const FONT_PAIRINGS: Array<{
     headingVar: 'var(--font-studio-mono), ui-monospace, SFMono-Regular, monospace',
     bodyVar: 'var(--font-ui-body), system-ui, -apple-system, sans-serif',
   },
+  {
+    id: 'y2k-display',
+    name: 'Bold Display',
+    sample: 'Y2K ROOFTOP AFTERPARTY',
+    headingVar: 'var(--font-y2k-display), var(--font-modern-sans), sans-serif',
+    bodyVar: 'var(--font-ui-body), system-ui, -apple-system, sans-serif',
+  },
 ];
 
-export type EffectCategory = 'gradient' | 'weather' | 'lights' | 'particles' | 'still';
+export type EffectCategory = 'animated' | 'static';
 
 export const EFFECT_OPTIONS: Array<{
   id: AmbientEffectId;
   name: string;
+  animated: boolean;
   category: EffectCategory;
   icon: InviteIconName;
-  description: string;
 }> = [
-  {
-    id: 'prism-gradient',
-    name: 'Color wave',
-    category: 'gradient',
-    icon: 'wave',
-    description: 'Slow glowing washes of your theme colors.',
-  },
-  {
-    id: 'aurora',
-    name: 'Northern lights',
-    category: 'gradient',
-    icon: 'aurora',
-    description: 'Green and sky ribbons drifting across the night.',
-  },
-  {
-    id: 'snowfall',
-    name: 'Snowfall',
-    category: 'weather',
-    icon: 'snowflake',
-    description: 'Soft bokeh snow and fine winter flakes.',
-  },
-  {
-    id: 'rain-glass',
-    name: 'Gentle rain',
-    category: 'weather',
-    icon: 'rain',
-    description: 'Soft evening rain streaks with cozy mist.',
-  },
-  {
-    id: 'christmas-lights',
-    name: 'String lights',
-    category: 'lights',
-    icon: 'pine',
-    description: 'Warm twinkling bulbs and soft gold shimmer.',
-  },
-  {
-    id: 'starlight-radiance',
-    name: 'Starlight',
-    category: 'lights',
-    icon: 'star',
-    description: 'Golden starlight beams and occasional shooting stars.',
-  },
-  {
-    id: 'warm-bokeh',
-    name: 'Candle glow',
-    category: 'lights',
-    icon: 'candle',
-    description: 'Large soft amber circles drifting behind the card.',
-  },
-  {
-    id: 'lullaby-stars',
-    name: 'Night sky',
-    category: 'lights',
-    icon: 'cloud',
-    description: 'Quiet twinkling stars across the sky.',
-  },
-  {
-    id: 'fireworks',
-    name: 'Fireworks',
-    category: 'particles',
-    icon: 'firework',
-    description: 'Colorful celebratory bursts against the dark sky.',
-  },
-  {
-    id: 'confetti',
-    name: 'Confetti',
-    category: 'particles',
-    icon: 'confetti',
-    description: 'Bright celebration confetti floating downward.',
-  },
-  {
-    id: 'botanical-petals',
-    name: 'Floating petals',
-    category: 'particles',
-    icon: 'tulip',
-    description: 'Soft pastel flower petals drifting gently.',
-  },
-  {
-    id: 'autumn-leaves',
-    name: 'Falling leaves',
-    category: 'particles',
-    icon: 'leaf',
-    description: 'Warm amber leaves tumbling in a breeze.',
-  },
-  {
-    id: 'floating-hearts',
-    name: 'Floating hearts',
-    category: 'particles',
-    icon: 'heart',
-    description: 'Rose-tinted hearts rising softly.',
-  },
-  {
-    id: 'champagne-sparkle',
-    name: 'Sparkles',
-    category: 'particles',
-    icon: 'champagne',
-    description: 'Fine rising champagne bubbles and golden glints.',
-  },
-  {
-    id: 'halloween-bats',
-    name: 'Night bats',
-    category: 'particles',
-    icon: 'pumpkin',
-    description: 'Twilight mist with silhouettes gliding past.',
-  },
-  {
-    id: 'none',
-    name: 'Still color',
-    category: 'still',
-    icon: 'still',
-    description: 'Solid background without animation.',
-  },
+  { id: 'prism-gradient', name: 'Color Waves', animated: true, category: 'animated', icon: 'wave' },
+  { id: 'aurora', name: 'Northern Lights', animated: true, category: 'animated', icon: 'aurora' },
+  { id: 'liquid-chrome', name: 'Y2K Chrome', animated: true, category: 'animated', icon: 'champagne' },
+  { id: 'cyber-grid', name: 'Neon Horizon', animated: true, category: 'animated', icon: 'firework' },
+  { id: 'snowfall', name: 'Snowfall', animated: true, category: 'animated', icon: 'snowflake' },
+  { id: 'rain-glass', name: 'Gentle Rain', animated: true, category: 'animated', icon: 'rain' },
+  { id: 'christmas-lights', name: 'String Lights', animated: true, category: 'animated', icon: 'pine' },
+  { id: 'starlight-radiance', name: 'Starlight', animated: true, category: 'animated', icon: 'star' },
+  { id: 'warm-bokeh', name: 'Golden Bokeh', animated: true, category: 'animated', icon: 'candle' },
+  { id: 'lullaby-stars', name: 'Night Stars', animated: true, category: 'animated', icon: 'cloud' },
+  { id: 'fireworks', name: 'Fireworks', animated: true, category: 'animated', icon: 'firework' },
+  { id: 'confetti', name: 'Confetti', animated: true, category: 'animated', icon: 'confetti' },
+  { id: 'botanical-petals', name: 'Flower Petals', animated: true, category: 'animated', icon: 'tulip' },
+  { id: 'autumn-leaves', name: 'Autumn Leaves', animated: true, category: 'animated', icon: 'leaf' },
+  { id: 'floating-hearts', name: 'Floating Hearts', animated: true, category: 'animated', icon: 'heart' },
+  { id: 'champagne-sparkle', name: 'Sparkles', animated: true, category: 'animated', icon: 'champagne' },
+  { id: 'halloween-bats', name: 'Night Bats', animated: true, category: 'animated', icon: 'pumpkin' },
+  { id: 'static-glow', name: 'Soft Glow', animated: false, category: 'static', icon: 'sun' },
+  { id: 'static-grain', name: 'Paper Grain', animated: false, category: 'static', icon: 'arch' },
+  { id: 'none', name: 'Solid Color', animated: false, category: 'static', icon: 'still' },
 ];
 
 export const COVER_PRESETS: Array<{
@@ -667,13 +673,14 @@ export const COVER_PRESETS: Array<{
     imageUrl: '/covers/handdrawn-harbor-boats.jpg',
   },
 
-  // 8 Minimal Vector SVG
+  // 8 Minimal Vector (Google Image Generated Graphic Posters)
   {
     id: 'vector-paper-cutouts',
     name: 'Paper Cutouts',
     category: 'Celebration',
     styleGroup: 'vector',
     icon: 'confetti',
+    imageUrl: '/covers/vector-paper-cutouts.jpg',
   },
   {
     id: 'vector-minimal-arch',
@@ -681,6 +688,7 @@ export const COVER_PRESETS: Array<{
     category: 'Classic',
     styleGroup: 'vector',
     icon: 'arch',
+    imageUrl: '/covers/vector-minimal-arch.jpg',
   },
   {
     id: 'vector-champagne-coupes',
@@ -688,13 +696,15 @@ export const COVER_PRESETS: Array<{
     category: 'Evening',
     styleGroup: 'vector',
     icon: 'champagne',
+    imageUrl: '/covers/vector-champagne-coupes.jpg',
   },
   {
     id: 'vector-mountain-moon',
-    name: 'Nordic Peaks',
+    name: 'Cyber Peaks',
     category: 'Evening',
     styleGroup: 'vector',
     icon: 'cloud',
+    imageUrl: '/covers/vector-mountain-moon.jpg',
   },
   {
     id: 'vector-citrus-sun',
@@ -702,6 +712,7 @@ export const COVER_PRESETS: Array<{
     category: 'Seasonal',
     styleGroup: 'vector',
     icon: 'sun',
+    imageUrl: '/covers/vector-citrus-sun.jpg',
   },
   {
     id: 'vector-birthday-candles',
@@ -709,13 +720,15 @@ export const COVER_PRESETS: Array<{
     category: 'Celebration',
     styleGroup: 'vector',
     icon: 'cake',
+    imageUrl: '/covers/vector-birthday-candles.jpg',
   },
   {
     id: 'vector-starburst-night',
-    name: 'Night Starburst',
+    name: 'Chrome Starburst',
     category: 'Holiday',
     styleGroup: 'vector',
     icon: 'firework',
+    imageUrl: '/covers/vector-starburst-night.jpg',
   },
   {
     id: 'vector-sacred-arch',
@@ -723,6 +736,7 @@ export const COVER_PRESETS: Array<{
     category: 'Holiday',
     styleGroup: 'vector',
     icon: 'star',
+    imageUrl: '/covers/vector-sacred-arch.jpg',
   },
 
   // 8 Pencil & Colored Pencil Sketches
@@ -1016,20 +1030,54 @@ export function resolveThemeCssVars(style: InviteStyleConfig): Record<string, st
     FONT_PAIRINGS.find((item) => item.id === style.fontId) ?? FONT_PAIRINGS[0];
   const cardRgb = hexToRgb(cardBg);
   const glassRgb = hexToRgb(mixHex(cardBg, '#ffffff', 0.05));
+  const cardStyle: CardSurfaceStyle = style.cardStyle ?? preset.defaultCardStyle ?? 'glass';
+
+  let cardSurfaceAlpha = colorMode === 'light' ? 0.74 : 0.62;
+  let cardBlur = 'blur(24px) saturate(175%)';
+  let glassBlurPx = '24px';
+  let glassSatPct = '175%';
+  let cardShadow =
+    '0 24px 60px -15px rgba(0, 0, 0, 0.36), inset 0 1px 0 0 rgba(255, 255, 255, 0.18)';
+  let cardSpecular =
+    colorMode === 'light' ? 'rgba(255, 255, 255, 0.72)' : 'rgba(255, 255, 255, 0.18)';
+
+  if (cardStyle === 'clear') {
+    cardSurfaceAlpha = colorMode === 'light' ? 0.58 : 0.44;
+    cardBlur = 'blur(28px) saturate(190%)';
+    glassBlurPx = '28px';
+    glassSatPct = '190%';
+    cardShadow =
+      '0 22px 54px -14px rgba(0, 0, 0, 0.32), inset 0 1px 0 0 rgba(255, 255, 255, 0.28)';
+  } else if (cardStyle === 'solid') {
+    cardSurfaceAlpha = colorMode === 'light' ? 0.98 : 0.95;
+    cardBlur = 'none';
+    glassBlurPx = '0px';
+    glassSatPct = '100%';
+    cardShadow = '0 20px 50px -12px rgba(0, 0, 0, 0.34)';
+  } else if (cardStyle === 'y2k') {
+    cardSurfaceAlpha = colorMode === 'light' ? 0.72 : 0.54;
+    cardBlur = 'blur(24px) saturate(195%)';
+    glassBlurPx = '24px';
+    glassSatPct = '195%';
+    cardSpecular = 'rgba(255, 255, 255, 0.42)';
+    cardShadow = `0 22px 60px -10px ${ctaStart}44, 0 0 0 1px rgba(255, 255, 255, 0.24), inset 0 1.5px 0 0 rgba(255, 255, 255, 0.45)`;
+  }
+
+  const cardSurface = `rgba(${cardRgb.r}, ${cardRgb.g}, ${cardRgb.b}, ${cardSurfaceAlpha})`;
   const cardSolid =
     colorMode === 'light'
-      ? `rgba(${cardRgb.r}, ${cardRgb.g}, ${cardRgb.b}, 0.98)`
-      : `rgba(${cardRgb.r}, ${cardRgb.g}, ${cardRgb.b}, 0.95)`;
+      ? `rgba(${cardRgb.r}, ${cardRgb.g}, ${cardRgb.b}, 0.96)`
+      : `rgba(${cardRgb.r}, ${cardRgb.g}, ${cardRgb.b}, 0.93)`;
   const stickyBg =
     colorMode === 'light'
-      ? `rgba(${cardRgb.r}, ${cardRgb.g}, ${cardRgb.b}, 0.94)`
-      : `rgba(${cardRgb.r}, ${cardRgb.g}, ${cardRgb.b}, 0.92)`;
+      ? `rgba(${cardRgb.r}, ${cardRgb.g}, ${cardRgb.b}, 0.84)`
+      : `rgba(${cardRgb.r}, ${cardRgb.g}, ${cardRgb.b}, 0.76)`;
   const glassBg =
     colorMode === 'light'
-      ? 'rgba(255, 255, 255, 0.9)'
-      : `rgba(${glassRgb.r}, ${glassRgb.g}, ${glassRgb.b}, 0.78)`;
+      ? 'rgba(255, 255, 255, 0.84)'
+      : `rgba(${glassRgb.r}, ${glassRgb.g}, ${glassRgb.b}, 0.68)`;
   const hairline =
-    colorMode === 'light' ? 'rgba(15, 23, 42, 0.1)' : 'rgba(255, 255, 255, 0.14)';
+    colorMode === 'light' ? 'rgba(15, 23, 42, 0.12)' : 'rgba(255, 255, 255, 0.16)';
   const backdropMode = relativeLuminance(pageBg) < 0.35 ? 'dark' : 'light';
   const outerText = backdropMode === 'dark' ? '#f8fafc' : '#0f172a';
   const outerMuted =
@@ -1043,6 +1091,12 @@ export function resolveThemeCssVars(style: InviteStyleConfig): Record<string, st
     '--theme-page-bg': pageBg,
     '--theme-surface-bg': surfaceBg,
     '--theme-card-bg': cardBg,
+    '--theme-card-surface': cardSurface,
+    '--theme-card-blur': cardBlur,
+    '--theme-glass-blur': glassBlurPx,
+    '--theme-glass-sat': glassSatPct,
+    '--theme-card-shadow': cardShadow,
+    '--theme-card-specular': cardSpecular,
     '--theme-card-solid': cardSolid,
     '--theme-sticky-bg': stickyBg,
     '--theme-glass-bg': glassBg,

@@ -44,11 +44,15 @@ export async function POST(req: Request, context: RouteContext) {
 
     if (detail) {
       const statusLabel = result.rsvp.status === 'yes' ? 'is going' : "can't make it";
-      await notifyEventSubscribers(id, {
-        title: `${detail.event.title}`,
-        body: `${result.rsvp.guestName} ${statusLabel}.`,
-        url: `/e/${id}`,
-      }).catch(() => {});
+      await notifyEventSubscribers(
+        id,
+        {
+          title: `${detail.event.title}`,
+          body: `${result.rsvp.guestName} ${statusLabel}.`,
+          url: `/e/${id}`,
+        },
+        { includeEmail: false },
+      ).catch(() => {});
     }
 
     return NextResponse.json(

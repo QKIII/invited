@@ -35,45 +35,31 @@ function renderIntoDom(element: React.ReactElement): {
   };
 }
 
-describe('v4 Studio Prompt-First UX, Cover Filters, Modals & Zero-Emoji UI', () => {
+describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & Drafts', () => {
   afterEach(() => {
     window.localStorage.clear();
   });
 
-  it('starts on "What\'s your event?" without a top theme carousel, pre-fills on submit, and filters 36 cover styles', async () => {
+  it('opens directly onto the live invite card, tracks draft state, and opens the non-blurring live theme sheet', async () => {
     const { container, unmount } = renderIntoDom(<InviteStudio mode="create" />);
 
-    expect(container.querySelector('[data-testid="prompt-entry-card"]')).not.toBeNull();
-    expect(container.textContent).toContain("What's your event?");
-    expect(container.querySelector('#event-start-date')).toBeNull();
+    expect(container.querySelector('[data-testid="prompt-entry-card"]')).toBeNull();
+    expect(container.querySelector('#event-start-date')).not.toBeNull();
+    expect(container.querySelector('[data-testid="edit-theme-button"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="change-cover-button"]')).not.toBeNull();
+    expect(container.textContent).not.toContain('Start over from a short note');
     expect(container.textContent).not.toMatch(EMOJI_RE);
 
-    const promptBox = container.querySelector<HTMLTextAreaElement>(
-      '[data-testid="event-prompt-input"]',
-    )!;
-    expect(promptBox.hasAttribute('autofocus')).toBe(false);
-    const continueBtn = container.querySelector<HTMLButtonElement>(
-      '[data-testid="prompt-continue-button"]',
-    )!;
-
+    // Typing a title shows the Draft pill
+    const titleInput = container.querySelector<HTMLTextAreaElement>('textarea[data-title-input]')!;
     await act(async () => {
       const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
-      setter.call(promptBox, 'Christmas dinner Dec 20 at 6pm at 42 Maple St');
-      promptBox.dispatchEvent(new Event('input', { bubbles: true }));
+      setter.call(titleInput, 'Rooftop Y2K Party');
+      titleInput.dispatchEvent(new Event('input', { bubbles: true }));
     });
+    expect(container.querySelector('[data-testid="create-draft-badge"]')?.textContent).toContain('Draft');
 
-    await act(async () => {
-      continueBtn.click();
-    });
-
-    expect(container.querySelector('[data-testid="prompt-entry-card"]')).toBeNull();
-    expect(container.textContent).not.toContain('Write prompt again');
-    expect(container.querySelector('[data-testid="edit-theme-button"]')).not.toBeNull();
-    expect(container.querySelector('[data-testid="start-over-prompt-button"]')).not.toBeNull();
-    expect(container.querySelector('#event-start-date')).not.toBeNull();
-    expect(container.textContent).not.toMatch(EMOJI_RE);
-
-    // Open cover style tab inside Edit theme sheet
+    // Open cover style tab inside non-blurring Theme & Style sheet
     const changeCoverBtn = container.querySelector<HTMLButtonElement>(
       '[data-testid="change-cover-button"]',
     )!;
@@ -87,6 +73,8 @@ describe('v4 Studio Prompt-First UX, Cover Filters, Modals & Zero-Emoji UI', () 
 
     const dialog = container.querySelector<HTMLDialogElement>('[data-testid="theme-studio-dialog"]')!;
     expect(dialog).not.toBeNull();
+    expect(dialog.getAttribute('data-live-sheet')).toBe('true');
+    expect(dialog.className).toContain('sheet-from-bottom');
     expect(dialog.querySelectorAll('[data-cover-style-group]')).toHaveLength(40);
 
     for (const group of ['hand-drawn', 'vector', 'pencil', 'oil-paint', 'pattern'] as const) {
@@ -99,28 +87,47 @@ describe('v4 Studio Prompt-First UX, Cover Filters, Modals & Zero-Emoji UI', () 
       expect(dialog.querySelectorAll(`[data-cover-style-group="${group}"]`)).toHaveLength(8);
     }
 
-    const backdropTab = dialog.querySelector<HTMLButtonElement>(
-      '[data-testid="studio-tab-backdrop"]',
+    const themeTab = dialog.querySelector<HTMLButtonElement>('[data-testid="studio-tab-theme"]')!;
+    await act(async () => {
+      themeTab.click();
+    });
+    expect(dialog.querySelector('[data-theme-option="y2k-chrome"]')).not.toBeNull();
+
+    const bgTab = dialog.querySelector<HTMLButtonElement>(
+      '[data-testid="studio-tab-background"]',
     )!;
     await act(async () => {
-      backdropTab.click();
+      bgTab.click();
     });
-    expect(dialog.querySelectorAll('[data-effect-option]')).toHaveLength(16);
-    expect(dialog.querySelector('[data-effect-option="prism-gradient"]')).not.toBeNull();
-    expect(dialog.querySelector('[data-effect-option="rain-glass"]')).not.toBeNull();
+    expect(dialog.querySelectorAll('[data-effect-kind="animated"]')).toHaveLength(17);
+    expect(dialog.querySelectorAll('[data-effect-kind="static"]')).toHaveLength(3);
+    expect(dialog.querySelector('[data-effect-option="liquid-chrome"]')).not.toBeNull();
+    expect(dialog.querySelector('[data-effect-option="cyber-grid"]')).not.toBeNull();
+    expect(dialog.querySelector('[data-effect-option="static-glow"]')).not.toBeNull();
+    expect(dialog.querySelector('[data-effect-option="static-grain"]')).not.toBeNull();
+
+    const styleTab = dialog.querySelector<HTMLButtonElement>('[data-testid="studio-tab-style"]')!;
+    await act(async () => {
+      styleTab.click();
+    });
+    expect(dialog.querySelectorAll('[data-card-style-option]')).toHaveLength(4);
     expect(dialog.textContent).not.toMatch(EMOJI_RE);
 
     unmount();
   });
 
-  it('renders theme-colored icon GuestAvatars and progressive RichTextEditor formatting bar', async () => {
+  it('renders initials GuestAvatars with theme color slots and progressive RichTextEditor formatting bar', async () => {
     const avatarRender = renderIntoDom(<GuestAvatar name="Clara" size="md" />);
     const avatarEl = avatarRender.container.querySelector('.invite-avatar');
     expect(avatarEl).not.toBeNull();
-    expect(avatarEl?.querySelector('svg')).not.toBeNull();
-    expect(avatarEl?.textContent).toBe('');
+    expect(avatarEl?.querySelector('svg')).toBeNull();
+    expect(avatarEl?.textContent).toBe('CL');
     expect(avatarEl?.getAttribute('data-avatar-slot')).toMatch(/^[1-6]$/);
     avatarRender.unmount();
+
+    const fullAvatar = renderIntoDom(<GuestAvatar name="Ivan Witteborg" size="sm" />);
+    expect(fullAvatar.container.querySelector('.invite-avatar')?.textContent).toBe('IW');
+    fullAvatar.unmount();
 
     const rte = renderIntoDom(
       <RichTextEditor label="" value="" onChange={() => {}} placeholder="Write notes" />,

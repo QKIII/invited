@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useId, useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { Send, Trash2 } from 'lucide-react';
 import {
   DEFAULT_WALL_REACTIONS,
@@ -59,8 +59,12 @@ export function EventWall({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [activeReactions, setActiveReactions] = useState<Record<string, boolean>>({});
 
+  const commentDraftKey = `invited_comment_draft:${eventId}`;
+  const draftHydratedRef = useRef<boolean>(false);
+
   useEffect(() => {
     let active = true;
+    draftHydratedRef.current = false;
     queueMicrotask(() => {
       if (!active) return;
       try {
@@ -71,14 +75,33 @@ export function EventWall({
             setActiveReactions(parsed as Record<string, boolean>);
           }
         }
+        const savedDraft = window.localStorage.getItem(commentDraftKey);
+        if (savedDraft && savedDraft.trim()) {
+          setBody(savedDraft);
+        }
       } catch {
         // Ignore storage access errors
+      } finally {
+        draftHydratedRef.current = true;
       }
     });
     return () => {
       active = false;
     };
-  }, [eventId]);
+  }, [eventId, commentDraftKey]);
+
+  useEffect(() => {
+    if (!draftHydratedRef.current) return;
+    try {
+      if (body.trim().length > 0) {
+        window.localStorage.setItem(commentDraftKey, body);
+      } else {
+        window.localStorage.removeItem(commentDraftKey);
+      }
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [body, commentDraftKey]);
 
   const effectiveAuthorName = authorName.trim() || knownDefaultName;
   const showNameInput = !effectiveAuthorName || editingAuthorName;
@@ -127,6 +150,11 @@ export function EventWall({
       setCustomAuthorName(trimmedName);
       setEditingAuthorName(false);
       setBody('');
+      try {
+        window.localStorage.removeItem(commentDraftKey);
+      } catch {
+        // Ignore storage errors
+      }
       onCommentsChange([data.comment, ...comments]);
       await onRefreshDetail();
     } catch {
@@ -211,13 +239,14 @@ export function EventWall({
     }
   }
 
+  const hasDraftMessage = body.trim().length > 0;
+
   return (
     <section
       id="wall-section"
       aria-labelledby={headingId}
-      className="rounded-3xl border shadow-xl p-5 sm:p-6 space-y-3.5"
+      className="invite-glass-card rounded-3xl border p-5 sm:p-6 space-y-3.5"
       style={{
-        backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
         borderColor: 'var(--theme-border)',
       }}
     >
@@ -225,16 +254,41 @@ export function EventWall({
         className="flex items-center justify-between gap-2 pb-2.5 border-b"
         style={{ borderColor: 'var(--theme-hairline)' }}
       >
-        <h2
-          id={headingId}
-          className="text-base font-bold"
-          style={{
-            color: 'var(--theme-text-primary)',
-            fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
-          }}
-        >
-          Comments{comments.length > 0 ? ` (${comments.length})` : ''}
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2
+            id={headingId}
+            className="text-base font-bold"
+            style={{
+              color: 'var(--theme-text-primary)',
+              fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
+            }}
+          >
+            Comments{comments.length > 0 ? ` (${comments.length})` : ''}
+          </h2>
+          {hasDraftMessage ? (
+            <span
+              data-testid="wall-draft-badge"
+              className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold"
+              style={{
+                backgroundColor: 'var(--theme-surface-bg)',
+                borderColor: 'var(--theme-accent)',
+                color: 'var(--theme-accent)',
+              }}
+            >
+              <span>Draft</span>
+            </span>
+          ) : null}
+        </div>
+        {hasDraftMessage ? (
+          <button
+            type="button"
+            onClick={() => setBody('')}
+            className="text-xs opacity-70 hover:opacity-100 underline underline-offset-2 cursor-pointer"
+            style={{ color: 'var(--theme-text-muted)' }}
+          >
+            Clear
+          </button>
+        ) : null}
       </div>
 
       <form onSubmit={handleFormSubmit} className="space-y-2">

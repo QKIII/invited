@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createComment, toggleReaction } from '@/lib/storage/events';
+import { notifyEventSubscribers } from '@/lib/notifications/push';
+import { createComment, getEventDetail, toggleReaction } from '@/lib/storage/events';
 import {
   extractEditKey,
   extractGuestToken,
@@ -58,6 +59,31 @@ export async function POST(req: Request, context: RouteContext) {
       guestToken,
       rsvpStatus: body.rsvpStatus,
     });
+
+    if (comment.isHost) {
+      let baseUrl: string | null = null;
+      try {
+        baseUrl = new URL(req.url).origin;
+      } catch {
+        baseUrl = null;
+      }
+      const detail = await getEventDetail(id).catch(() => null);
+      const eventTitle = detail?.event.title ?? 'Event update';
+      await notifyEventSubscribers(
+        id,
+        {
+          title: eventTitle,
+          body: `${comment.authorName}: ${comment.body}`,
+          url: `/e/${id}`,
+        },
+        {
+          includeEmail: true,
+          eventTitle,
+          emailSubject: `Update from ${comment.authorName}: ${eventTitle}`,
+          baseUrl,
+        },
+      ).catch(() => {});
+    }
 
     return NextResponse.json(
       { comment },

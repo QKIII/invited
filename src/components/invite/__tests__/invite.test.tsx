@@ -254,9 +254,9 @@ describe('RsvpPanel', () => {
       noteInput.dispatchEvent(new Event('input', { bubbles: true }));
     });
 
-    // Auto-check wall checkbox when note is entered
-    const wallCheckbox = container.querySelector<HTMLInputElement>('input[type="checkbox"]');
-    expect(wallCheckbox?.checked).toBe(true);
+    // Note automatically posts to wall without needing a checkbox; draft badge appears
+    expect(container.querySelector('input[type="checkbox"]')).toBeNull();
+    expect(container.querySelector('[data-testid="rsvp-draft-badge"]')?.textContent).toBe('Draft');
 
     // Submit form
     const form = container.querySelector('form')!;
@@ -563,6 +563,14 @@ describe('EventWall & SubscribeControl', () => {
       textarea.dispatchEvent(ev);
     });
     expect(fetchMock.mock.calls.length).toBe(callsBefore);
+
+    // Unsent comment shows Draft badge
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+      setter.call(textarea, 'Bringing garlic knots');
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(container.querySelector('[data-testid="wall-draft-badge"]')?.textContent).toBe('Draft');
 
     unmount();
   });

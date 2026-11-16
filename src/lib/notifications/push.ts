@@ -1,5 +1,9 @@
 import { sendNotification, setVapidDetails } from 'web-push';
 import {
+  isEmailConfigured,
+  sendEventUpdateEmails,
+} from '@/lib/notifications/email';
+import {
   listEventSubscribers,
   removeSubscriber,
 } from '@/lib/storage/events';
@@ -8,6 +12,17 @@ export interface PushNotificationPayload {
   title: string;
   body: string;
   url: string;
+}
+
+export interface NotifyOptions {
+  /** Whether to also notify email subscribers (defaults to true for event updates / host announcements). */
+  includeEmail?: boolean;
+  /** Optional subject override when dispatching email updates. */
+  emailSubject?: string;
+  /** Event title displayed as the email card heading. */
+  eventTitle?: string;
+  /** Optional public origin extracted from the incoming request URL. */
+  baseUrl?: string | null;
 }
 
 /**
@@ -32,54 +47,79 @@ function isExpiredSubscriptionError(err: unknown): boolean {
 }
 
 /**
- * Sends a Web Push notification to all `webpush` subscribers of an event.
- * Gracefully no-ops when VAPID keys are unconfigured and prunes 404/410 expired endpoints.
+ * Sends Web Push notifications (and optional batched Email updates) to all event subscribers.
+ * Reads subscribers.json once and gracefully skips unconfigured channels.
  */
 export async function notifyEventSubscribers(
   eventId: string,
   payload: PushNotificationPayload,
-): Promise<{ sent: number; removed: number; skipped: boolean }> {
+  options: NotifyOptions = {},
+): Promise<{
+  sent: number;
+  removed: number;
+  emailSent: number;
+  skipped: boolean;
+}> {
   const publicKey = getVapidPublicKey();
   const privateKey = getVapidPrivateKey();
-  if (!publicKey || !privateKey) {
-    return { sent: 0, removed: 0, skipped: true };
+  const canSendEmail = options.includeEmail !== false && isEmailConfigured();
+
+  let vapidReady = false;
+  if (publicKey && privateKey) {
+    const subject =
+      process.env.VAPID_SUBJECT?.trim() || 'mailto:hello@invited.app';
+    try {
+      setVapidDetails(subject, publicKey, privateKey);
+      vapidReady = true;
+    } catch {
+      vapidReady = false;
+    }
   }
 
-  const subject =
-    process.env.VAPID_SUBJECT?.trim() || 'mailto:hello@invited.app';
-
-  try {
-    setVapidDetails(subject, publicKey, privateKey);
-  } catch {
-    return { sent: 0, removed: 0, skipped: true };
+  if (!vapidReady && !canSendEmail) {
+    return { sent: 0, removed: 0, emailSent: 0, skipped: true };
   }
 
   const subscribers = await listEventSubscribers(eventId);
-  const pushTargets = subscribers.filter(
-    (s) => s.kind === 'webpush' && s.subscription,
-  );
-
-  if (pushTargets.length === 0) {
-    return { sent: 0, removed: 0, skipped: false };
+  if (subscribers.length === 0) {
+    return { sent: 0, removed: 0, emailSent: 0, skipped: false };
   }
 
-  const encodedPayload = JSON.stringify(payload);
   let sent = 0;
   let removed = 0;
+  let emailSent = 0;
 
-  await Promise.allSettled(
-    pushTargets.map(async (sub) => {
-      try {
-        await sendNotification(sub.subscription!, encodedPayload);
-        sent += 1;
-      } catch (err) {
-        if (isExpiredSubscriptionError(err)) {
-          await removeSubscriber(eventId, sub.id).catch(() => {});
-          removed += 1;
+  if (vapidReady) {
+    const pushTargets = subscribers.filter(
+      (s) => s.kind === 'webpush' && s.subscription,
+    );
+    const encodedPayload = JSON.stringify(payload);
+    await Promise.allSettled(
+      pushTargets.map(async (sub) => {
+        try {
+          await sendNotification(sub.subscription!, encodedPayload);
+          sent += 1;
+        } catch (err) {
+          if (isExpiredSubscriptionError(err)) {
+            await removeSubscriber(eventId, sub.id).catch(() => {});
+            removed += 1;
+          }
         }
-      }
-    }),
-  );
+      }),
+    );
+  }
 
-  return { sent, removed, skipped: false };
+  if (canSendEmail) {
+    const emailResult = await sendEventUpdateEmails({
+      subscribers,
+      eventId,
+      eventTitle: options.eventTitle ?? payload.title,
+      subject: options.emailSubject ?? payload.title,
+      bodyText: payload.body,
+      baseUrl: options.baseUrl,
+    });
+    emailSent = emailResult.sent;
+  }
+
+  return { sent, removed, emailSent, skipped: false };
 }

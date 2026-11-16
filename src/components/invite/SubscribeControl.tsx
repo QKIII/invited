@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Bell, Calendar, Check, Download, Mail, X } from 'lucide-react';
 import { getDeviceProfile, saveDeviceProfile } from '@/lib/client/deviceProfile';
-import { setupDialogLightDismiss } from '@/lib/polyfills/ui';
+import { closeTopLayer, setupDialogLightDismiss } from '@/lib/polyfills/ui';
 
 interface SubscribeControlProps {
   eventId: string;
@@ -88,7 +88,7 @@ export function SubscribeControl({
   }, [checkCapabilities, email]);
 
   const closeDialog = useCallback(() => {
-    dialogRef.current?.close();
+    void closeTopLayer(dialogRef.current);
   }, []);
 
   useEffect(() => {
@@ -168,14 +168,24 @@ export function SubscribeControl({
           email: trimmed,
         }),
       });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        emailSent?: boolean;
+        emailConfigured?: boolean;
+      };
       if (!res.ok) {
         setEmailMessage(data.error || 'Please enter a valid email address.');
         return;
       }
       saveDeviceProfile({ email: trimmed });
       setEmailDone(true);
-      setEmailMessage('Saved! We will keep this only for updates to this event.');
+      setEmailMessage(
+        data.emailSent
+          ? "Confirmation sent! We'll email you if event details change."
+          : data.emailConfigured
+            ? "Saved! Check your inbox for confirmation."
+            : "Email saved! Live delivery turns on once RESEND_API_KEY is added in Vercel.",
+      );
       onSubscribed?.();
     } catch {
       setEmailMessage('Network error saving your email.');
@@ -240,7 +250,7 @@ export function SubscribeControl({
         ref={dialogRef}
         closedby="any"
         aria-labelledby={titleId}
-        className="w-[calc(100%-2rem)] max-w-md mx-auto my-auto rounded-3xl border p-5 shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm"
+        className="sheet-from-bottom w-full sm:w-[calc(100%-2rem)] max-w-md mx-auto mt-auto mb-0 sm:my-auto rounded-t-3xl sm:rounded-3xl border p-5 shadow-2xl backdrop-blur-2xl"
         style={{
           backgroundColor: 'var(--theme-card-solid, var(--theme-surface-bg))',
           borderColor: 'var(--theme-border, rgba(255,255,255,0.15))',

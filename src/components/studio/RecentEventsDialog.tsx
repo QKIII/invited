@@ -20,7 +20,7 @@ import {
   removeRecentEvent,
   subscribeRecentEvents,
 } from '@/lib/client/recentEvents';
-import { setupDialogLightDismiss } from '@/lib/polyfills/ui';
+import { closeTopLayer, setupDialogLightDismiss } from '@/lib/polyfills/ui';
 
 interface RecentEventsDialogProps {
   open: boolean;
@@ -83,13 +83,13 @@ export function RecentEventsDialog({
         dialog.setAttribute('open', '');
       }
     } else if (!open && dialog.open) {
-      if (typeof dialog.close === 'function') {
-        dialog.close();
-      } else {
-        dialog.removeAttribute('open');
-      }
+      void closeTopLayer(dialog);
     }
   }, [open]);
+
+  const requestClose = () => {
+    void closeTopLayer(dialogRef.current);
+  };
 
   const handleCopy = async (tag: string, relativeOrFullUrl: string) => {
     try {
@@ -117,14 +117,14 @@ export function RecentEventsDialog({
       closedby="any"
       aria-labelledby="my-invites-dialog-title"
       data-testid="my-invites-dialog"
-      className="w-full sm:w-[min(94vw,540px)] max-h-[86dvh] mx-auto mt-auto mb-0 sm:my-auto overflow-hidden rounded-t-3xl sm:rounded-3xl border shadow-2xl p-0 backdrop:bg-black/60 backdrop:backdrop-blur-sm"
+      className="sheet-from-top w-[calc(100%-1rem)] sm:w-[min(94vw,540px)] max-h-[82dvh] mx-auto mt-[max(0.5rem,env(safe-area-inset-top))] mb-auto overflow-hidden rounded-3xl border shadow-2xl p-0 backdrop-blur-2xl"
       style={{
         backgroundColor: 'var(--theme-card-solid, #121a2e)',
         borderColor: 'var(--theme-border, rgba(255,255,255,0.16))',
         color: 'var(--theme-text-primary, #f8fafc)',
       }}
     >
-      <div className="flex flex-col max-h-[86dvh]">
+      <div className="flex flex-col max-h-[82dvh]">
       <div
         className="shrink-0 flex items-center justify-between gap-4 border-b px-5 py-4"
         style={{ borderColor: 'var(--theme-hairline, rgba(255,255,255,0.12))' }}
@@ -149,7 +149,7 @@ export function RecentEventsDialog({
 
         <button
           type="button"
-          onClick={() => dialogRef.current?.close()}
+          onClick={requestClose}
           aria-label="Close My Invites"
           className="h-9 w-9 rounded-full border inline-flex items-center justify-center opacity-80 hover:opacity-100 transition cursor-pointer shrink-0"
           style={{
@@ -180,7 +180,7 @@ export function RecentEventsDialog({
             <div className="pt-1">
               <Link
                 href="/"
-                onClick={() => dialogRef.current?.close()}
+                onClick={requestClose}
                 className="invite-cta-btn inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold shadow-md transition hover:opacity-95"
               >
                 <Plus className="h-4 w-4" aria-hidden="true" />
@@ -259,7 +259,7 @@ export function RecentEventsDialog({
                   <div className="flex flex-wrap items-center gap-2 pt-0.5">
                     <Link
                       href={entry.guestUrl}
-                      onClick={() => dialogRef.current?.close()}
+                      onClick={requestClose}
                       className="invite-cta-btn inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold shadow-sm transition hover:opacity-95"
                     >
                       <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
@@ -292,7 +292,7 @@ export function RecentEventsDialog({
                       <>
                         <Link
                           href={entry.editUrl}
-                          onClick={() => dialogRef.current?.close()}
+                          onClick={requestClose}
                           className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition hover:opacity-85"
                           style={{
                             borderColor: 'var(--theme-border, rgba(255,255,255,0.16))',
@@ -349,7 +349,7 @@ export function RecentEventsDialog({
 
         <Link
           href="/"
-          onClick={() => dialogRef.current?.close()}
+          onClick={requestClose}
           className="invite-cta-btn inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition hover:opacity-95 shrink-0"
         >
           <Plus className="h-3.5 w-3.5" aria-hidden="true" />

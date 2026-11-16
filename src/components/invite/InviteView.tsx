@@ -357,6 +357,7 @@ export function InviteView({
       <AmbientBackdrop
         fixedViewport
         effectId={event.style.effectId}
+        pageBg={themeVars['--theme-page-bg']}
         accentColor={themeVars['--theme-accent']}
         secondaryColor={themeVars['--theme-cta-end']}
         colorMode={backdropMode}
@@ -402,11 +403,10 @@ export function InviteView({
       </header>
 
       <main className="relative z-10 max-w-[580px] mx-auto px-3.5 sm:px-6 pt-1.5 pb-28 space-y-4">
-        {/* Primary Uncluttered Invitation Card */}
+        {/* Primary Uncluttered Frosted-Glass Invitation Card */}
         <article
-          className="rounded-3xl border shadow-2xl overflow-hidden"
+          className="invite-glass-card rounded-3xl border overflow-hidden"
           style={{
-            backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
             borderColor: 'var(--theme-border)',
           }}
         >
@@ -503,7 +503,7 @@ export function InviteView({
                 <div
                   id="calendar-menu"
                   popover="auto"
-                  className="m-auto rounded-2xl border p-2 shadow-2xl w-[min(18rem,calc(100%-2rem))]"
+                  className="popover-reveal m-auto rounded-2xl border p-2 shadow-2xl w-[min(18rem,calc(100%-2rem))] backdrop-blur-xl"
                   style={{
                     backgroundColor: 'var(--theme-card-solid, var(--theme-surface-bg))',
                     borderColor: 'var(--theme-border)',

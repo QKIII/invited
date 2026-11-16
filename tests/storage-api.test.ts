@@ -134,6 +134,7 @@ import {
   DELETE as deleteSubscribeRoute,
   POST as postSubscribeRoute,
 } from '@/app/api/events/[id]/subscribe/route';
+import { GET as getUnsubscribeRoute } from '@/app/api/events/[id]/unsubscribe/route';
 import { POST as createEventRoute } from '@/app/api/events/route';
 import { GET as getVapidKeyRoute } from '@/app/api/push/vapid-public-key/route';
 import {
@@ -678,7 +679,7 @@ describe('storage, crypto, sanitizer, calendar & API routes', () => {
 
     const vapidRes = await getVapidKeyRoute();
     expect(vapidRes.status).toBe(200);
-    expect(await vapidRes.json()).toEqual({ publicKey: null });
+    expect(await vapidRes.json()).toEqual({ publicKey: null, emailConfigured: false });
   });
 
   it('generates RFC 5545 compliant .ics calendars and calendar links', async () => {
@@ -1012,6 +1013,108 @@ describe('storage, crypto, sanitizer, calendar & API routes', () => {
       );
     } finally {
       delete process.env.BLOB_READ_WRITE_TOKEN;
+    }
+  });
+
+  it('sends confirmation and batched update emails via Resend when RESEND_API_KEY is set and supports one-click unsubscribe', async () => {
+    const prevKey = process.env.RESEND_API_KEY;
+    const prevFrom = process.env.INVITED_FROM_EMAIL;
+    const fetchSpy = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 'email_123' }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchSpy);
+    process.env.RESEND_API_KEY = 're_test_key_123';
+    process.env.INVITED_FROM_EMAIL = 'invited <hello@example.com>';
+
+    try {
+      const createRes = await createEventRoute(
+        jsonRequest('http://localhost/api/events', 'POST', {
+          title: 'Pelican Winter Brunch',
+          startIso: '2026-12-05T09:30:00',
+          timeZone: 'America/New_York',
+          hostName: 'Ivan',
+          style: {
+            themeId: 'y2k-chrome',
+            fontId: 'y2k-display',
+            effectId: 'liquid-chrome',
+            coverPresetId: 'vector-starburst-night',
+            coverLayout: 'banner',
+            cardStyle: 'y2k',
+          },
+        }),
+      );
+      const { id, editKey, event } = await createRes.json();
+      expect(event.style.cardStyle).toBe('y2k');
+      expect(event.style.effectId).toBe('liquid-chrome');
+
+      // Subscribing by email sends immediate confirmation email with List-Unsubscribe header
+      const subRes = await postSubscribeRoute(
+        jsonRequest(`http://localhost/api/events/${id}/subscribe`, 'POST', {
+          kind: 'email',
+          email: 'guest@example.com',
+        }),
+        { params: Promise.resolve({ id }) },
+      );
+      expect(subRes.status).toBe(201);
+      const subJson = await subRes.json();
+      expect(subJson.emailSent).toBe(true);
+      expect(subJson.emailConfigured).toBe(true);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const confirmReq = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+      expect(confirmReq.from).toBe('invited <hello@example.com>');
+      expect(confirmReq.to).toEqual(['guest@example.com']);
+      expect(confirmReq.headers['List-Unsubscribe']).toContain('/api/events/');
+
+      // Host update triggers batched update email via Resend batch endpoint
+      fetchSpy.mockClear();
+      const patchRes = await patchEventRoute(
+        jsonRequest(
+          `http://localhost/api/events/${id}`,
+          'PATCH',
+          { locationName: '99 Pine St' },
+          { 'x-edit-key': editKey },
+        ),
+        { params: Promise.resolve({ id }) },
+      );
+      expect(patchRes.status).toBe(200);
+      expect(fetchSpy).toHaveBeenCalledWith(
+        'https://api.resend.com/emails/batch',
+        expect.objectContaining({ method: 'POST' }),
+      );
+
+      // Host wall announcement triggers batched update email
+      fetchSpy.mockClear();
+      const hostCommentRes = await createCommentRoute(
+        jsonRequest(`http://localhost/api/events/${id}/comments`, 'POST', {
+          authorName: 'Ivan',
+          body: 'Parking is open around back!',
+          editKey,
+        }),
+        { params: Promise.resolve({ id }) },
+      );
+      expect(hostCommentRes.status).toBe(201);
+      expect(fetchSpy).toHaveBeenCalledWith(
+        'https://api.resend.com/emails/batch',
+        expect.objectContaining({ method: 'POST' }),
+      );
+
+      // 1-click GET unsubscribe removes the email subscriber cleanly
+      const unsubRes = await getUnsubscribeRoute(
+        new Request(
+          `http://localhost/api/events/${id}/unsubscribe?subId=${encodeURIComponent(subJson.id)}`,
+        ),
+        { params: Promise.resolve({ id }) },
+      );
+      expect(unsubRes.status).toBe(200);
+      expect(await unsubRes.text()).toContain('unsubscribed');
+      const afterDetail = await getEventDetail(id);
+      expect(afterDetail!.subscriberCount).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+      if (prevKey === undefined) delete process.env.RESEND_API_KEY;
+      else process.env.RESEND_API_KEY = prevKey;
+      if (prevFrom === undefined) delete process.env.INVITED_FROM_EMAIL;
+      else process.env.INVITED_FROM_EMAIL = prevFrom;
     }
   });
 });

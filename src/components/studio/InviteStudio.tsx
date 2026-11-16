@@ -12,11 +12,8 @@ import {
   subscribeDeviceProfile,
 } from '@/lib/client/deviceProfile';
 import { rememberHostEvent } from '@/lib/client/recentEvents';
-import {
-  EXAMPLE_EVENT_PROMPTS,
-  parseEventPrompt,
-  type ParsedEventDraft,
-} from '@/lib/nlp/parseEventPrompt';
+import { type ParsedEventDraft } from '@/lib/nlp/parseEventPrompt';
+import { stripHtmlToText } from '@/lib/sanitize';
 import { getThemePreset } from '@/lib/themes/presets';
 import type { EventMeta, InviteStyleConfig } from '@/types/invite';
 import {
@@ -63,6 +60,27 @@ function getDefaultDateString(): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+const CREATE_DRAFT_KEY = 'invited_create_draft_v1';
+
+interface StoredStudioDraft {
+  title: string;
+  startDate: string;
+  startTime: string;
+  hasEndTime: boolean;
+  endDate: string;
+  endTime: string;
+  timeZone: string;
+  locationName: string;
+  locationAddress: string;
+  virtualUrl: string;
+  hostName: string;
+  descriptionHtml: string;
+  rsvpNotePrompt: string;
+  invitedNamesRaw: string;
+  hideGuestList: boolean;
+  style: InviteStyleConfig;
+}
+
 export function InviteStudio({
   mode,
   initialDraft,
@@ -73,7 +91,6 @@ export function InviteStudio({
   onStyleChange,
 }: InviteStudioProps) {
   const titleId = useId();
-  const promptInputId = useId();
   const deviceProfile = useSyncExternalStore(
     subscribeDeviceProfile,
     getDeviceProfile,
@@ -82,11 +99,6 @@ export function InviteStudio({
 
   const initialSource = initialEvent ?? initialDraft;
   const initialStyle: InviteStyleConfig = initialSource?.style ?? getDefaultStyle();
-
-  const [hasStartedCard, setHasStartedCard] = useState<boolean>(
-    mode === 'edit' || Boolean(initialDraft || initialEvent),
-  );
-  const [quickPrompt, setQuickPrompt] = useState<string>('');
 
   const [title, setTitle] = useState<string>(initialSource?.title ?? '');
   const [startDate, setStartDate] = useState<string>(() => {
@@ -168,6 +180,133 @@ export function InviteStudio({
   const [publishedResult, setPublishedResult] = useState<PublishedEventResult | null>(null);
 
   const titleTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const draftHydratedRef = useRef<boolean>(false);
+
+  const hasUnsavedDraftContent =
+    mode === 'create' &&
+    Boolean(
+      title.trim() ||
+        locationName.trim() ||
+        locationAddress.trim() ||
+        virtualUrl.trim() ||
+        stripHtmlToText(descriptionHtml).trim() ||
+        invitedNamesRaw.trim(),
+    );
+
+  // Hydrate saved draft once in create mode when no explicit initialDraft was supplied
+  useEffect(() => {
+    if (mode !== 'create' || initialDraft) {
+      draftHydratedRef.current = true;
+      return;
+    }
+    queueMicrotask(() => {
+      try {
+        const raw = window.localStorage.getItem(CREATE_DRAFT_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as Partial<StoredStudioDraft>;
+          if (parsed && typeof parsed === 'object') {
+            if (typeof parsed.title === 'string') setTitle(parsed.title);
+            if (typeof parsed.startDate === 'string' && parsed.startDate) setStartDate(parsed.startDate);
+            if (typeof parsed.startTime === 'string' && parsed.startTime) setStartTime(parsed.startTime);
+            if (typeof parsed.hasEndTime === 'boolean') setHasEndTime(parsed.hasEndTime);
+            if (typeof parsed.endDate === 'string' && parsed.endDate) setEndDate(parsed.endDate);
+            if (typeof parsed.endTime === 'string' && parsed.endTime) setEndTime(parsed.endTime);
+            if (typeof parsed.timeZone === 'string' && parsed.timeZone) setTimeZone(parsed.timeZone);
+            if (typeof parsed.locationName === 'string') setLocationName(parsed.locationName);
+            if (typeof parsed.locationAddress === 'string') setLocationAddress(parsed.locationAddress);
+            if (typeof parsed.virtualUrl === 'string') setVirtualUrl(parsed.virtualUrl);
+            if (typeof parsed.hostName === 'string' && parsed.hostName) {
+              setHostTouched(true);
+              setHostName(parsed.hostName);
+            }
+            if (typeof parsed.descriptionHtml === 'string') setDescriptionHtml(parsed.descriptionHtml);
+            if (typeof parsed.rsvpNotePrompt === 'string') setRsvpNotePrompt(parsed.rsvpNotePrompt);
+            if (typeof parsed.invitedNamesRaw === 'string') setInvitedNamesRaw(parsed.invitedNamesRaw);
+            if (typeof parsed.hideGuestList === 'boolean') setHideGuestList(parsed.hideGuestList);
+            if (parsed.style && typeof parsed.style === 'object') setStyle(parsed.style);
+          }
+        }
+      } catch {
+        // Ignore storage read errors
+      } finally {
+        draftHydratedRef.current = true;
+      }
+    });
+  }, [mode, initialDraft]);
+
+  // Auto-persist create draft so partial invites survive refresh and show Draft indicator
+  useEffect(() => {
+    if (mode !== 'create' || !draftHydratedRef.current) return;
+    try {
+      if (!hasUnsavedDraftContent) {
+        window.localStorage.removeItem(CREATE_DRAFT_KEY);
+        return;
+      }
+      const snapshot: StoredStudioDraft = {
+        title,
+        startDate,
+        startTime,
+        hasEndTime,
+        endDate,
+        endTime,
+        timeZone,
+        locationName,
+        locationAddress,
+        virtualUrl,
+        hostName: effectiveHostName,
+        descriptionHtml,
+        rsvpNotePrompt,
+        invitedNamesRaw,
+        hideGuestList,
+        style,
+      };
+      window.localStorage.setItem(CREATE_DRAFT_KEY, JSON.stringify(snapshot));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [
+    mode,
+    hasUnsavedDraftContent,
+    title,
+    startDate,
+    startTime,
+    hasEndTime,
+    endDate,
+    endTime,
+    timeZone,
+    locationName,
+    locationAddress,
+    virtualUrl,
+    effectiveHostName,
+    descriptionHtml,
+    rsvpNotePrompt,
+    invitedNamesRaw,
+    hideGuestList,
+    style,
+  ]);
+
+  function clearCreateDraft() {
+    setTitle('');
+    setStartDate(getDefaultDateString());
+    setStartTime('18:00');
+    setHasEndTime(false);
+    setEndDate(getDefaultDateString());
+    setEndTime('21:00');
+    setLocationName('');
+    setLocationAddress('');
+    setVirtualUrl('');
+    setShowLocationDetails(false);
+    setDescriptionHtml('');
+    setRsvpNotePrompt('');
+    setInvitedNamesRaw('');
+    setHideGuestList(false);
+    setStyle(getDefaultStyle());
+    try {
+      window.localStorage.removeItem(CREATE_DRAFT_KEY);
+    } catch {
+      // Ignore storage errors
+    }
+  }
 
   useEffect(() => {
     onStyleChange?.(style);
@@ -204,7 +343,7 @@ export function InviteStudio({
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${Math.max(el.scrollHeight, 36)}px`;
-  }, [title, hasStartedCard]);
+  }, [title]);
 
   const timeZones = useMemo(() => getSupportedTimeZones(timeZone), [timeZone]);
   const activePreset = getThemePreset(style.themeId);
@@ -212,57 +351,6 @@ export function InviteStudio({
   function openThemeDrawer(tab: StudioDrawerTab) {
     setThemeDrawerTab(tab);
     setThemeDrawerOpen(true);
-  }
-
-  function handleAutofillPrompt(rawInput?: string) {
-    const sourcePrompt = (rawInput ?? quickPrompt).trim();
-    if (!sourcePrompt) {
-      setHasStartedCard(true);
-      return;
-    }
-
-    const parsed = parseEventPrompt(
-      sourcePrompt,
-      new Date(),
-      timeZone || getBrowserTimeZone(),
-    );
-    setTitle(parsed.title);
-    if (parsed.timeZone) setTimeZone(parsed.timeZone);
-    setLocationName(parsed.locationName ?? '');
-    setLocationAddress(parsed.locationAddress ?? '');
-    setVirtualUrl(parsed.virtualUrl ?? '');
-    const distinctVenueAndAddress = Boolean(
-      parsed.locationAddress?.trim() &&
-        parsed.locationAddress.trim().toLowerCase() !==
-          (parsed.locationName?.trim().toLowerCase() ?? ''),
-    );
-    setShowLocationDetails(
-      Boolean(distinctVenueAndAddress || (parsed.locationName && parsed.virtualUrl)),
-    );
-    if (parsed.hostName && !effectiveHostName.trim()) {
-      setHostTouched(true);
-      setHostName(parsed.hostName);
-    }
-    if (parsed.descriptionHtml) setDescriptionHtml(parsed.descriptionHtml);
-    if (parsed.rsvpNotePrompt) setRsvpNotePrompt(parsed.rsvpNotePrompt);
-    setStyle(parsed.style);
-
-    void isoToLocalFields(parsed.startIso, parsed.timeZone).then(({ date, time }) => {
-      if (date) setStartDate(date);
-      if (time) setStartTime(time);
-    });
-    if (parsed.endIso) {
-      setHasEndTime(true);
-      void isoToLocalFields(parsed.endIso, parsed.timeZone).then(({ date, time }) => {
-        if (date) setEndDate(date);
-        if (time) setEndTime(time);
-      });
-    } else {
-      setHasEndTime(false);
-    }
-
-    setHasStartedCard(true);
-    setErrorMsg(null);
   }
 
   const singleLocationValue =
@@ -386,6 +474,12 @@ export function InviteStudio({
           editKey: data.editKey,
         });
 
+        try {
+          window.localStorage.removeItem(CREATE_DRAFT_KEY);
+        } catch {
+          // Ignore storage errors
+        }
+
         setPublishedResult({
           id: data.id,
           editKey: data.editKey,
@@ -446,122 +540,47 @@ export function InviteStudio({
 
   return (
     <>
-      {mode === 'create' && !hasStartedCard ? (
-        <section
-          data-testid="prompt-entry-card"
-          className="pt-4 sm:pt-8 space-y-4"
-        >
-          <div
-            className="rounded-3xl border shadow-2xl p-6 sm:p-8 space-y-5"
-            style={{
-              backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
-              borderColor: 'var(--theme-border)',
-              color: 'var(--theme-text-primary)',
-            }}
-          >
-            <div className="space-y-1.5">
-              <h1
-                className="text-3xl sm:text-4xl font-bold tracking-tight"
-                style={{
-                  fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
-                }}
-              >
-                What&apos;s your event?
-              </h1>
-              <p
-                className="text-sm leading-relaxed"
-                style={{ color: 'var(--theme-text-muted)' }}
-              >
-                Write what, when, or where — we&apos;ll start your invite for you.
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              <label htmlFor={promptInputId} className="sr-only">
-                What&apos;s your event?
-              </label>
-              <textarea
-                id={promptInputId}
-                data-testid="event-prompt-input"
-                rows={3}
-                value={quickPrompt}
-                onChange={(e) => setQuickPrompt(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-                  if (e.key === 'Enter' && !e.shiftKey && quickPrompt.trim()) {
-                    e.preventDefault();
-                    handleAutofillPrompt();
-                  }
-                }}
-                placeholder="Christmas breakfast Dec 19 at 9:30am at 42 Maple St"
-                className="w-full rounded-2xl border px-4 py-3 text-base leading-relaxed outline-none focus:ring-2 resize-none"
-                style={{
-                  backgroundColor: 'var(--theme-surface-bg)',
-                  borderColor: 'var(--theme-border)',
-                  color: 'var(--theme-text-primary)',
-                }}
-              />
-
-              <div className="space-y-2">
-                <button
-                  type="button"
-                  data-testid="prompt-continue-button"
-                  disabled={!quickPrompt.trim()}
-                  onClick={() => handleAutofillPrompt()}
-                  className="invite-cta-btn w-full min-h-[48px] rounded-full px-5 text-base font-semibold shadow-lg transition active:scale-[0.99] disabled:opacity-45 cursor-pointer"
-                >
-                  Continue
-                </button>
-
-                <button
-                  type="button"
-                  data-testid="skip-prompt-button"
-                  onClick={() => {
-                    setHasStartedCard(true);
-                  }}
-                  className="w-full py-2 text-xs sm:text-sm font-medium opacity-75 hover:opacity-100 transition cursor-pointer"
-                  style={{ color: 'var(--theme-text-muted)' }}
-                >
-                  Or fill in details yourself
-                </button>
-              </div>
-            </div>
-
-            <div
-              className="pt-3 border-t flex flex-wrap gap-1.5"
-              style={{ borderColor: 'var(--theme-hairline)' }}
+      <form
+        onSubmit={handleSubmit}
+        className={`space-y-3.5 pt-1 ${themeDrawerOpen ? 'pb-64' : ''}`}
+      >
+        {hasUnsavedDraftContent ? (
+          <div className="flex items-center justify-between gap-2 px-1">
+            <span
+              data-testid="create-draft-badge"
+              className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium backdrop-blur-md"
+              style={{
+                backgroundColor: 'var(--theme-outer-pill-bg)',
+                borderColor: 'var(--theme-outer-pill-border)',
+                color: 'var(--theme-outer-text)',
+              }}
             >
-              {EXAMPLE_EVENT_PROMPTS.slice(0, 4).map((sample) => (
-                <button
-                  key={sample.label}
-                  type="button"
-                  onClick={() => {
-                    setQuickPrompt(sample.prompt);
-                    handleAutofillPrompt(sample.prompt);
-                  }}
-                  className="rounded-full border px-3 py-1.5 text-xs font-medium transition hover:opacity-90 cursor-pointer"
-                  style={{
-                    backgroundColor: 'var(--theme-surface-bg)',
-                    borderColor: 'var(--theme-hairline)',
-                    color: 'var(--theme-text-primary)',
-                  }}
-                >
-                  {sample.label}
-                </button>
-              ))}
-            </div>
+              <span
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: 'var(--theme-accent)' }}
+                aria-hidden="true"
+              />
+              <span>Draft</span>
+            </span>
+
+            <button
+              type="button"
+              onClick={clearCreateDraft}
+              className="text-[11px] font-medium opacity-75 hover:opacity-100 underline underline-offset-2 cursor-pointer"
+              style={{ color: 'var(--theme-outer-text)' }}
+            >
+              Clear draft
+            </button>
           </div>
-        </section>
-      ) : (
-        <form onSubmit={handleSubmit} className="space-y-3.5 pt-1">
-          {/* Live Invitation Card — header stays uncluttered; Theme & Cover sit on the card */}
-          <div
-            className="rounded-3xl border shadow-2xl overflow-hidden"
-            style={{
-              backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
-              borderColor: 'var(--theme-border)',
-            }}
-          >
+        ) : null}
+
+        {/* Live Invitation Card — goes straight into creating with Theme & Cover controls */}
+        <div
+          className="invite-glass-card rounded-3xl border overflow-hidden"
+          style={{
+            borderColor: 'var(--theme-border)',
+          }}
+        >
             {style.coverLayout !== 'none' ? (
               <CoverArt
                 flushTop
@@ -978,9 +997,8 @@ export function InviteStudio({
 
           {/* Closed-By-Default Guest & Time Zone Options */}
           <details
-            className="group rounded-3xl border shadow-lg overflow-hidden"
+            className="invite-glass-card group rounded-3xl border overflow-hidden"
             style={{
-              backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
               borderColor: 'var(--theme-hairline)',
             }}
           >
@@ -1135,22 +1153,7 @@ export function InviteStudio({
                 ? 'Create invite'
                 : 'Save changes'}
           </button>
-
-          {mode === 'create' ? (
-            <div className="text-center pt-0.5">
-              <button
-                type="button"
-                data-testid="start-over-prompt-button"
-                onClick={() => setHasStartedCard(false)}
-                className="text-xs font-medium opacity-75 hover:opacity-100 underline underline-offset-4 transition cursor-pointer"
-                style={{ color: 'var(--theme-outer-text)' }}
-              >
-                Start over from a short note
-              </button>
-            </div>
-          ) : null}
-        </form>
-      )}
+      </form>
 
       <StyleStudioDrawer
         open={themeDrawerOpen}

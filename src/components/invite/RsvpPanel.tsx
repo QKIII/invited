@@ -18,7 +18,7 @@ import {
   saveGuestToken,
   subscribeDeviceProfile,
 } from '@/lib/client/deviceProfile';
-import { setupDialogLightDismiss } from '@/lib/polyfills/ui';
+import { closeTopLayer, setupDialogLightDismiss } from '@/lib/polyfills/ui';
 import type {
   CommentRecord,
   EventDetailResponse,
@@ -83,19 +83,57 @@ export function RsvpPanel({
     getDeviceProfileServerSnapshot,
   );
 
+  const rsvpDraftKey = `invited_rsvp_draft:${event.id}`;
   const [status, setStatus] = useState<RsvpStatus>(viewerRsvp?.status ?? 'yes');
   const [plusOnes, setPlusOnes] = useState<number>(viewerRsvp?.plusOnes ?? 0);
   const [bringingNote, setBringingNote] = useState<string>(viewerRsvp?.bringingNote ?? '');
-  const [postToWall, setPostToWall] = useState<boolean>(true);
   const [manualIdentityEdit, setManualIdentityEdit] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [withdrawing, setWithdrawing] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const draftHydratedRef = useRef<boolean>(false);
 
   const recognizedName = deviceProfile?.name?.trim() || '';
   const firstName = recognizedName.split(/\s+/)[0] || recognizedName;
   const usingRecognizedIdentity =
     Boolean(recognizedName) && !viewerRsvp && !manualIdentityEdit && !guestName.trim();
+
+  const savedNote = viewerRsvp?.bringingNote?.trim() ?? '';
+  const hasUnsentNoteDraft = Boolean(
+    bringingNote.trim() && bringingNote.trim() !== savedNote,
+  );
+
+  // Hydrate saved RSVP note draft once per event
+  useEffect(() => {
+    draftHydratedRef.current = false;
+    queueMicrotask(() => {
+      try {
+        const draft = window.localStorage.getItem(rsvpDraftKey);
+        if (draft && draft.trim() && draft.trim() !== savedNote) {
+          setBringingNote(draft);
+        }
+      } catch {
+        // Ignore storage read errors
+      } finally {
+        draftHydratedRef.current = true;
+      }
+    });
+  }, [rsvpDraftKey, savedNote]);
+
+  // Persist unsent RSVP note draft
+  useEffect(() => {
+    if (!draftHydratedRef.current) return;
+    try {
+      const trimmed = bringingNote.trim();
+      if (!trimmed || trimmed === savedNote) {
+        window.localStorage.removeItem(rsvpDraftKey);
+      } else {
+        window.localStorage.setItem(rsvpDraftKey, bringingNote);
+      }
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [bringingNote, rsvpDraftKey, savedNote]);
 
   // Keep <dialog> synchronized with `isEditing`
   useEffect(() => {
@@ -111,11 +149,7 @@ export function RsvpPanel({
         }
       }
     } else if (dialog.open) {
-      if (typeof dialog.close === 'function') {
-        dialog.close();
-      } else {
-        dialog.removeAttribute('open');
-      }
+      void closeTopLayer(dialog);
     }
   }, [isEditing]);
 
@@ -141,7 +175,9 @@ export function RsvpPanel({
     if (viewerRsvp) {
       setStatus(viewerRsvp.status);
       setPlusOnes(viewerRsvp.plusOnes);
-      setBringingNote(viewerRsvp.bringingNote ?? '');
+      if (!hasUnsentNoteDraft) {
+        setBringingNote(viewerRsvp.bringingNote ?? '');
+      }
       onGuestNameChange(viewerRsvp.guestName);
       setManualIdentityEdit(false);
     } else {
@@ -161,7 +197,6 @@ export function RsvpPanel({
     targetName: string;
     targetPlusOnes: number;
     targetNote: string;
-    shareNoteToWall: boolean;
   }) {
     const trimmedName = params.targetName.trim();
     if (!trimmedName) {
@@ -190,7 +225,7 @@ export function RsvpPanel({
           status: params.targetStatus,
           plusOnes: params.targetStatus === 'yes' ? params.targetPlusOnes : 0,
           bringingNote: trimmedNote || undefined,
-          postToWall: Boolean(trimmedNote && params.shareNoteToWall),
+          postToWall: Boolean(trimmedNote),
           guestToken: guestToken ?? undefined,
         }),
       });
@@ -201,6 +236,11 @@ export function RsvpPanel({
         return;
       }
 
+      try {
+        window.localStorage.removeItem(rsvpDraftKey);
+      } catch {
+        // Ignore storage errors
+      }
       const nextToken = data.guestToken || guestToken || '';
       if (nextToken) {
         saveGuestToken(event.id, nextToken);
@@ -232,7 +272,6 @@ export function RsvpPanel({
       targetName: resolvedName,
       targetPlusOnes: plusOnes,
       targetNote: bringingNote,
-      shareNoteToWall: postToWall,
     });
   }
 
@@ -262,6 +301,11 @@ export function RsvpPanel({
 
       clearGuestToken(event.id);
       saveCachedGuestRsvp(event.id, null);
+      try {
+        window.localStorage.removeItem(rsvpDraftKey);
+      } catch {
+        // Ignore storage errors
+      }
       setBringingNote('');
       setPlusOnes(0);
       setStatus('yes');
@@ -305,12 +349,27 @@ export function RsvpPanel({
               <div className="flex items-center gap-2.5 min-w-0">
                 <GuestAvatar name={viewerRsvp.guestName} size="sm" />
                 <div className="min-w-0">
-                  <p
-                    className="text-sm font-bold leading-tight truncate"
-                    style={{ color: 'var(--theme-text-primary)' }}
-                  >
-                    {viewerRsvp.status === 'yes' ? "You're going!" : "Can't make it"}
-                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <p
+                      className="text-sm font-bold leading-tight truncate"
+                      style={{ color: 'var(--theme-text-primary)' }}
+                    >
+                      {viewerRsvp.status === 'yes' ? "You're going!" : "Can't make it"}
+                    </p>
+                    {hasUnsentNoteDraft ? (
+                      <span
+                        data-testid="rsvp-draft-badge"
+                        className="rounded-full border px-1.5 py-0.5 text-[10px] font-semibold"
+                        style={{
+                          backgroundColor: 'var(--theme-surface-bg)',
+                          borderColor: 'var(--theme-accent)',
+                          color: 'var(--theme-accent)',
+                        }}
+                      >
+                        Draft
+                      </span>
+                    ) : null}
+                  </div>
                   <p
                     className="text-xs leading-tight truncate mt-0.5"
                     style={{ color: 'var(--theme-text-muted)' }}
@@ -349,6 +408,19 @@ export function RsvpPanel({
             </div>
           ) : (
             <div className="flex items-center gap-2">
+              {hasUnsentNoteDraft ? (
+                <span
+                  data-testid="rsvp-draft-badge"
+                  className="shrink-0 rounded-full border px-2 py-1 text-[10px] font-semibold"
+                  style={{
+                    backgroundColor: 'var(--theme-surface-bg)',
+                    borderColor: 'var(--theme-accent)',
+                    color: 'var(--theme-accent)',
+                  }}
+                >
+                  Draft
+                </span>
+              ) : null}
               <button
                 type="button"
                 data-testid="sticky-rsvp-yes"
@@ -381,7 +453,7 @@ export function RsvpPanel({
         ref={dialogRef}
         closedby="any"
         aria-labelledby={formHeadingId}
-        className="w-full sm:w-[calc(100%-2rem)] max-w-[480px] mx-auto mt-auto mb-0 sm:my-auto rounded-t-3xl sm:rounded-3xl border shadow-2xl p-0 overflow-hidden backdrop:bg-black/60 backdrop:backdrop-blur-sm"
+        className="sheet-from-bottom w-full sm:w-[calc(100%-2rem)] max-w-[480px] mx-auto mt-auto mb-0 sm:my-auto rounded-t-3xl sm:rounded-3xl border shadow-2xl p-0 overflow-hidden backdrop-blur-2xl"
         style={{
           backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
           borderColor: 'var(--theme-border)',
@@ -393,16 +465,30 @@ export function RsvpPanel({
           style={{ borderColor: 'var(--theme-hairline)' }}
         >
           <div className="min-w-0">
-            <h2
-              id={formHeadingId}
-              className="text-lg font-bold tracking-tight truncate"
-              style={{
-                color: 'var(--theme-text-primary)',
-                fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
-              }}
-            >
-              {viewerRsvp ? 'Update RSVP' : 'Your RSVP'}
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2
+                id={formHeadingId}
+                className="text-lg font-bold tracking-tight truncate"
+                style={{
+                  color: 'var(--theme-text-primary)',
+                  fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
+                }}
+              >
+                {viewerRsvp ? 'Update RSVP' : 'Your RSVP'}
+              </h2>
+              {hasUnsentNoteDraft ? (
+                <span
+                  className="rounded-full border px-2 py-0.5 text-[10px] font-semibold"
+                  style={{
+                    backgroundColor: 'var(--theme-surface-bg)',
+                    borderColor: 'var(--theme-accent)',
+                    color: 'var(--theme-accent)',
+                  }}
+                >
+                  Draft
+                </span>
+              ) : null}
+            </div>
             <p className="text-xs truncate mt-0.5" style={{ color: 'var(--theme-text-muted)' }}>
               {event.title}
             </p>
@@ -642,21 +728,6 @@ export function RsvpPanel({
                 color: 'var(--theme-text-primary)',
               }}
             />
-
-            {bringingNote.trim() ? (
-              <label
-                className="mt-1.5 flex items-center gap-2 text-xs cursor-pointer"
-                style={{ color: 'var(--theme-text-muted)' }}
-              >
-                <input
-                  type="checkbox"
-                  checked={postToWall}
-                  onChange={(e) => setPostToWall(e.target.checked)}
-                  className="rounded border"
-                />
-                <span>Share note to event comments</span>
-              </label>
-            ) : null}
           </div>
 
           {errorMsg ? (

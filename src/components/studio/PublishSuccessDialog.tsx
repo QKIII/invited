@@ -11,7 +11,7 @@ import {
   Share2,
   X,
 } from 'lucide-react';
-import { setupDialogLightDismiss } from '@/lib/polyfills/ui';
+import { closeTopLayer, setupDialogLightDismiss } from '@/lib/polyfills/ui';
 
 export interface PublishedEventResult {
   id: string;
@@ -106,11 +106,7 @@ export function PublishSuccessDialog({
         dialog.setAttribute('open', '');
       }
     } else if (!published && dialog.open) {
-      if (typeof dialog.close === 'function') {
-        dialog.close();
-      } else {
-        dialog.removeAttribute('open');
-      }
+      void closeTopLayer(dialog);
     }
   }, [published]);
 
@@ -158,7 +154,7 @@ export function PublishSuccessDialog({
       ref={dialogRef}
       closedby="any"
       aria-labelledby="publish-success-heading"
-      className="w-full sm:w-[calc(100%-2rem)] max-w-md mx-auto mt-auto mb-0 sm:my-auto rounded-t-3xl sm:rounded-3xl border p-5 shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm"
+      className="sheet-from-bottom w-full sm:w-[calc(100%-2rem)] max-w-md mx-auto mt-auto mb-0 sm:my-auto rounded-t-3xl sm:rounded-3xl border p-5 shadow-2xl backdrop-blur-2xl"
       style={{
         backgroundColor: 'var(--theme-card-solid, #121a2e)',
         borderColor: 'var(--theme-border, rgba(255,255,255,0.16))',
@@ -188,7 +184,7 @@ export function PublishSuccessDialog({
 
             <button
               type="button"
-              onClick={onClose}
+              onClick={() => void closeTopLayer(dialogRef.current)}
               aria-label="Close publish dialog"
               className="h-9 w-9 rounded-full border inline-flex items-center justify-center opacity-80 hover:opacity-100 shrink-0 cursor-pointer"
               style={{

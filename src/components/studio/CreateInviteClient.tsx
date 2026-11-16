@@ -89,6 +89,7 @@ export function CreateInviteClient({ initialPrompt }: CreateInviteClientProps) {
       <AmbientBackdrop
         fixedViewport
         effectId={liveStyle.effectId}
+        pageBg={themeVars['--theme-page-bg']}
         accentColor={themeVars['--theme-accent']}
         secondaryColor={themeVars['--theme-cta-end']}
         colorMode={backdropMode}
