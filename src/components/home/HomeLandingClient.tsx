@@ -26,7 +26,6 @@ import {
 } from '@/lib/themes/presets';
 import type {
   AmbientEffectId,
-  CardSurfaceStyle,
   FontPairingId,
   InviteStyleConfig,
 } from '@/types/invite';
@@ -160,33 +159,32 @@ const CURATED_SHOWCASE_SPECS: Array<{
   themeId: string;
   effectId: AmbientEffectId;
   fontId: FontPairingId;
-  cardStyle?: CardSurfaceStyle;
 }> = [
-  { themeId: 'aurora-midnight', effectId: 'aurora', fontId: 'editorial-serif', cardStyle: 'glass' },
-  { themeId: 'y2k-chrome', effectId: 'liquid-chrome', fontId: 'y2k-display', cardStyle: 'y2k' },
-  { themeId: 'candlelit-dinner', effectId: 'warm-bokeh', fontId: 'expressive-display', cardStyle: 'glass' },
-  { themeId: 'winter-snowfall', effectId: 'snowfall', fontId: 'modern-sans', cardStyle: 'glass' },
-  { themeId: 'sunset-disco', effectId: 'disco-prism', fontId: 'sacred-classic', cardStyle: 'clear' },
-  { themeId: 'cozy-christmas', effectId: 'christmas-lights', fontId: 'playful-rounded', cardStyle: 'glass' },
-  { themeId: 'neon-arcade', effectId: 'cyber-grid', fontId: 'studio-mono', cardStyle: 'clear' },
-  { themeId: 'electric-quantum', effectId: 'prism-gradient', fontId: 'y2k-display', cardStyle: 'glass' },
-  { themeId: 'new-years-eve', effectId: 'champagne-sparkle', fontId: 'editorial-serif', cardStyle: 'glass' },
-  { themeId: 'valentines-rose', effectId: 'floating-hearts', fontId: 'sacred-classic', cardStyle: 'glass' },
-  { themeId: 'birthday-confetti', effectId: 'confetti', fontId: 'playful-rounded', cardStyle: 'glass' },
-  { themeId: 'fourth-of-july', effectId: 'fireworks', fontId: 'expressive-display', cardStyle: 'glass' },
-  { themeId: 'sacred-nativity', effectId: 'starlight-radiance', fontId: 'sacred-classic', cardStyle: 'glass' },
-  { themeId: 'spooky-halloween', effectId: 'halloween-bats', fontId: 'y2k-display', cardStyle: 'glass' },
-  { themeId: 'warm-thanksgiving', effectId: 'autumn-leaves', fontId: 'expressive-display', cardStyle: 'glass' },
-  { themeId: 'st-patricks-emerald', effectId: 'fireflies', fontId: 'editorial-serif', cardStyle: 'glass' },
-  { themeId: 'spring-easter-garden', effectId: 'botanical-petals', fontId: 'sacred-classic', cardStyle: 'glass' },
-  { themeId: 'summer-cookout', effectId: 'water-caustics', fontId: 'playful-rounded', cardStyle: 'glass' },
-  { themeId: 'baby-shower-cloud', effectId: 'lullaby-stars', fontId: 'modern-sans', cardStyle: 'glass' },
-  { themeId: 'bridal-atelier', effectId: 'stained-glass', fontId: 'editorial-serif', cardStyle: 'glass' },
-  { themeId: 'risograph-zine', effectId: 'paper-lanterns', fontId: 'studio-mono', cardStyle: 'clear' },
-  { themeId: 'minimal-paper', effectId: 'twilight-clouds', fontId: 'modern-sans', cardStyle: 'glass' },
-  { themeId: 'electric-quantum', effectId: 'lava-lamp', fontId: 'playful-rounded', cardStyle: 'glass' },
-  { themeId: 'minimal-paper', effectId: 'rain-glass', fontId: 'editorial-serif', cardStyle: 'glass' },
-  { themeId: 'aurora-midnight', effectId: 'shooting-stars', fontId: 'studio-mono', cardStyle: 'glass' },
+  { themeId: 'aurora-midnight', effectId: 'aurora', fontId: 'editorial-serif' },
+  { themeId: 'y2k-chrome', effectId: 'liquid-chrome', fontId: 'y2k-display' },
+  { themeId: 'candlelit-dinner', effectId: 'warm-bokeh', fontId: 'expressive-display' },
+  { themeId: 'winter-snowfall', effectId: 'snowfall', fontId: 'modern-sans' },
+  { themeId: 'sunset-disco', effectId: 'disco-prism', fontId: 'sacred-classic' },
+  { themeId: 'cozy-christmas', effectId: 'christmas-lights', fontId: 'playful-rounded' },
+  { themeId: 'neon-arcade', effectId: 'cyber-grid', fontId: 'studio-mono' },
+  { themeId: 'electric-quantum', effectId: 'prism-gradient', fontId: 'y2k-display' },
+  { themeId: 'new-years-eve', effectId: 'champagne-sparkle', fontId: 'editorial-serif' },
+  { themeId: 'valentines-rose', effectId: 'floating-hearts', fontId: 'sacred-classic' },
+  { themeId: 'birthday-confetti', effectId: 'confetti', fontId: 'playful-rounded' },
+  { themeId: 'fourth-of-july', effectId: 'fireworks', fontId: 'expressive-display' },
+  { themeId: 'sacred-nativity', effectId: 'starlight-radiance', fontId: 'sacred-classic' },
+  { themeId: 'spooky-halloween', effectId: 'halloween-bats', fontId: 'y2k-display' },
+  { themeId: 'warm-thanksgiving', effectId: 'autumn-leaves', fontId: 'expressive-display' },
+  { themeId: 'st-patricks-emerald', effectId: 'fireflies', fontId: 'editorial-serif' },
+  { themeId: 'spring-easter-garden', effectId: 'botanical-petals', fontId: 'sacred-classic' },
+  { themeId: 'summer-cookout', effectId: 'water-caustics', fontId: 'playful-rounded' },
+  { themeId: 'baby-shower-cloud', effectId: 'lullaby-stars', fontId: 'modern-sans' },
+  { themeId: 'bridal-atelier', effectId: 'stained-glass', fontId: 'editorial-serif' },
+  { themeId: 'risograph-zine', effectId: 'paper-lanterns', fontId: 'studio-mono' },
+  { themeId: 'minimal-paper', effectId: 'twilight-clouds', fontId: 'modern-sans' },
+  { themeId: 'electric-quantum', effectId: 'lava-lamp', fontId: 'playful-rounded' },
+  { themeId: 'minimal-paper', effectId: 'rain-glass', fontId: 'editorial-serif' },
+  { themeId: 'aurora-midnight', effectId: 'shooting-stars', fontId: 'studio-mono' },
 ];
 
 export const HERO_SHOWCASE_CYCLE: InviteStyleConfig[] = (() => {
@@ -205,7 +203,7 @@ export const HERO_SHOWCASE_CYCLE: InviteStyleConfig[] = (() => {
       effectId: spec.effectId,
       coverPresetId: preset.defaultCoverPresetId,
       coverLayout: 'banner',
-      cardStyle: spec.cardStyle ?? preset.defaultCardStyle ?? 'glass',
+      cardStyle: 'glass',
       colorMode: preset.colorMode,
     };
   });
@@ -538,7 +536,7 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
         ...(themeVars as React.CSSProperties),
         backgroundColor: 'var(--theme-page-bg)',
         color: 'var(--theme-text-primary)',
-        fontFamily: 'var(--font-invite-body), var(--font-sans), sans-serif',
+        fontFamily: 'var(--font-ui-body), var(--font-sans), sans-serif',
       }}
       className="home-theme-root min-h-dvh relative overflow-x-hidden flex flex-col"
     >
@@ -604,7 +602,7 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
       <header className="relative z-10 app-top-bar h-12 w-full max-w-[600px] mx-auto flex items-center justify-between gap-2">
         <Link
           href="/"
-          className="inline-flex items-center gap-2 text-sm font-semibold tracking-tight hover:opacity-80 transition shrink-0"
+          className="theme-pill-btn inline-flex items-center gap-2 text-sm font-semibold tracking-tight hover:opacity-80 shrink-0"
           style={{ color: 'var(--theme-outer-text)' }}
         >
           <InviteIcon name="brand" className="h-4 w-4" />
@@ -620,7 +618,7 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
               aria-label={
                 showcasePaused ? 'Play theme showcase' : 'Pause theme showcase'
               }
-              className="hero-pause-btn h-8 w-8 inline-flex items-center justify-center rounded-full border backdrop-blur-md transition hover:opacity-90 active:scale-95 cursor-pointer"
+              className="hero-pause-btn theme-pill-btn h-8 w-8 inline-flex items-center justify-center rounded-full border backdrop-blur-md hover:opacity-90 active:scale-95 cursor-pointer"
               style={{
                 backgroundColor: 'var(--theme-outer-pill-bg)',
                 borderColor: 'var(--theme-outer-pill-border)',
@@ -638,7 +636,7 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
           <button
             type="button"
             onClick={() => setRecentOpen(true)}
-            className="h-8 inline-flex items-center gap-1.5 rounded-full border px-3 text-xs font-medium backdrop-blur-md transition hover:opacity-90 cursor-pointer shrink-0"
+            className="theme-pill-btn h-8 inline-flex items-center gap-1.5 rounded-full border px-3 text-xs font-medium backdrop-blur-md hover:opacity-90 cursor-pointer shrink-0"
             style={{
               backgroundColor: 'var(--theme-outer-pill-bg)',
               borderColor: 'var(--theme-outer-pill-border)',
@@ -778,7 +776,7 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
                   type="button"
                   data-testid="home-create-invite-btn"
                   onClick={() => transitionToStage('prompt')}
-                  className="invite-cta-btn w-full sm:w-auto sm:min-w-[230px] min-h-[50px] inline-flex items-center justify-center gap-2 rounded-full px-7 py-3.5 text-base font-semibold shadow-xl transition hover:opacity-95 active:scale-[0.98] cursor-pointer"
+                  className="invite-cta-btn w-full sm:w-auto sm:min-w-[230px] min-h-[50px] inline-flex items-center justify-center gap-2 rounded-full px-7 py-3.5 text-base font-semibold shadow-xl hover:opacity-95 active:scale-[0.98] cursor-pointer"
                 >
                   <span>Create an invite</span>
                   <ArrowRight className="h-4 w-4" aria-hidden="true" />

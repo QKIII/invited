@@ -376,7 +376,16 @@
   );
   color: var(--theme-cta-text, #ffffff);
   transition:
-    color 0.85s cubic-bezier(0.45, 0, 0.55, 1),
+    color 1.05s cubic-bezier(0.45, 0, 0.55, 1),
+    opacity 0.2s ease,
+    transform 0.18s ease;
+}
+
+.theme-pill-btn {
+  transition:
+    background-color 1.05s cubic-bezier(0.45, 0, 0.55, 1),
+    border-color 1.05s cubic-bezier(0.45, 0, 0.55, 1),
+    color 1.05s cubic-bezier(0.45, 0, 0.55, 1),
     opacity 0.2s ease,
     transform 0.18s ease;
 }
