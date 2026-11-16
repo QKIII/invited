@@ -276,7 +276,7 @@ describe('RsvpPanel', () => {
     unmount();
   });
 
-  it('shows returning-guest summary with 1-click Update my RSVP button', () => {
+  it('shows returning-guest sticky bar with Edit RSVP button', () => {
     const event = createSampleEvent();
     const viewerRsvp: RsvpRecord = {
       id: 'rsvp_1',
@@ -305,12 +305,11 @@ describe('RsvpPanel', () => {
       />,
     );
 
-    expect(container.textContent).toContain("You're In");
-    expect(container.textContent).toContain('Hot cocoa');
-    const updateBtn = Array.from(container.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('Update response'),
-    );
-    expect(updateBtn).toBeDefined();
+    const footer = container.querySelector('[data-testid="sticky-rsvp-footer"]');
+    expect(footer?.textContent).toContain("You're going!");
+    expect(footer?.textContent).toContain('Hot cocoa');
+    const updateBtn = container.querySelector<HTMLButtonElement>('[data-testid="edit-rsvp-button"]');
+    expect(updateBtn).not.toBeNull();
 
     act(() => {
       updateBtn!.click();
@@ -319,7 +318,7 @@ describe('RsvpPanel', () => {
     unmount();
   });
 
-  it('auto-recognizes device profile on new invites with One-Click binary RSVP', async () => {
+  it('auto-recognizes device profile via sticky bar -> modal sheet with One-Click binary RSVP', async () => {
     saveDeviceProfile({ name: 'Ivan', email: 'ivan@example.com' });
     const event = createSampleEvent({ id: 'evt_brand_new' });
     const onRsvpSuccess = vi.fn();
@@ -341,31 +340,40 @@ describe('RsvpPanel', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { container, unmount } = renderIntoDom(
-      <RsvpPanel
-        event={event}
-        awaitingNames={[]}
-        guestToken={null}
-        guestName="Ivan"
-        onGuestNameChange={vi.fn()}
-        isEditing={false}
-        onEditingChange={vi.fn()}
-        onRsvpSuccess={onRsvpSuccess}
-        onOpenSubscribe={vi.fn()}
-      />,
-    );
+    function RecognizedHarness() {
+      const [name, setName] = useState('');
+      const [editing, setEditing] = useState(false);
+      return (
+        <RsvpPanel
+          event={event}
+          awaitingNames={[]}
+          guestToken={null}
+          guestName={name}
+          onGuestNameChange={setName}
+          isEditing={editing}
+          onEditingChange={setEditing}
+          onRsvpSuccess={onRsvpSuccess}
+          onOpenSubscribe={vi.fn()}
+        />
+      );
+    }
 
-    expect(container.textContent).toContain('Welcome, Ivan!');
-    expect(container.textContent).toContain("Can't Make It");
+    const { container, unmount } = renderIntoDom(<RecognizedHarness />);
+
+    const stickyYes = container.querySelector<HTMLButtonElement>('[data-testid="sticky-rsvp-yes"]');
+    expect(stickyYes).not.toBeNull();
+    expect(container.textContent).toContain("Can't make it");
     expect(container.textContent?.toLowerCase()).not.toContain('maybe');
 
-    const oneClickBtn = Array.from(container.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('One-Click RSVP'),
-    );
-    expect(oneClickBtn).toBeDefined();
-
     await act(async () => {
-      oneClickBtn!.click();
+      stickyYes!.click();
+    });
+
+    expect(container.textContent).toContain('Welcome back, Ivan!');
+
+    const form = container.querySelector('form')!;
+    await act(async () => {
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     });
 
     expect(fetchMock).toHaveBeenCalledWith(

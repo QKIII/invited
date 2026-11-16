@@ -22,6 +22,8 @@ export interface ThemePreset {
   textPrimary: string;
   textMuted: string;
   accent: string;
+  ctaStart: string;
+  ctaEnd: string;
   border: string;
   defaultFontId: FontPairingId;
   defaultEffectId: AmbientEffectId;
@@ -42,6 +44,8 @@ export const THEME_PRESETS: ThemePreset[] = [
     textPrimary: '#f8fafc',
     textMuted: '#a3b3cf',
     accent: '#34d399',
+    ctaStart: '#10b981',
+    ctaEnd: '#0ea5e9',
     border: '#253352',
     defaultFontId: 'modern-sans',
     defaultEffectId: 'aurora',
@@ -52,18 +56,20 @@ export const THEME_PRESETS: ThemePreset[] = [
     name: 'Frosty Winter',
     category: 'holiday',
     emoji: '❄️',
-    description: 'Royal winter night blue with soft snowfall bokeh and crisp icy clarity.',
-    colorMode: 'dark',
+    description: 'Crisp white invitation card framed by a royal winter sky and gentle snowfall.',
+    colorMode: 'light',
     pageBg: '#082556',
-    surfaceBg: '#0c316e',
-    cardBg: '#113a7d',
-    textPrimary: '#f8fbff',
-    textMuted: '#bdd5fa',
-    accent: '#7dd3fc',
-    border: '#2c5ba8',
+    surfaceBg: '#f8fafc',
+    cardBg: '#ffffff',
+    textPrimary: '#0f172a',
+    textMuted: '#475569',
+    accent: '#0369a1',
+    ctaStart: '#0369a1',
+    ctaEnd: '#1d4ed8',
+    border: '#cbd5e1',
     defaultFontId: 'modern-sans',
     defaultEffectId: 'snowfall',
-    defaultCoverPresetId: 'you-are-invited',
+    defaultCoverPresetId: 'snowy-pines',
   },
   {
     id: 'cozy-christmas',
@@ -78,6 +84,8 @@ export const THEME_PRESETS: ThemePreset[] = [
     textPrimary: '#faf7f0',
     textMuted: '#b7cec2',
     accent: '#fb7185',
+    ctaStart: '#e11d48',
+    ctaEnd: '#b91c1c',
     border: '#25503d',
     defaultFontId: 'expressive-display',
     defaultEffectId: 'christmas-lights',
@@ -96,6 +104,8 @@ export const THEME_PRESETS: ThemePreset[] = [
     textPrimary: '#fcfaf2',
     textMuted: '#c2c7e3',
     accent: '#f5c451',
+    ctaStart: '#f59e0b',
+    ctaEnd: '#d97706',
     border: '#2c376a',
     defaultFontId: 'sacred-classic',
     defaultEffectId: 'starlight-radiance',
@@ -114,6 +124,8 @@ export const THEME_PRESETS: ThemePreset[] = [
     textPrimary: '#faf5ff',
     textMuted: '#cab5e3',
     accent: '#fb923c',
+    ctaStart: '#ea580c',
+    ctaEnd: '#9333ea',
     border: '#3f285e',
     defaultFontId: 'expressive-display',
     defaultEffectId: 'halloween-bats',
@@ -132,6 +144,8 @@ export const THEME_PRESETS: ThemePreset[] = [
     textPrimary: '#fdf8f3',
     textMuted: '#d8bfb0',
     accent: '#f59e0b',
+    ctaStart: '#d97706',
+    ctaEnd: '#9a3412',
     border: '#4f3527',
     defaultFontId: 'expressive-display',
     defaultEffectId: 'autumn-leaves',
@@ -150,6 +164,8 @@ export const THEME_PRESETS: ThemePreset[] = [
     textPrimary: '#f8fafc',
     textMuted: '#b0c3e8',
     accent: '#ff6b7a',
+    ctaStart: '#e11d48',
+    ctaEnd: '#2563eb',
     border: '#2b417a',
     defaultFontId: 'expressive-display',
     defaultEffectId: 'fireworks',
@@ -168,6 +184,8 @@ export const THEME_PRESETS: ThemePreset[] = [
     textPrimary: '#fafafa',
     textMuted: '#babac9',
     accent: '#f4ce6a',
+    ctaStart: '#eab308',
+    ctaEnd: '#ca8a04',
     border: '#323244',
     defaultFontId: 'editorial-serif',
     defaultEffectId: 'champagne-sparkle',
@@ -186,6 +204,8 @@ export const THEME_PRESETS: ThemePreset[] = [
     textPrimary: '#fff5f7',
     textMuted: '#e0bac7',
     accent: '#fb7185',
+    ctaStart: '#f43f5e',
+    ctaEnd: '#be185d',
     border: '#59283e',
     defaultFontId: 'editorial-serif',
     defaultEffectId: 'floating-hearts',
@@ -204,6 +224,8 @@ export const THEME_PRESETS: ThemePreset[] = [
     textPrimary: '#f2fbf6',
     textMuted: '#aad3be',
     accent: '#4ade80',
+    ctaStart: '#059669',
+    ctaEnd: '#15803d',
     border: '#23553e',
     defaultFontId: 'expressive-display',
     defaultEffectId: 'warm-bokeh',
@@ -216,12 +238,14 @@ export const THEME_PRESETS: ThemePreset[] = [
     emoji: '🌷',
     description: 'Airy botanical ivory and sage garden palette with drifting spring petals.',
     colorMode: 'light',
-    pageBg: '#f3f7f2',
-    surfaceBg: '#ffffff',
+    pageBg: '#e8f1e6',
+    surfaceBg: '#f9fcf8',
     cardBg: '#ffffff',
     textPrimary: '#122116',
     textMuted: '#425948',
     accent: '#2c6b4a',
+    ctaStart: '#166534',
+    ctaEnd: '#0f766e',
     border: '#cfe0d2',
     defaultFontId: 'sacred-classic',
     defaultEffectId: 'botanical-petals',
@@ -234,12 +258,14 @@ export const THEME_PRESETS: ThemePreset[] = [
     emoji: '☀️',
     description: 'Sun-drenched warm cream editorial palette for backyard BBQs and long weekends.',
     colorMode: 'light',
-    pageBg: '#fff8ec',
-    surfaceBg: '#ffffff',
+    pageBg: '#fef3e0',
+    surfaceBg: '#fffaf2',
     cardBg: '#ffffff',
     textPrimary: '#152033',
     textMuted: '#48566e',
     accent: '#c8372d',
+    ctaStart: '#dc2626',
+    ctaEnd: '#d97706',
     border: '#e6dbc5',
     defaultFontId: 'playful-rounded',
     defaultEffectId: 'confetti',
@@ -252,13 +278,15 @@ export const THEME_PRESETS: ThemePreset[] = [
     emoji: '☁️',
     description: 'Soft buttercream linen, serene sky tones, and gentle twinkling lullaby stars.',
     colorMode: 'light',
-    pageBg: '#f9f6f0',
-    surfaceBg: '#ffffff',
+    pageBg: '#edf4f9',
+    surfaceBg: '#f8fbfe',
     cardBg: '#ffffff',
     textPrimary: '#192334',
     textMuted: '#495870',
     accent: '#346888',
-    border: '#e2dcd0',
+    ctaStart: '#0369a1',
+    ctaEnd: '#4f46e5',
+    border: '#dbe6f0',
     defaultFontId: 'playful-rounded',
     defaultEffectId: 'lullaby-stars',
     defaultCoverPresetId: 'baby-cloud',
@@ -270,12 +298,14 @@ export const THEME_PRESETS: ThemePreset[] = [
     emoji: '🕊️',
     description: 'Warm alabaster parchment, champagne bronze, and timeless editorial serif.',
     colorMode: 'light',
-    pageBg: '#f8f4ee',
-    surfaceBg: '#ffffff',
+    pageBg: '#f3ece2',
+    surfaceBg: '#fcfaf7',
     cardBg: '#ffffff',
     textPrimary: '#1c1917',
     textMuted: '#564f4a',
     accent: '#855736',
+    ctaStart: '#855736',
+    ctaEnd: '#573722',
     border: '#e2dad0',
     defaultFontId: 'editorial-serif',
     defaultEffectId: 'botanical-petals',
@@ -294,6 +324,8 @@ export const THEME_PRESETS: ThemePreset[] = [
     textPrimary: '#faf8ff',
     textMuted: '#c6b7eb',
     accent: '#ff7096',
+    ctaStart: '#ec4899',
+    ctaEnd: '#8b5cf6',
     border: '#3e2b73',
     defaultFontId: 'playful-rounded',
     defaultEffectId: 'confetti',
@@ -312,6 +344,8 @@ export const THEME_PRESETS: ThemePreset[] = [
     textPrimary: '#faf6f2',
     textMuted: '#cbbcb2',
     accent: '#ed9464',
+    ctaStart: '#c2410c',
+    ctaEnd: '#b45309',
     border: '#453a32',
     defaultFontId: 'editorial-serif',
     defaultEffectId: 'warm-bokeh',
@@ -324,12 +358,14 @@ export const THEME_PRESETS: ThemePreset[] = [
     emoji: '🏛️',
     description: 'Crisp gallery off-white editorial card with refined hairline borders.',
     colorMode: 'light',
-    pageBg: '#f4f4f5',
-    surfaceBg: '#ffffff',
+    pageBg: '#eceef1',
+    surfaceBg: '#f9fafb',
     cardBg: '#ffffff',
     textPrimary: '#111827',
     textMuted: '#4b5563',
     accent: '#18181b',
+    ctaStart: '#18181b',
+    ctaEnd: '#334155',
     border: '#e4e4e7',
     defaultFontId: 'modern-sans',
     defaultEffectId: 'none',
@@ -348,11 +384,30 @@ export const THEME_PRESETS: ThemePreset[] = [
     textPrimary: '#f8f7ff',
     textMuted: '#b7b4e8',
     accent: '#c084fc',
+    ctaStart: '#7c3aed',
+    ctaEnd: '#db2777',
     border: '#332d75',
     defaultFontId: 'studio-mono',
     defaultEffectId: 'aurora',
     defaultCoverPresetId: 'quantum-prism',
   },
+];
+
+export const CTA_PRESETS: Array<{
+  id: string;
+  name: string;
+  startHex: string;
+  endHex: string;
+  mode: 'gradient' | 'solid';
+}> = [
+  { id: 'glacier-sapphire', name: 'Glacier Blue', startHex: '#0369a1', endHex: '#1d4ed8', mode: 'gradient' },
+  { id: 'cranberry-holly', name: 'Holly Berry', startHex: '#e11d48', endHex: '#b91c1c', mode: 'gradient' },
+  { id: 'champagne-gold', name: 'Champagne Gold', startHex: '#eab308', endHex: '#d97706', mode: 'gradient' },
+  { id: 'northern-emerald', name: 'Pine Emerald', startHex: '#059669', endHex: '#0d9488', mode: 'gradient' },
+  { id: 'sunset-coral', name: 'Warm Terracotta', startHex: '#ea580c', endHex: '#be123c', mode: 'gradient' },
+  { id: 'twilight-plum', name: 'Twilight Plum', startHex: '#ec4899', endHex: '#7c3aed', mode: 'gradient' },
+  { id: 'botanical-sage', name: 'Garden Sage', startHex: '#166534', endHex: '#0f766e', mode: 'gradient' },
+  { id: 'classic-ink', name: 'Classic Ink', startHex: '#0f172a', endHex: '#334155', mode: 'solid' },
 ];
 
 export const FONT_PAIRINGS: Array<{
@@ -503,27 +558,32 @@ export const COVER_PRESETS: Array<{
   name: string;
   category: string;
   emoji: string;
+  imageUrl?: string;
 }> = [
-  { id: 'you-are-invited', name: 'You Are Invited', category: 'Editorial', emoji: '💌' },
-  { id: 'aurora-ridge', name: 'Northern Lights Ridge', category: 'Ambient', emoji: '🌌' },
-  { id: 'snowy-pines', name: 'Snowy Pine Cabin', category: 'Holiday', emoji: '❄️' },
-  { id: 'christmas-evergreen', name: 'Christmas Tree & Ornaments', category: 'Holiday', emoji: '🎄' },
-  { id: 'sacred-star', name: 'Star of Bethlehem Arches', category: 'Sacred', emoji: '✨' },
-  { id: 'halloween-pumpkin', name: 'Midnight Jack-o’-Lantern', category: 'Holiday', emoji: '🎃' },
-  { id: 'autumn-harvest', name: 'Autumn Harvest Table', category: 'Holiday', emoji: '🍂' },
-  { id: 'july-fireworks', name: 'Fourth of July Starburst', category: 'Holiday', emoji: '🎆' },
-  { id: 'champagne-toast', name: 'Midnight Champagne Coupe', category: 'Holiday', emoji: '🥂' },
+  { id: 'snowy-pines', name: 'Winter Gathering', category: 'Holiday', emoji: '❄️', imageUrl: '/covers/winter-gathering.jpg' },
+  { id: 'christmas-evergreen', name: 'Cozy Christmas Party', category: 'Holiday', emoji: '🎄', imageUrl: '/covers/cozy-christmas.jpg' },
+  { id: 'sacred-star', name: 'Star of Bethlehem', category: 'Sacred', emoji: '✨', imageUrl: '/covers/sacred-starlight.jpg' },
+  { id: 'aurora-ridge', name: 'Aurora Over Lake', category: 'Ambient', emoji: '🌌', imageUrl: '/covers/aurora-ridge.jpg' },
+  { id: 'candlelit-table', name: 'Candlelit Dinner Table', category: 'Editorial', emoji: '🕯️', imageUrl: '/covers/candlelit-dinner.jpg' },
+  { id: 'birthday-cake', name: 'Birthday Celebration', category: 'Milestone', emoji: '🎂', imageUrl: '/covers/birthday-celebration.jpg' },
+  { id: 'autumn-harvest', name: 'Friendsgiving Harvest', category: 'Holiday', emoji: '🍂', imageUrl: '/covers/autumn-harvest.jpg' },
+  { id: 'easter-botanical', name: 'Garden Brunch & Blooms', category: 'Seasonal', emoji: '🌷', imageUrl: '/covers/garden-brunch.jpg' },
+  { id: 'bridal-pearls', name: 'Bridal Watercolor', category: 'Milestone', emoji: '🕊️', imageUrl: '/covers/garden-brunch.jpg' },
+  { id: 'baby-cloud', name: 'Soft Nursery Blooms', category: 'Milestone', emoji: '☁️', imageUrl: '/covers/garden-brunch.jpg' },
+  { id: 'summer-citrus', name: 'Sunny Garden Party', category: 'Seasonal', emoji: '☀️', imageUrl: '/covers/garden-brunch.jpg' },
+  { id: 'champagne-toast', name: 'Midnight Champagne', category: 'Holiday', emoji: '🥂' },
   { id: 'velvet-roses', name: 'Velvet Roses & Seal', category: 'Holiday', emoji: '🌹' },
+  { id: 'halloween-pumpkin', name: 'Midnight Jack-o’-Lantern', category: 'Holiday', emoji: '🎃' },
+  { id: 'july-fireworks', name: 'Fourth of July Starburst', category: 'Holiday', emoji: '🎆' },
   { id: 'clover-emerald', name: 'Emerald Clover Crest', category: 'Holiday', emoji: '☘️' },
-  { id: 'easter-botanical', name: 'Spring Botanical Arch', category: 'Seasonal', emoji: '🌷' },
-  { id: 'summer-citrus', name: 'Golden Summer Cookout', category: 'Seasonal', emoji: '☀️' },
-  { id: 'baby-cloud', name: 'Lullaby Cloud & Moon', category: 'Milestone', emoji: '☁️' },
-  { id: 'bridal-pearls', name: 'Pearl Botanical Wreath', category: 'Milestone', emoji: '🕊️' },
-  { id: 'birthday-cake', name: 'Birthday Candles & Cake', category: 'Milestone', emoji: '🎂' },
-  { id: 'candlelit-table', name: 'Candlelit Dinner Tapers', category: 'Editorial', emoji: '🕯️' },
   { id: 'gallery-monolith', name: 'Minimal Gallery Arch', category: 'Editorial', emoji: '🏛️' },
   { id: 'quantum-prism', name: 'Quantum Prism Waves', category: 'Ambient', emoji: '🔮' },
+  { id: 'you-are-invited', name: 'Playful Cutouts', category: 'Editorial', emoji: '💌' },
 ];
+
+export function getCoverPreset(id: string) {
+  return COVER_PRESETS.find((preset) => preset.id === id);
+}
 
 export function getThemePreset(id: string): ThemePreset {
   return THEME_PRESETS.find((preset) => preset.id === id) ?? THEME_PRESETS[0];
@@ -550,7 +610,7 @@ export function resolveThemeCssVars(style: InviteStyleConfig): Record<string, st
       : mixHex(customSurface, '#e8e8ec', 0.3);
     cardBg = isDarkSurface
       ? mixHex(customSurface, '#ffffff', 0.05)
-      : mixHex(customSurface, '#ffffff', 0.65);
+      : '#ffffff';
     textPrimary = isDarkSurface ? '#f8fafc' : '#0b0f19';
     textMuted = isDarkSurface
       ? mixHex(cardBg, '#f8fafc', 0.7)
@@ -560,12 +620,15 @@ export function resolveThemeCssVars(style: InviteStyleConfig): Record<string, st
       : mixHex(cardBg, '#0b0f19', 0.14);
   } else if (style.colorMode && style.colorMode !== preset.colorMode) {
     if (style.colorMode === 'light') {
-      pageBg = '#f5f5f7';
-      surfaceBg = '#ffffff';
+      surfaceBg = '#f8fafc';
       cardBg = '#ffffff';
       textPrimary = '#111827';
       textMuted = '#4b5563';
       border = '#e4e4e7';
+      // Keep deep royal/moody backdrop if pageBg was already dark, else gentle alabaster
+      if (relativeLuminance(pageBg) >= 0.35) {
+        pageBg = '#f1f5f9';
+      }
     } else {
       pageBg = '#090b12';
       surfaceBg = '#101421';
@@ -582,29 +645,79 @@ export function resolveThemeCssVars(style: InviteStyleConfig): Record<string, st
   const accent = ensureReadableAccentOnSurface(rawAccent, cardBg, 3);
   const onAccent = pickAccessibleForeground(accent);
 
+  const ctaMode = style.ctaStyle ?? 'gradient';
+  const rawCtaStart = isValidHex(style.customAccentHex)
+    ? (normalizeHex(style.customAccentHex) as string)
+    : preset.ctaStart;
+  const rawCtaEnd = isValidHex(style.customCtaEndHex)
+    ? (normalizeHex(style.customCtaEndHex) as string)
+    : isValidHex(style.customAccentHex) && !style.customCtaEndHex
+      ? mixHex(rawCtaStart, '#0f172a', 0.24)
+      : preset.ctaEnd;
+
+  const ctaStart = rawCtaStart;
+  const ctaEnd = ctaMode === 'solid' ? ctaStart : rawCtaEnd;
+  const ctaMid = mixHex(ctaStart, ctaEnd, 0.5);
+  const ctaText = pickAccessibleForeground(ctaMid);
+  const ctaBg =
+    ctaMode === 'solid'
+      ? ctaStart
+      : `linear-gradient(135deg, ${ctaStart} 0%, ${ctaEnd} 100%)`;
+
   const font =
     FONT_PAIRINGS.find((item) => item.id === style.fontId) ?? FONT_PAIRINGS[0];
+  const cardRgb = hexToRgb(cardBg);
   const glassRgb = hexToRgb(mixHex(cardBg, '#ffffff', 0.05));
+  const cardSolid =
+    colorMode === 'light'
+      ? `rgba(${cardRgb.r}, ${cardRgb.g}, ${cardRgb.b}, 0.98)`
+      : `rgba(${cardRgb.r}, ${cardRgb.g}, ${cardRgb.b}, 0.95)`;
+  const stickyBg =
+    colorMode === 'light'
+      ? `rgba(${cardRgb.r}, ${cardRgb.g}, ${cardRgb.b}, 0.94)`
+      : `rgba(${cardRgb.r}, ${cardRgb.g}, ${cardRgb.b}, 0.92)`;
   const glassBg =
     colorMode === 'light'
-      ? 'rgba(255, 255, 255, 0.86)'
-      : `rgba(${glassRgb.r}, ${glassRgb.g}, ${glassRgb.b}, 0.72)`;
+      ? 'rgba(255, 255, 255, 0.9)'
+      : `rgba(${glassRgb.r}, ${glassRgb.g}, ${glassRgb.b}, 0.78)`;
   const hairline =
-    colorMode === 'light' ? 'rgba(15, 23, 42, 0.11)' : 'rgba(255, 255, 255, 0.14)';
+    colorMode === 'light' ? 'rgba(15, 23, 42, 0.1)' : 'rgba(255, 255, 255, 0.14)';
+  const backdropMode = relativeLuminance(pageBg) < 0.35 ? 'dark' : 'light';
+  const outerText = backdropMode === 'dark' ? '#f8fafc' : '#0f172a';
+  const outerMuted =
+    backdropMode === 'dark' ? 'rgba(241, 245, 249, 0.8)' : 'rgba(15, 23, 42, 0.72)';
+  const outerPillBg =
+    backdropMode === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(15, 23, 42, 0.07)';
+  const outerPillBorder =
+    backdropMode === 'dark' ? 'rgba(255, 255, 255, 0.22)' : 'rgba(15, 23, 42, 0.16)';
 
   return {
     '--theme-page-bg': pageBg,
     '--theme-surface-bg': surfaceBg,
     '--theme-card-bg': cardBg,
+    '--theme-card-solid': cardSolid,
+    '--theme-sticky-bg': stickyBg,
     '--theme-glass-bg': glassBg,
     '--theme-hairline': hairline,
+    '--theme-backdrop-mode': backdropMode,
+    '--theme-outer-text': outerText,
+    '--theme-outer-muted': outerMuted,
+    '--theme-outer-pill-bg': outerPillBg,
+    '--theme-outer-pill-border': outerPillBorder,
     '--theme-text-primary': textPrimary,
     '--theme-text-muted': textMuted,
     '--theme-accent': accent,
     '--theme-on-accent': onAccent,
+    '--theme-cta-start': ctaStart,
+    '--theme-cta-end': ctaEnd,
+    '--theme-cta-mid': ctaMid,
+    '--theme-cta-bg': ctaBg,
+    '--theme-cta-text': ctaText,
     '--theme-border': border,
     '--theme-font-heading': font.headingVar,
     '--theme-font-body': font.bodyVar,
+    '--font-invite-display': font.headingVar,
+    '--font-invite-body': font.bodyVar,
     '--theme-color-scheme': colorMode,
   };
 }

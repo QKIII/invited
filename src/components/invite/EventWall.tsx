@@ -208,20 +208,28 @@ export function EventWall({
   }
 
   return (
-    <section id="wall-section" aria-labelledby={headingId} className="space-y-3.5">
+    <section
+      id="wall-section"
+      aria-labelledby={headingId}
+      className="rounded-3xl border shadow-xl p-5 sm:p-6 space-y-3.5"
+      style={{
+        backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
+        borderColor: 'var(--theme-border)',
+      }}
+    >
       <div
-        className="flex items-center justify-between gap-2 pb-2 border-b"
+        className="flex items-center justify-between gap-2 pb-2.5 border-b"
         style={{ borderColor: 'var(--theme-hairline)' }}
       >
         <h2
           id={headingId}
-          className="text-sm font-medium"
+          className="text-base font-bold"
           style={{
-            color: 'var(--theme-text-muted)',
+            color: 'var(--theme-text-primary)',
             fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
           }}
         >
-          Activity{comments.length > 0 ? ` (${comments.length})` : ''}
+          Comments{comments.length > 0 ? ` (${comments.length})` : ''}
         </h2>
       </div>
 
@@ -269,11 +277,7 @@ export function EventWall({
               type="submit"
               disabled={posting}
               aria-label="Post comment"
-              className="h-9 shrink-0 rounded-xl px-3.5 text-xs sm:text-sm font-semibold transition hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-1.5 cursor-pointer"
-              style={{
-                backgroundColor: 'var(--theme-accent)',
-                color: 'var(--theme-on-accent)',
-              }}
+              className="invite-cta-btn h-10 shrink-0 rounded-full px-4 text-xs sm:text-sm font-semibold shadow-sm transition hover:opacity-95 disabled:opacity-50 inline-flex items-center gap-1.5 cursor-pointer"
             >
               <Send className="h-3.5 w-3.5" aria-hidden="true" />
               <span>{posting ? '...' : 'Post'}</span>

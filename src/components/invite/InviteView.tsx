@@ -5,20 +5,19 @@ import Link from 'next/link';
 import {
   ArrowUpRight,
   Calendar,
+  ChevronDown,
+  Clock,
   ExternalLink,
   MapPin,
-  Sparkles,
+  Share2,
   Video,
 } from 'lucide-react';
 import { CoverArt } from '@/components/covers/CoverArt';
 import { AmbientBackdrop } from '@/components/effects/AmbientBackdrop';
 import {
   getCachedGuestRsvp,
-  getDeviceProfile,
-  getDeviceProfileServerSnapshot,
   getSavedGuestToken,
   saveCachedGuestRsvp,
-  subscribeDeviceProfile,
 } from '@/lib/client/deviceProfile';
 import {
   getSavedHostKey,
@@ -77,17 +76,14 @@ export function InviteView({
   } | null>(null);
 
   const rsvpNameInputRef = useRef<HTMLInputElement>(null);
-  const deviceProfile = useSyncExternalStore(
-    subscribeDeviceProfile,
-    getDeviceProfile,
-    getDeviceProfileServerSnapshot,
-  );
 
   const event = detail.event;
   const themeVars = useMemo(
-    () => resolveThemeCssVars(event.style) as React.CSSProperties,
+    () => resolveThemeCssVars(event.style),
     [event.style],
   );
+  const backdropMode =
+    themeVars['--theme-backdrop-mode'] === 'light' ? 'light' : 'dark';
 
   const refreshDetail = useCallback(
     async (overrides?: { editKey?: string | null; guestToken?: string | null }) => {
@@ -276,11 +272,9 @@ export function InviteView({
   const handleSelectAwaitingName = (name: string) => {
     setRsvpGuestName(name);
     setIsEditingRsvp(true);
-    const section = document.getElementById('rsvp-section');
-    section?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     setTimeout(() => {
       rsvpNameInputRef.current?.focus();
-    }, 250);
+    }, 120);
   };
 
   const handleCommentsChange = (nextComments: CommentRecord[]) => {
@@ -321,7 +315,7 @@ export function InviteView({
         setTimeout(() => setShareCopied(false), 2200);
       }
     } catch {
-      // User dismissed share sheet
+      // User dismissed native share sheet
     }
   }
 
@@ -342,137 +336,83 @@ export function InviteView({
       ? `/e/${event.id}/edit?key=${encodeURIComponent(editKey)}`
       : null;
 
-  const recognizedHeaderName = detail.viewerRsvp?.guestName || deviceProfile?.name || '';
   const hasCover = event.style.coverLayout !== 'none';
 
   return (
     <div
       style={{
-        ...themeVars,
+        ...(themeVars as React.CSSProperties),
         backgroundColor: 'var(--theme-page-bg)',
         color: 'var(--theme-text-primary)',
         fontFamily: 'var(--font-invite-body), var(--font-sans), sans-serif',
       }}
       className="min-h-screen relative overflow-x-hidden"
     >
-      <AmbientBackdrop effectId={event.style.effectId} />
+      <AmbientBackdrop
+        effectId={event.style.effectId}
+        accentColor={themeVars['--theme-accent']}
+        colorMode={backdropMode}
+        className="fixed inset-0 z-0"
+      />
 
-      {/* Minimal 48px single-row header */}
-      <header className="relative z-10 h-12 max-w-[480px] lg:max-w-[920px] mx-auto px-4 lg:px-8 flex items-center justify-between gap-2">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 text-sm font-semibold tracking-tight hover:opacity-80 transition shrink-0"
-          style={{ color: 'var(--theme-text-primary)' }}
-        >
-          <Sparkles className="h-3.5 w-3.5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-          <span>invited</span>
-        </Link>
-
-        <nav className="flex items-center gap-2 min-w-0">
-          <Link
-            href="/create"
-            className="text-xs sm:text-sm font-medium opacity-80 hover:opacity-100 px-2 py-1 whitespace-nowrap transition"
-            style={{ color: 'var(--theme-text-primary)' }}
+      <main className="relative z-10 max-w-[580px] mx-auto px-3.5 sm:px-6 pt-3 sm:pt-7 pb-28 space-y-4">
+        {/* Compact Host Utility Pill (visible ONLY to hosts with editKey) */}
+        {activeEditHref ? (
+          <div
+            className="flex items-center justify-between gap-2 px-1 text-xs font-medium"
+            style={{ color: 'var(--theme-outer-text)' }}
           >
-            Create Invite
-          </Link>
-
-          <SubscribeControl
-            eventId={event.id}
-            eventTitle={event.title}
-            subscriberCount={detail.subscriberCount}
-            openSignal={subscribeSignal}
-            onSubscribed={() => void refreshDetail()}
-            variant="pill"
-          />
-
-          {recognizedHeaderName ? (
-            <GuestAvatar name={recognizedHeaderName} size="sm" className="shrink-0" />
-          ) : null}
-        </nav>
-      </header>
-
-      <main className="relative z-10 max-w-[480px] lg:max-w-[920px] mx-auto px-4 lg:px-8 pt-2 sm:pt-4 pb-16">
-        <div
-          className={
-            hasCover
-              ? 'grid grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)] gap-5 lg:gap-12 items-start'
-              : 'max-w-[540px] mx-auto space-y-6'
-          }
-        >
-          {/* Left / Top Visual Column */}
-          {hasCover ? (
-            <div className="space-y-6 lg:sticky lg:top-8 min-w-0">
-              <CoverArt
-                coverPresetId={event.style.coverPresetId}
-                customCoverUrl={event.style.customCoverUrl}
-                layout={event.style.coverLayout === 'banner' ? 'banner' : 'square'}
-                title={event.title}
-                className="w-full"
-              />
-
-              {event.hostName ? (
-                <section className="hidden lg:block space-y-3">
-                  <h2
-                    className="text-sm font-medium pb-2 border-b"
-                    style={{
-                      color: 'var(--theme-text-muted)',
-                      borderColor: 'var(--theme-hairline)',
-                      fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
-                    }}
-                  >
-                    Hosted By
-                  </h2>
-                  <div className="flex items-center gap-2.5">
-                    <GuestAvatar name={event.hostName} size="sm" />
-                    <span
-                      className="text-sm font-medium truncate"
-                      style={{ color: 'var(--theme-text-primary)' }}
-                    >
-                      {event.hostName}
-                    </span>
-                  </div>
-                </section>
-              ) : null}
-            </div>
-          ) : null}
-
-          {/* Right / Main Flow Column */}
-          <div className="min-w-0 space-y-6">
-            {/* Subtle Host Manage Access Strip */}
-            {activeEditHref ? (
-              <div
-                className="rounded-2xl border backdrop-blur-md px-4 py-3 flex items-center justify-between gap-3"
-                style={{
-                  backgroundColor: 'var(--theme-glass-bg)',
-                  borderColor: 'var(--theme-hairline)',
-                }}
+            <span className="opacity-85">Host view</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void handleShareInvite()}
+                className="rounded-full border border-current/25 px-3 py-1 backdrop-blur-md hover:opacity-85 transition cursor-pointer"
               >
-                <p
-                  className="text-xs sm:text-sm leading-snug min-w-0"
-                  style={{ color: 'var(--theme-text-muted)' }}
-                >
-                  You have manage access for this event.
-                </p>
-                <Link
-                  href={activeEditHref}
-                  className="shrink-0 inline-flex items-center gap-1 rounded-full px-3.5 py-1.5 text-xs sm:text-sm font-semibold transition hover:opacity-90"
-                  style={{
-                    backgroundColor: 'var(--theme-accent)',
-                    color: 'var(--theme-on-accent)',
-                  }}
-                >
-                  <span>Manage</span>
-                  <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
-                </Link>
-              </div>
-            ) : null}
+                {shareCopied ? 'Copied!' : 'Share'}
+              </button>
+              <Link
+                href={activeEditHref}
+                className="invite-cta-btn inline-flex items-center gap-1 rounded-full px-3.5 py-1 font-semibold shadow-sm hover:opacity-95 transition"
+              >
+                <span>Edit Invite</span>
+                <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </Link>
+            </div>
+          </div>
+        ) : null}
 
-            {/* Unboxed Hero Title + Host + Date + Location */}
-            <header className="space-y-4">
-              <div className="space-y-2">
+        {/* Primary Uncluttered Invitation Card */}
+        <article
+          className="rounded-3xl border shadow-2xl overflow-hidden"
+          style={{
+            backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
+            borderColor: 'var(--theme-border)',
+          }}
+        >
+          {hasCover ? (
+            <CoverArt
+              flushTop
+              coverPresetId={event.style.coverPresetId}
+              customCoverUrl={event.style.customCoverUrl}
+              layout={event.style.coverLayout === 'square' ? 'square' : 'banner'}
+              title={event.title}
+              accentColor={themeVars['--theme-accent']}
+              className="w-full"
+            />
+          ) : null}
+
+          <div className="p-5 sm:p-7 space-y-5">
+            {/* Title + Date Badge Lockup */}
+            <header className="flex items-start gap-3.5">
+              <CalendarDateTile
+                startIso={event.startIso}
+                timeZone={event.timeZone}
+                size="md"
+              />
+              <div className="min-w-0 flex-1 space-y-1">
                 <h1
-                  className="text-[28px] sm:text-[34px] font-bold leading-[1.12] tracking-tight break-words"
+                  className="text-[24px] sm:text-[30px] font-bold leading-[1.15] tracking-tight [text-wrap:balance] break-words"
                   style={{
                     color: 'var(--theme-text-primary)',
                     fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
@@ -480,9 +420,8 @@ export function InviteView({
                 >
                   {event.title}
                 </h1>
-
                 {event.hostName ? (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 pt-0.5">
                     <GuestAvatar name={event.hostName} size="xs" />
                     <span
                       className="text-sm font-medium truncate"
@@ -493,359 +432,322 @@ export function InviteView({
                   </div>
                 ) : null}
               </div>
-
-              <div className="space-y-3 pt-1">
-                {/* Date / Time Row with Popover Calendar Menu */}
-                <div>
-                  <button
-                    type="button"
-                    popoverTarget="calendar-menu"
-                    className="w-full flex items-center gap-3.5 text-left group cursor-pointer"
-                  >
-                    <CalendarDateTile
-                      startIso={event.startIso}
-                      timeZone={event.timeZone}
-                      size="sm"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p
-                        className="text-sm sm:text-base font-medium leading-snug group-hover:underline break-words"
-                        style={{ color: 'var(--theme-text-primary)' }}
-                      >
-                        {formattedDate.dateLabel}
-                      </p>
-                      <p
-                        className="text-xs sm:text-sm leading-snug break-words"
-                        style={{ color: 'var(--theme-text-muted)' }}
-                      >
-                        {formattedDate.timeLabel}
-                      </p>
-                      {formattedDate.viewerTimeLabel ? (
-                        <p
-                          className="text-xs leading-snug break-words mt-0.5 opacity-80"
-                          style={{ color: 'var(--theme-text-muted)' }}
-                        >
-                          {formattedDate.viewerTimeLabel}
-                        </p>
-                      ) : null}
-                    </div>
-                  </button>
-
-                  <div
-                    id="calendar-menu"
-                    popover="auto"
-                    className="m-auto rounded-2xl border p-2 shadow-2xl w-[min(18rem,calc(100%-2rem))]"
-                    style={{
-                      backgroundColor: 'var(--theme-surface-bg)',
-                      borderColor: 'var(--theme-border)',
-                      color: 'var(--theme-text-primary)',
-                    }}
-                  >
-                    <p
-                      className="px-3 py-1.5 text-xs font-medium border-b mb-1"
-                      style={{
-                        color: 'var(--theme-text-muted)',
-                        borderColor: 'var(--theme-hairline)',
-                      }}
-                    >
-                      Add to Calendar
-                    </p>
-                    {calendarUrls ? (
-                      <a
-                        href={calendarUrls.googleUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm hover:bg-white/10 transition"
-                      >
-                        <span>Google Calendar</span>
-                        <ExternalLink className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
-                      </a>
-                    ) : null}
-                    <a
-                      href={`/api/events/${event.id}/ics`}
-                      className="flex items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm hover:bg-white/10 transition"
-                    >
-                      <span>Apple / iCal (.ics)</span>
-                      <Calendar className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
-                    </a>
-                    {calendarUrls ? (
-                      <a
-                        href={calendarUrls.outlookUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm hover:bg-white/10 transition"
-                      >
-                        <span>Outlook</span>
-                        <ExternalLink className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
-                      </a>
-                    ) : null}
-                  </div>
-                </div>
-
-                {/* Hero Location Row */}
-                {heroLocation.primaryLocation || heroLocation.secondaryAddress ? (
-                  <div data-testid="hero-location">
-                    {mapsUrl ? (
-                      <a
-                        href={mapsUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-3.5 group"
-                      >
-                        <div
-                          aria-hidden="true"
-                          className="h-10 w-10 rounded-xl border flex items-center justify-center shrink-0 backdrop-blur-sm"
-                          style={{
-                            backgroundColor: 'var(--theme-glass-bg)',
-                            borderColor: 'var(--theme-hairline)',
-                            color: 'var(--theme-text-muted)',
-                          }}
-                        >
-                          <MapPin className="h-4 w-4" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p
-                            className="text-sm sm:text-base font-medium leading-snug group-hover:underline break-words"
-                            style={{ color: 'var(--theme-text-primary)' }}
-                          >
-                            {heroLocation.primaryLocation || heroLocation.secondaryAddress} ↗
-                          </p>
-                          {heroLocation.primaryLocation && heroLocation.secondaryAddress ? (
-                            <p
-                              className="text-xs sm:text-sm leading-snug break-words"
-                              style={{ color: 'var(--theme-text-muted)' }}
-                            >
-                              {heroLocation.secondaryAddress}
-                            </p>
-                          ) : null}
-                        </div>
-                      </a>
-                    ) : (
-                      <div className="flex items-center gap-3.5">
-                        <div
-                          aria-hidden="true"
-                          className="h-10 w-10 rounded-xl border flex items-center justify-center shrink-0 backdrop-blur-sm"
-                          style={{
-                            backgroundColor: 'var(--theme-glass-bg)',
-                            borderColor: 'var(--theme-hairline)',
-                            color: 'var(--theme-text-muted)',
-                          }}
-                        >
-                          <MapPin className="h-4 w-4" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p
-                            className="text-sm sm:text-base font-medium leading-snug break-words"
-                            style={{ color: 'var(--theme-text-primary)' }}
-                          >
-                            {heroLocation.primaryLocation || heroLocation.secondaryAddress}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-
-                {/* Virtual Link Row */}
-                {safeVirtualUrl ? (
-                  <a
-                    href={safeVirtualUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-3.5 group"
-                  >
-                    <div
-                      aria-hidden="true"
-                      className="h-10 w-10 rounded-xl border flex items-center justify-center shrink-0 backdrop-blur-sm"
-                      style={{
-                        backgroundColor: 'var(--theme-glass-bg)',
-                        borderColor: 'var(--theme-hairline)',
-                        color: 'var(--theme-text-muted)',
-                      }}
-                    >
-                      <Video className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p
-                        className="text-sm sm:text-base font-medium leading-snug group-hover:underline truncate"
-                        style={{ color: 'var(--theme-text-primary)' }}
-                      >
-                        Join Virtual Event ↗
-                      </p>
-                      <p
-                        className="text-xs truncate"
-                        style={{ color: 'var(--theme-text-muted)' }}
-                      >
-                        {safeVirtualUrl}
-                      </p>
-                    </div>
-                  </a>
-                ) : null}
-              </div>
             </header>
 
-            {/* Primary Registration / RSVP Frosted Card */}
-            <RsvpPanel
-              event={event}
-              awaitingNames={detail.rsvps.awaitingNames}
-              viewerRsvp={detail.viewerRsvp}
-              editKey={editKey}
-              guestToken={guestToken}
-              guestName={rsvpGuestName}
-              onGuestNameChange={setRsvpGuestName}
-              isEditing={isEditingRsvp}
-              onEditingChange={setIsEditingRsvp}
-              onRsvpSuccess={handleRsvpSuccess}
-              onWithdrawRsvp={handleWithdrawRsvp}
-              onOpenSubscribe={() => setSubscribeSignal((n) => n + 1)}
-              onShareInvite={() => void handleShareInvite()}
-              shareCopied={shareCopied}
-              nameInputRef={rsvpNameInputRef}
-            />
-
-            {/* Flat Hairline Section: About Event */}
-            {hasMeaningfulDescription ? (
-              <section className="space-y-3">
-                <h2
-                  className="text-sm font-medium pb-2 border-b"
-                  style={{
-                    color: 'var(--theme-text-muted)',
-                    borderColor: 'var(--theme-hairline)',
-                    fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
-                  }}
+            {/* When & Where */}
+            <div
+              className="pt-4 border-t space-y-3"
+              style={{ borderColor: 'var(--theme-hairline)' }}
+            >
+              {/* Date / Time + Popover Calendar Menu */}
+              <div>
+                <button
+                  type="button"
+                  popoverTarget="calendar-menu"
+                  className="w-full flex items-center gap-3 text-left group cursor-pointer"
                 >
-                  About Event
-                </h2>
-                <SafeRichHtml
-                  html={event.descriptionHtml}
-                  className="invite-prose text-sm sm:text-base leading-relaxed"
-                />
-              </section>
-            ) : null}
-
-            {/* Flat Hairline Section: Location + Rounded Google Map */}
-            {mapQuery && mapsUrl ? (
-              <section data-testid="location-section" className="space-y-3">
-                <h2
-                  className="text-sm font-medium pb-2 border-b"
-                  style={{
-                    color: 'var(--theme-text-muted)',
-                    borderColor: 'var(--theme-hairline)',
-                    fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
-                  }}
-                >
-                  Location
-                </h2>
-                <div className="space-y-0.5">
-                  {heroLocation.primaryLocation ? (
+                  <div
+                    aria-hidden="true"
+                    className="h-9 w-9 rounded-xl border flex items-center justify-center shrink-0"
+                    style={{
+                      backgroundColor: 'var(--theme-surface-bg)',
+                      borderColor: 'var(--theme-hairline)',
+                      color: 'var(--theme-text-muted)',
+                    }}
+                  >
+                    <Clock className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
                     <p
-                      className="text-sm sm:text-base font-medium break-words"
+                      className="text-sm sm:text-[15px] font-semibold leading-snug group-hover:underline break-words"
                       style={{ color: 'var(--theme-text-primary)' }}
                     >
-                      {heroLocation.primaryLocation}
+                      {formattedDate.dateLabel}
                     </p>
-                  ) : null}
-                  {heroLocation.secondaryAddress ? (
                     <p
-                      className="text-xs sm:text-sm break-words"
+                      className="text-xs sm:text-sm leading-snug break-words"
                       style={{ color: 'var(--theme-text-muted)' }}
                     >
-                      {heroLocation.secondaryAddress}
+                      {formattedDate.timeLabel}
                     </p>
-                  ) : null}
-                </div>
+                    {formattedDate.viewerTimeLabel ? (
+                      <p
+                        className="text-xs leading-snug break-words mt-0.5 opacity-85"
+                        style={{ color: 'var(--theme-text-muted)' }}
+                      >
+                        {formattedDate.viewerTimeLabel}
+                      </p>
+                    ) : null}
+                  </div>
+                </button>
 
                 <div
-                  className="relative rounded-2xl overflow-hidden border h-44 sm:h-52"
+                  id="calendar-menu"
+                  popover="auto"
+                  className="m-auto rounded-2xl border p-2 shadow-2xl w-[min(18rem,calc(100%-2rem))]"
                   style={{
-                    borderColor: 'var(--theme-hairline)',
-                    backgroundColor: 'var(--theme-surface-bg)',
+                    backgroundColor: 'var(--theme-card-solid, var(--theme-surface-bg))',
+                    borderColor: 'var(--theme-border)',
+                    color: 'var(--theme-text-primary)',
                   }}
                 >
-                  <iframe
-                    title={`Map of ${mapQuery}`}
-                    src={`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=14&output=embed`}
-                    className="w-full h-full border-0"
-                    loading="lazy"
-                    referrerPolicy="no-referrer-when-downgrade"
-                  />
+                  <p
+                    className="px-3 py-1.5 text-xs font-medium border-b mb-1"
+                    style={{
+                      color: 'var(--theme-text-muted)',
+                      borderColor: 'var(--theme-hairline)',
+                    }}
+                  >
+                    Add to Calendar
+                  </p>
+                  {calendarUrls ? (
+                    <a
+                      href={calendarUrls.googleUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm hover:opacity-80 transition"
+                    >
+                      <span>Google Calendar</span>
+                      <ExternalLink className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
+                    </a>
+                  ) : null}
                   <a
-                    href={mapsUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="absolute top-3 right-3 inline-flex items-center gap-1 rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-semibold text-slate-900 shadow-md hover:bg-white transition"
+                    href={`/api/events/${event.id}/ics`}
+                    className="flex items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm hover:opacity-80 transition"
                   >
-                    <span>Maps</span>
-                    <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span>Apple / iCal (.ics)</span>
+                    <Calendar className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
                   </a>
+                  {calendarUrls ? (
+                    <a
+                      href={calendarUrls.outlookUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm hover:opacity-80 transition"
+                    >
+                      <span>Outlook</span>
+                      <ExternalLink className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
+                    </a>
+                  ) : null}
                 </div>
-              </section>
-            ) : null}
+              </div>
 
-            {/* Flat Hairline Section: Guest List */}
-            <GuestList
-              event={event}
-              rsvps={detail.rsvps}
-              isHost={detail.isHost}
-              viewerRsvp={detail.viewerRsvp}
-              onSelectAwaitingName={handleSelectAwaitingName}
-            />
+              {/* Single Deduplicated Location Row + Optional Collapsible Map */}
+              {heroLocation.primaryLocation || heroLocation.secondaryAddress ? (
+                <div data-testid="hero-location" className="space-y-2">
+                  {mapsUrl ? (
+                    <a
+                      href={mapsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 group"
+                    >
+                      <div
+                        aria-hidden="true"
+                        className="h-9 w-9 rounded-xl border flex items-center justify-center shrink-0"
+                        style={{
+                          backgroundColor: 'var(--theme-surface-bg)',
+                          borderColor: 'var(--theme-hairline)',
+                          color: 'var(--theme-text-muted)',
+                        }}
+                      >
+                        <MapPin className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className="text-sm sm:text-[15px] font-semibold leading-snug group-hover:underline break-words"
+                          style={{ color: 'var(--theme-text-primary)' }}
+                        >
+                          {heroLocation.primaryLocation || heroLocation.secondaryAddress} ↗
+                        </p>
+                        {heroLocation.primaryLocation && heroLocation.secondaryAddress ? (
+                          <p
+                            className="text-xs sm:text-sm leading-snug break-words"
+                            style={{ color: 'var(--theme-text-muted)' }}
+                          >
+                            {heroLocation.secondaryAddress}
+                          </p>
+                        ) : null}
+                      </div>
+                    </a>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <div
+                        aria-hidden="true"
+                        className="h-9 w-9 rounded-xl border flex items-center justify-center shrink-0"
+                        style={{
+                          backgroundColor: 'var(--theme-surface-bg)',
+                          borderColor: 'var(--theme-hairline)',
+                          color: 'var(--theme-text-muted)',
+                        }}
+                      >
+                        <MapPin className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className="text-sm sm:text-[15px] font-semibold leading-snug break-words"
+                          style={{ color: 'var(--theme-text-primary)' }}
+                        >
+                          {heroLocation.primaryLocation || heroLocation.secondaryAddress}
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
-            {/* Flat Hairline Section: Activity Wall */}
-            <EventWall
-              eventId={event.id}
-              comments={detail.comments}
-              isHost={detail.isHost}
-              editKey={editKey}
-              guestToken={guestToken}
-              defaultAuthorName={detail.viewerRsvp?.guestName ?? rsvpGuestName}
-              viewerRsvpStatus={detail.viewerRsvp?.status}
-              onCommentsChange={handleCommentsChange}
-              onRefreshDetail={() => refreshDetail()}
-            />
+                  {mapQuery && mapsUrl ? (
+                    <details data-testid="location-section" className="group pl-12">
+                      <summary
+                        className="inline-flex items-center gap-1 text-xs font-medium cursor-pointer list-none opacity-80 hover:opacity-100"
+                        style={{ color: 'var(--theme-accent)' }}
+                      >
+                        <span>Show map</span>
+                        <ChevronDown
+                          className="h-3.5 w-3.5 transition-transform group-open:rotate-180"
+                          aria-hidden="true"
+                        />
+                      </summary>
+                      <div
+                        className="mt-2 rounded-2xl overflow-hidden border h-40 sm:h-44"
+                        style={{
+                          borderColor: 'var(--theme-hairline)',
+                          backgroundColor: 'var(--theme-surface-bg)',
+                        }}
+                      >
+                        <iframe
+                          title={`Map of ${mapQuery}`}
+                          src={`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=14&output=embed`}
+                          className="w-full h-full border-0"
+                          loading="lazy"
+                          referrerPolicy="no-referrer-when-downgrade"
+                        />
+                      </div>
+                    </details>
+                  ) : null}
+                </div>
+              ) : null}
 
-            {/* Mobile Hosted By Section */}
-            {event.hostName ? (
-              <section className="lg:hidden space-y-3">
-                <h2
-                  className="text-sm font-medium pb-2 border-b"
-                  style={{
-                    color: 'var(--theme-text-muted)',
-                    borderColor: 'var(--theme-hairline)',
-                    fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
-                  }}
+              {/* Virtual Event Link */}
+              {safeVirtualUrl ? (
+                <a
+                  href={safeVirtualUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 group"
                 >
-                  Hosted By
-                </h2>
-                <div className="flex items-center gap-2.5">
-                  <GuestAvatar name={event.hostName} size="sm" />
-                  <span
-                    className="text-sm font-medium truncate"
-                    style={{ color: 'var(--theme-text-primary)' }}
+                  <div
+                    aria-hidden="true"
+                    className="h-9 w-9 rounded-xl border flex items-center justify-center shrink-0"
+                    style={{
+                      backgroundColor: 'var(--theme-surface-bg)',
+                      borderColor: 'var(--theme-hairline)',
+                      color: 'var(--theme-text-muted)',
+                    }}
                   >
-                    {event.hostName}
-                  </span>
-                </div>
-              </section>
+                    <Video className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className="text-sm sm:text-[15px] font-semibold leading-snug group-hover:underline truncate"
+                      style={{ color: 'var(--theme-text-primary)' }}
+                    >
+                      Join Online ↗
+                    </p>
+                    <p
+                      className="text-xs truncate"
+                      style={{ color: 'var(--theme-text-muted)' }}
+                    >
+                      {safeVirtualUrl}
+                    </p>
+                  </div>
+                </a>
+              ) : null}
+            </div>
+
+            {/* Event Description */}
+            {hasMeaningfulDescription ? (
+              <div
+                className="pt-4 border-t"
+                style={{ borderColor: 'var(--theme-hairline)' }}
+              >
+                <SafeRichHtml
+                  html={event.descriptionHtml}
+                  className="invite-prose text-[15px] leading-relaxed"
+                />
+              </div>
             ) : null}
           </div>
-        </div>
+        </article>
+
+        {/* Guests Card */}
+        <GuestList
+          event={event}
+          rsvps={detail.rsvps}
+          isHost={detail.isHost}
+          viewerRsvp={detail.viewerRsvp}
+          onSelectAwaitingName={handleSelectAwaitingName}
+        />
+
+        {/* Comments Card */}
+        <EventWall
+          eventId={event.id}
+          comments={detail.comments}
+          isHost={detail.isHost}
+          editKey={editKey}
+          guestToken={guestToken}
+          defaultAuthorName={detail.viewerRsvp?.guestName ?? rsvpGuestName}
+          viewerRsvpStatus={detail.viewerRsvp?.status}
+          onCommentsChange={handleCommentsChange}
+          onRefreshDetail={() => refreshDetail()}
+        />
+
+        {/* Minimal Quiet Footer Links */}
+        <footer
+          className="pt-1 pb-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs font-medium"
+          style={{ color: 'var(--theme-outer-muted)' }}
+        >
+          <SubscribeControl
+            eventId={event.id}
+            eventTitle={event.title}
+            subscriberCount={detail.subscriberCount}
+            openSignal={subscribeSignal}
+            onSubscribed={() => void refreshDetail()}
+            variant="link"
+          />
+          <span aria-hidden="true">·</span>
+          <button
+            type="button"
+            onClick={() => void handleShareInvite()}
+            className="inline-flex items-center gap-1 hover:underline cursor-pointer"
+          >
+            <Share2 className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>{shareCopied ? 'Link copied!' : 'Share'}</span>
+          </button>
+          <span aria-hidden="true">·</span>
+          <Link href="/create" className="inline-flex items-center gap-1 hover:underline">
+            <span>Create a free invite</span>
+            <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+          </Link>
+        </footer>
       </main>
 
-      {/* Quiet minimal footer */}
-      <footer
-        className="relative z-10 max-w-[480px] lg:max-w-[920px] mx-auto px-4 lg:px-8 pt-6 pb-10 border-t flex items-center justify-between gap-4 text-xs"
-        style={{
-          borderColor: 'var(--theme-hairline)',
-          color: 'var(--theme-text-muted)',
-        }}
-      >
-        <span className="font-semibold tracking-tight">invited</span>
-        <Link href="/create" className="hover:underline inline-flex items-center gap-1">
-          <span>Create a free invite</span>
-          <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
-        </Link>
-      </footer>
+      {/* Fixed Sticky Bottom RSVP Bar & Native Modal Dialog Sheet */}
+      <RsvpPanel
+        event={event}
+        awaitingNames={detail.rsvps.awaitingNames}
+        viewerRsvp={detail.viewerRsvp}
+        editKey={editKey}
+        guestToken={guestToken}
+        guestName={rsvpGuestName}
+        onGuestNameChange={setRsvpGuestName}
+        isEditing={isEditingRsvp}
+        onEditingChange={setIsEditingRsvp}
+        onRsvpSuccess={handleRsvpSuccess}
+        onWithdrawRsvp={handleWithdrawRsvp}
+        onOpenSubscribe={() => setSubscribeSignal((n) => n + 1)}
+        onShareInvite={() => void handleShareInvite()}
+        shareCopied={shareCopied}
+        nameInputRef={rsvpNameInputRef}
+      />
     </div>
   );
 }

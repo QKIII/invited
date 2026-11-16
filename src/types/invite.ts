@@ -26,6 +26,8 @@ export type FontPairingId =
 
 export type CoverLayout = 'square' | 'banner' | 'none';
 
+export type CtaStyleMode = 'gradient' | 'solid';
+
 export interface InviteStyleConfig {
   themeId: string;
   fontId: FontPairingId;
@@ -35,6 +37,8 @@ export interface InviteStyleConfig {
   coverLayout: CoverLayout;
   customSurfaceHex?: string;
   customAccentHex?: string;
+  customCtaEndHex?: string;
+  ctaStyle?: CtaStyleMode;
   colorMode?: 'dark' | 'light';
 }
 

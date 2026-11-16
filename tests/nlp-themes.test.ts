@@ -147,6 +147,33 @@ describe('curated themes, fonts, effects, and covers', () => {
     expect(contrastRatio(vars['--theme-accent'], vars['--theme-card-bg'])).toBeGreaterThanOrEqual(3);
     expect(contrastRatio(vars['--theme-on-accent'], vars['--theme-accent'])).toBeGreaterThanOrEqual(4.5);
     expect(vars['--theme-font-heading']).toContain('--font-sacred-classic');
+    expect(vars['--font-invite-display']).toContain('--font-sacred-classic');
+
+    const ctaVars = resolveThemeCssVars({
+      themeId: 'winter-snowfall',
+      fontId: 'modern-sans',
+      effectId: 'snowfall',
+      coverPresetId: 'snowy-pines',
+      coverLayout: 'banner',
+      ctaStyle: 'gradient',
+      customAccentHex: '#e11d48',
+      customCtaEndHex: '#7c3aed',
+    });
+    expect(ctaVars['--theme-backdrop-mode']).toBe('dark');
+    expect(ctaVars['--theme-cta-bg']).toBe('linear-gradient(135deg, #e11d48 0%, #7c3aed 100%)');
+    expect(ctaVars['--theme-cta-text']).toBe('#ffffff');
+
+    const solidCtaVars = resolveThemeCssVars({
+      themeId: 'winter-snowfall',
+      fontId: 'modern-sans',
+      effectId: 'snowfall',
+      coverPresetId: 'snowy-pines',
+      coverLayout: 'banner',
+      ctaStyle: 'solid',
+      customAccentHex: '#0f172a',
+    });
+    expect(solidCtaVars['--theme-cta-bg']).toBe('#0f172a');
+    expect(solidCtaVars['--theme-cta-text']).toBe('#ffffff');
   });
 });
 
@@ -518,15 +545,20 @@ describe('AmbientBackdrop and CoverArt components', () => {
     expect(customMarkup).toContain('aspect-[16/9]');
 
     for (const preset of COVER_PRESETS) {
-      const svgMarkup = renderToStaticMarkup(
+      const markup = renderToStaticMarkup(
         React.createElement(CoverArt, {
           coverPresetId: preset.id,
-          layout: 'square',
+          layout: 'banner',
           title: preset.name,
         }),
       );
-      expect(svgMarkup).toContain('<svg');
-      expect(svgMarkup).toContain(`data-cover-preset="${preset.id}"`);
+      if (preset.imageUrl) {
+        expect(markup).toContain('<img');
+        expect(markup).toContain(preset.imageUrl);
+      } else {
+        expect(markup).toContain('<svg');
+      }
+      expect(markup).toContain(`data-cover-preset="${preset.id}"`);
     }
   });
 });

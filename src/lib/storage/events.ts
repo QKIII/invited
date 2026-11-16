@@ -24,6 +24,7 @@ import type {
   AmbientEffectId,
   CommentRecord,
   CoverLayout,
+  CtaStyleMode,
   EventDetailResponse,
   EventMeta,
   FontPairingId,
@@ -284,7 +285,7 @@ function normalizeStyle(
     fontId: 'editorial-serif',
     effectId: 'aurora',
     coverPresetId: 'aurora-ridge',
-    coverLayout: 'square',
+    coverLayout: 'banner',
   };
 
   if (!incoming) {
@@ -340,6 +341,20 @@ function normalizeStyle(
         ? undefined
         : base.customAccentHex;
 
+  const customCtaEndHex =
+    incoming.customCtaEndHex !== undefined
+      ? validateOptionalHexColor(incoming.customCtaEndHex)
+      : isFullStyleReplacement
+        ? undefined
+        : base.customCtaEndHex;
+
+  const ctaStyle: CtaStyleMode | undefined =
+    incoming.ctaStyle === 'gradient' || incoming.ctaStyle === 'solid'
+      ? incoming.ctaStyle
+      : isFullStyleReplacement
+        ? undefined
+        : base.ctaStyle;
+
   const colorMode =
     incoming.colorMode === 'dark' || incoming.colorMode === 'light'
       ? incoming.colorMode
@@ -356,6 +371,8 @@ function normalizeStyle(
     ...(customCoverUrl ? { customCoverUrl } : {}),
     ...(customSurfaceHex ? { customSurfaceHex } : {}),
     ...(customAccentHex ? { customAccentHex } : {}),
+    ...(customCtaEndHex ? { customCtaEndHex } : {}),
+    ...(ctaStyle ? { ctaStyle } : {}),
     ...(colorMode ? { colorMode } : {}),
   };
 }

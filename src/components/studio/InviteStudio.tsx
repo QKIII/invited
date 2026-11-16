@@ -31,7 +31,12 @@ import {
   parseEventPrompt,
   type ParsedEventDraft,
 } from '@/lib/nlp/parseEventPrompt';
-import { getThemePreset } from '@/lib/themes/presets';
+import {
+  CTA_PRESETS,
+  THEME_PRESETS,
+  getThemePreset,
+  type ThemePreset,
+} from '@/lib/themes/presets';
 import type { EventMeta, InviteStyleConfig } from '@/types/invite';
 import {
   getBrowserTimeZone,
@@ -57,7 +62,17 @@ interface InviteStudioProps {
   onStyleChange?: (style: InviteStyleConfig) => void;
 }
 
-type ActivePanel = 'covers' | 'themes' | 'customize' | null;
+const QUICK_THEME_IDS = [
+  'winter-snowfall',
+  'cozy-christmas',
+  'sacred-nativity',
+  'candlelit-dinner',
+  'birthday-confetti',
+  'warm-thanksgiving',
+  'spring-easter-garden',
+  'aurora-midnight',
+  'minimal-paper',
+] as const;
 
 function getDefaultStyle(): InviteStyleConfig {
   const preset = getThemePreset('winter-snowfall');
@@ -66,7 +81,7 @@ function getDefaultStyle(): InviteStyleConfig {
     fontId: preset.defaultFontId,
     effectId: preset.defaultEffectId,
     coverPresetId: preset.defaultCoverPresetId,
-    coverLayout: 'square',
+    coverLayout: 'banner',
     colorMode: preset.colorMode,
   };
 }
@@ -98,12 +113,9 @@ export function InviteStudio({
   const initialSource = initialEvent ?? initialDraft;
   const initialStyle: InviteStyleConfig = initialSource?.style ?? getDefaultStyle();
 
+  const [showAutoFill, setShowAutoFill] = useState<boolean>(false);
   const [quickPrompt, setQuickPrompt] = useState<string>('');
-  const [autofillNote, setAutofillNote] = useState<string | null>(
-    initialDraft?.detectedOccasionLabel
-      ? `Autofilled for ${initialDraft.detectedOccasionLabel}`
-      : null,
-  );
+  const [autofillNote, setAutofillNote] = useState<string | null>(null);
 
   const [title, setTitle] = useState<string>(initialSource?.title ?? '');
   const [startDate, setStartDate] = useState<string>(() => {
@@ -165,7 +177,8 @@ export function InviteStudio({
     initialEvent?.hideGuestList ?? false,
   );
   const [style, setStyle] = useState<InviteStyleConfig>(initialStyle);
-  const [openPanel, setOpenPanel] = useState<ActivePanel>(null);
+  const [showCoverPicker, setShowCoverPicker] = useState<boolean>(false);
+  const [showCustomize, setShowCustomize] = useState<boolean>(false);
 
   const [startDstConflict, setStartDstConflict] = useState<DstConflictInfo | null>(null);
   const [startDisambiguation, setStartDisambiguation] = useState<'earlier' | 'later' | undefined>();
@@ -216,17 +229,34 @@ export function InviteStudio({
     const el = titleTextareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${Math.max(el.scrollHeight, 40)}px`;
+    el.style.height = `${Math.max(el.scrollHeight, 36)}px`;
   }, [title]);
 
   const timeZones = useMemo(() => getSupportedTimeZones(timeZone), [timeZone]);
   const activePreset = getThemePreset(style.themeId);
-  const isLightTheme =
-    style.colorMode === 'light' || (!style.colorMode && activePreset.colorMode === 'light');
+  const quickThemes = useMemo(
+    () =>
+      QUICK_THEME_IDS.map((id) => THEME_PRESETS.find((t) => t.id === id)).filter(
+        (t): t is ThemePreset => Boolean(t),
+      ),
+    [],
+  );
 
-  const primaryCtaStyle: React.CSSProperties = isLightTheme
-    ? { backgroundColor: '#0f172a', color: '#ffffff' }
-    : { backgroundColor: '#ffffff', color: '#0f172a' };
+  function applyQuickTheme(preset: ThemePreset) {
+    setStyle((prev) => ({
+      ...prev,
+      themeId: preset.id,
+      fontId: preset.defaultFontId,
+      effectId: preset.defaultEffectId,
+      coverPresetId: prev.customCoverUrl ? prev.coverPresetId : preset.defaultCoverPresetId,
+      coverLayout: prev.coverLayout === 'none' ? 'banner' : prev.coverLayout,
+      colorMode: preset.colorMode,
+      customAccentHex: undefined,
+      customCtaEndHex: undefined,
+      ctaStyle: undefined,
+      customSurfaceHex: undefined,
+    }));
+  }
 
   function handleAutofillPrompt(rawInput?: string) {
     const sourcePrompt = (rawInput ?? quickPrompt).trim();
@@ -267,11 +297,11 @@ export function InviteStudio({
       setHasEndTime(false);
     }
 
+    setShowAutoFill(false);
     setAutofillNote(`Autofilled (${parsed.detectedOccasionLabel})`);
     setErrorMsg(null);
   }
 
-  // Unified single-field location handler when details drawer isn't expanded
   const singleLocationValue =
     !showLocationDetails && virtualUrl && !locationName ? virtualUrl : locationName;
 
@@ -449,143 +479,78 @@ export function InviteStudio({
     }
   }
 
+  const isThemeMatchActive =
+    !style.customAccentHex && !style.customCtaEndHex && !style.ctaStyle;
+
   return (
     <>
-      <form
-        onSubmit={handleSubmit}
-        className="grid grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)] gap-5 lg:gap-10 items-start"
-      >
-        {/* Left / Top Visual Column: Cover + 2 Progressive Disclosure Pills */}
-        <div className="space-y-3 lg:sticky lg:top-6 min-w-0">
-          {style.coverLayout !== 'none' ? (
-            <CoverArt
-              coverPresetId={style.coverPresetId}
-              customCoverUrl={style.customCoverUrl}
-              layout={style.coverLayout === 'banner' ? 'banner' : 'square'}
-              title={title || 'Event cover preview'}
-              className="w-full"
-            >
+      <form onSubmit={handleSubmit} className="space-y-3.5">
+        {/* Top 1-Row Vibe & Optional Autofill Pill Bar */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+            {mode === 'create' ? (
               <button
                 type="button"
-                aria-expanded={openPanel === 'covers'}
-                onClick={() =>
-                  setOpenPanel((prev) => (prev === 'covers' ? null : 'covers'))
-                }
-                className="inline-flex items-center gap-1.5 rounded-full bg-slate-950/80 backdrop-blur-md border border-white/25 px-3 py-1.5 text-xs font-medium text-white shadow-lg hover:bg-slate-950/95 transition cursor-pointer"
-              >
-                <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>Change Cover</span>
-              </button>
-            </CoverArt>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                setStyle((prev) => ({ ...prev, coverLayout: 'square' }));
-                setOpenPanel('covers');
-              }}
-              className="w-full rounded-2xl border border-dashed py-4 px-4 text-xs font-medium flex items-center justify-center gap-2 transition hover:opacity-90 cursor-pointer"
-              style={{
-                borderColor: 'var(--theme-border)',
-                color: 'var(--theme-text-muted)',
-              }}
-            >
-              <ImageIcon className="h-4 w-4" aria-hidden="true" />
-              <span>Add Cover Art</span>
-            </button>
-          )}
-
-          {/* Two Clean Progressive Disclosure Pills */}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              aria-expanded={openPanel === 'themes'}
-              onClick={() =>
-                setOpenPanel((prev) => (prev === 'themes' ? null : 'themes'))
-              }
-              className="flex-1 min-w-0 inline-flex items-center justify-between gap-2 rounded-xl border backdrop-blur-md px-3 py-2 text-xs font-medium transition hover:opacity-90 cursor-pointer"
-              style={{
-                backgroundColor:
-                  openPanel === 'themes'
-                    ? 'var(--theme-surface-bg)'
-                    : 'var(--theme-glass-bg)',
-                borderColor:
-                  openPanel === 'themes'
-                    ? 'var(--theme-accent)'
-                    : 'var(--theme-hairline)',
-                color: 'var(--theme-text-primary)',
-              }}
-            >
-              <span className="inline-flex items-center gap-1.5 min-w-0">
-                <Palette className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-                <span className="truncate">{activePreset.name}</span>
-              </span>
-              <ChevronDown
-                className={`h-3.5 w-3.5 shrink-0 transition-transform ${
-                  openPanel === 'themes' ? 'rotate-180' : ''
-                }`}
-                aria-hidden="true"
-              />
-            </button>
-
-            <button
-              type="button"
-              aria-expanded={openPanel === 'customize'}
-              onClick={() =>
-                setOpenPanel((prev) => (prev === 'customize' ? null : 'customize'))
-              }
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl border backdrop-blur-md px-3 py-2 text-xs font-medium transition hover:opacity-90 cursor-pointer shrink-0"
-              style={{
-                backgroundColor:
-                  openPanel === 'customize'
-                    ? 'var(--theme-surface-bg)'
-                    : 'var(--theme-glass-bg)',
-                borderColor:
-                  openPanel === 'customize'
-                    ? 'var(--theme-accent)'
-                    : 'var(--theme-hairline)',
-                color: 'var(--theme-text-primary)',
-              }}
-            >
-              <Sliders className="h-3.5 w-3.5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-              <span>Customize</span>
-              <ChevronDown
-                className={`h-3.5 w-3.5 transition-transform ${
-                  openPanel === 'customize' ? 'rotate-180' : ''
-                }`}
-                aria-hidden="true"
-              />
-            </button>
-          </div>
-
-          {openPanel ? (
-            <StyleStudioDrawer
-              section={openPanel}
-              style={style}
-              onChange={setStyle}
-              eventId={eventId}
-              editKey={editKey}
-            />
-          ) : null}
-        </div>
-
-        {/* Right / Main Form Column */}
-        <div className="min-w-0 space-y-4">
-          {/* 1-Line NLP Autofill Bar (Create Mode) */}
-          {mode === 'create' ? (
-            <div className="space-y-2">
-              <div
-                className="flex items-center gap-2 rounded-2xl border backdrop-blur-md p-1.5 pl-3"
+                aria-expanded={showAutoFill}
+                onClick={() => setShowAutoFill((prev) => !prev)}
+                className="shrink-0 h-8 inline-flex items-center gap-1.5 rounded-full border px-3 text-xs font-semibold backdrop-blur-md transition cursor-pointer"
                 style={{
-                  backgroundColor: 'var(--theme-glass-bg)',
-                  borderColor: 'var(--theme-hairline)',
+                  backgroundColor: showAutoFill
+                    ? 'var(--theme-card-solid)'
+                    : 'var(--theme-outer-pill-bg)',
+                  borderColor: showAutoFill
+                    ? 'var(--theme-accent)'
+                    : 'var(--theme-outer-pill-border)',
+                  color: showAutoFill
+                    ? 'var(--theme-text-primary)'
+                    : 'var(--theme-outer-text)',
                 }}
               >
-                <Sparkles
-                  className="h-4 w-4 shrink-0"
-                  style={{ color: 'var(--theme-accent)' }}
-                  aria-hidden="true"
-                />
+                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>Auto-fill</span>
+              </button>
+            ) : null}
+
+            {quickThemes.map((preset) => {
+              const selected = style.themeId === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => applyQuickTheme(preset)}
+                  className="shrink-0 h-8 inline-flex items-center gap-1 rounded-full border px-3 text-xs font-medium backdrop-blur-md transition cursor-pointer"
+                  style={
+                    selected
+                      ? {
+                          backgroundColor: 'var(--theme-card-solid)',
+                          borderColor: 'var(--theme-accent)',
+                          color: 'var(--theme-text-primary)',
+                        }
+                      : {
+                          backgroundColor: 'var(--theme-outer-pill-bg)',
+                          borderColor: 'var(--theme-outer-pill-border)',
+                          color: 'var(--theme-outer-text)',
+                        }
+                  }
+                >
+                  <span aria-hidden="true">{preset.emoji}</span>
+                  <span>{preset.name.split(' ')[0]}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {mode === 'create' && showAutoFill ? (
+            <div
+              className="rounded-2xl border p-3 shadow-lg space-y-2.5"
+              style={{
+                backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
+                borderColor: 'var(--theme-border)',
+                color: 'var(--theme-text-primary)',
+              }}
+            >
+              <div className="flex items-center gap-2">
                 <input
                   type="text"
                   aria-label="Describe your event to autofill"
@@ -597,66 +562,124 @@ export function InviteStudio({
                       handleAutofillPrompt();
                     }
                   }}
-                  placeholder="Describe it: Christmas dinner Dec 19 at 6pm..."
-                  className="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:opacity-60"
-                  style={{ color: 'var(--theme-text-primary)' }}
+                  placeholder="Describe it: Christmas brunch Dec 5 at 9:30am..."
+                  className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                  style={{
+                    backgroundColor: 'var(--theme-surface-bg)',
+                    borderColor: 'var(--theme-border)',
+                    color: 'var(--theme-text-primary)',
+                  }}
                 />
                 <button
                   type="button"
                   disabled={!quickPrompt.trim()}
                   onClick={() => handleAutofillPrompt()}
-                  className="shrink-0 rounded-xl px-3 py-1.5 text-xs font-semibold transition disabled:opacity-40 cursor-pointer"
-                  style={{
-                    backgroundColor: 'var(--theme-accent)',
-                    color: 'var(--theme-on-accent)',
-                  }}
+                  className="invite-cta-btn shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition disabled:opacity-45 cursor-pointer"
                 >
-                  Autofill
+                  Fill
                 </button>
               </div>
 
-              {autofillNote ? (
-                <p
-                  className="flex items-center gap-1.5 text-xs px-1"
-                  style={{ color: 'var(--theme-accent)' }}
-                >
-                  <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                  <span>{autofillNote}</span>
-                </p>
-              ) : !title.trim() ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {EXAMPLE_EVENT_PROMPTS.slice(0, 4).map((sample) => (
-                    <button
-                      key={sample.label}
-                      type="button"
-                      onClick={() => {
-                        setQuickPrompt(sample.prompt);
-                        handleAutofillPrompt(sample.prompt);
-                      }}
-                      className="rounded-full border px-2.5 py-1 text-xs transition hover:opacity-90 cursor-pointer"
-                      style={{
-                        backgroundColor: 'var(--theme-glass-bg)',
-                        borderColor: 'var(--theme-hairline)',
-                        color: 'var(--theme-text-muted)',
-                      }}
-                    >
-                      {sample.emoji} {sample.label}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
+              <div className="flex flex-wrap gap-1.5">
+                {EXAMPLE_EVENT_PROMPTS.slice(0, 4).map((sample) => (
+                  <button
+                    key={sample.label}
+                    type="button"
+                    onClick={() => {
+                      setQuickPrompt(sample.prompt);
+                      handleAutofillPrompt(sample.prompt);
+                    }}
+                    className="rounded-full border px-2.5 py-1 text-xs transition hover:opacity-85 cursor-pointer"
+                    style={{
+                      backgroundColor: 'var(--theme-surface-bg)',
+                      borderColor: 'var(--theme-hairline)',
+                      color: 'var(--theme-text-muted)',
+                    }}
+                  >
+                    {sample.emoji} {sample.label}
+                  </button>
+                ))}
+              </div>
             </div>
           ) : null}
 
-          {/* Core Grouped Card — 4 Essential Fields Only */}
-          <div
-            className="rounded-2xl border backdrop-blur-md p-4 sm:p-5 space-y-4"
-            style={{
-              backgroundColor: 'var(--theme-glass-bg)',
-              borderColor: 'var(--theme-border)',
-            }}
-          >
-            {/* 1. Event Name */}
+          {autofillNote ? (
+            <p
+              className="flex items-center gap-1.5 text-xs px-1 font-medium"
+              style={{ color: 'var(--theme-outer-text)' }}
+            >
+              <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>{autofillNote} · Edit anything below</span>
+            </p>
+          ) : null}
+        </div>
+
+        {/* Live Editorial Invitation Card Composer */}
+        <div
+          className="rounded-3xl border shadow-2xl overflow-hidden"
+          style={{
+            backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
+            borderColor: 'var(--theme-border)',
+          }}
+        >
+          {/* Flush Top Cover Art + Overlay Change Cover Button */}
+          {style.coverLayout !== 'none' ? (
+            <CoverArt
+              flushTop
+              coverPresetId={style.coverPresetId}
+              customCoverUrl={style.customCoverUrl}
+              layout={style.coverLayout === 'square' ? 'square' : 'banner'}
+              title={title || 'Event cover preview'}
+              className="w-full"
+            >
+              <button
+                type="button"
+                aria-expanded={showCoverPicker}
+                onClick={() => setShowCoverPicker((prev) => !prev)}
+                className="inline-flex items-center gap-1.5 rounded-full bg-slate-950/80 backdrop-blur-md border border-white/25 px-3 py-1.5 text-xs font-medium text-white shadow-lg hover:bg-slate-950 transition cursor-pointer"
+              >
+                <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>{showCoverPicker ? 'Done' : 'Change Cover'}</span>
+              </button>
+            </CoverArt>
+          ) : (
+            <div className="p-4 pb-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setStyle((prev) => ({ ...prev, coverLayout: 'banner' }));
+                  setShowCoverPicker(true);
+                }}
+                className="w-full rounded-2xl border border-dashed py-3.5 px-4 text-xs font-medium flex items-center justify-center gap-2 transition hover:opacity-85 cursor-pointer"
+                style={{
+                  borderColor: 'var(--theme-border)',
+                  color: 'var(--theme-text-muted)',
+                }}
+              >
+                <ImageIcon className="h-4 w-4" aria-hidden="true" />
+                <span>Add Cover Art</span>
+              </button>
+            </div>
+          )}
+
+          {/* Inline Cover Art Picker Drawer (inside card below cover when opened) */}
+          {showCoverPicker ? (
+            <div
+              className="p-4 border-b"
+              style={{ borderColor: 'var(--theme-hairline)' }}
+            >
+              <StyleStudioDrawer
+                section="covers"
+                style={style}
+                onChange={setStyle}
+                eventId={eventId}
+                editKey={editKey}
+              />
+            </div>
+          ) : null}
+
+          <div className="p-5 sm:p-6 space-y-4">
+            {/* 1. Event Title */}
             <div className="pb-3 border-b" style={{ borderColor: 'var(--theme-hairline)' }}>
               <label htmlFor={titleId} className="sr-only">
                 Event Name
@@ -669,7 +692,7 @@ export function InviteStudio({
                 maxLength={140}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Event Name"
+                placeholder="Event Title"
                 className="w-full bg-transparent border-0 outline-none resize-none text-2xl sm:text-[28px] font-bold leading-tight tracking-tight placeholder:opacity-45"
                 style={{
                   color: 'var(--theme-text-primary)',
@@ -678,82 +701,57 @@ export function InviteStudio({
               />
             </div>
 
-            {/* 2. Start / End Date & Time + Quiet Timezone */}
+            {/* 2. Date & Time */}
             <div className="space-y-2.5 pb-3 border-b" style={{ borderColor: 'var(--theme-hairline)' }}>
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <span
-                    className="inline-flex items-center gap-1.5 text-xs font-medium"
-                    style={{ color: 'var(--theme-text-muted)' }}
-                  >
-                    <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
-                    <span>Start</span>
-                  </span>
+              <div className="flex items-center justify-between gap-2">
+                <span
+                  className="inline-flex items-center gap-1.5 text-xs font-medium"
+                  style={{ color: 'var(--theme-text-muted)' }}
+                >
+                  <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Date &amp; Time</span>
+                </span>
+              </div>
 
-                  <label className="inline-flex items-center gap-1 text-xs max-w-[180px]" style={{ color: 'var(--theme-text-muted)' }}>
-                    <Globe className="h-3 w-3 shrink-0" aria-hidden="true" />
-                    <select
-                      aria-label="Event time zone"
-                      value={timeZone}
-                      onChange={(e) => {
-                        setTimeZone(e.target.value);
-                        setStartDstConflict(null);
-                        setStartDisambiguation(undefined);
-                        setEndDstConflict(null);
-                        setEndDisambiguation(undefined);
-                      }}
-                      className="bg-transparent text-xs outline-none truncate max-w-[155px] cursor-pointer"
-                      style={{ color: 'var(--theme-text-muted)' }}
-                    >
-                      {timeZones.map((tz) => (
-                        <option key={tz} value={tz} className="bg-slate-900 text-white">
-                          {tz.replace(/_/g, ' ')}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    id="event-start-date"
-                    type="date"
-                    required
-                    aria-label="Start date"
-                    value={startDate}
-                    onChange={(e) => {
-                      const next = e.target.value;
-                      setStartDate(next);
-                      setStartDstConflict(null);
-                      setStartDisambiguation(undefined);
-                      if (!hasEndTime) setEndDate(next);
-                    }}
-                    className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-sm outline-none focus:ring-2"
-                    style={{
-                      backgroundColor: 'var(--theme-surface-bg)',
-                      borderColor: 'var(--theme-border)',
-                      color: 'var(--theme-text-primary)',
-                    }}
-                  />
-                  <input
-                    id="event-start-time"
-                    type="time"
-                    required
-                    aria-label="Start time"
-                    value={startTime}
-                    onChange={(e) => {
-                      setStartTime(e.target.value);
-                      setStartDstConflict(null);
-                      setStartDisambiguation(undefined);
-                    }}
-                    className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-sm outline-none focus:ring-2"
-                    style={{
-                      backgroundColor: 'var(--theme-surface-bg)',
-                      borderColor: 'var(--theme-border)',
-                      color: 'var(--theme-text-primary)',
-                    }}
-                  />
-                </div>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  id="event-start-date"
+                  type="date"
+                  required
+                  aria-label="Start date"
+                  value={startDate}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setStartDate(next);
+                    setStartDstConflict(null);
+                    setStartDisambiguation(undefined);
+                    if (!hasEndTime) setEndDate(next);
+                  }}
+                  className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-sm outline-none focus:ring-2"
+                  style={{
+                    backgroundColor: 'var(--theme-surface-bg)',
+                    borderColor: 'var(--theme-border)',
+                    color: 'var(--theme-text-primary)',
+                  }}
+                />
+                <input
+                  id="event-start-time"
+                  type="time"
+                  required
+                  aria-label="Start time"
+                  value={startTime}
+                  onChange={(e) => {
+                    setStartTime(e.target.value);
+                    setStartDstConflict(null);
+                    setStartDisambiguation(undefined);
+                  }}
+                  className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-sm outline-none focus:ring-2"
+                  style={{
+                    backgroundColor: 'var(--theme-surface-bg)',
+                    borderColor: 'var(--theme-border)',
+                    color: 'var(--theme-text-primary)',
+                  }}
+                />
               </div>
 
               {startDstConflict ? (
@@ -795,7 +793,7 @@ export function InviteStudio({
                       style={{ color: 'var(--theme-text-muted)' }}
                     >
                       <Clock className="h-3.5 w-3.5" aria-hidden="true" />
-                      <span>End</span>
+                      <span>Ends</span>
                     </span>
                     <button
                       type="button"
@@ -883,7 +881,7 @@ export function InviteStudio({
                     setHasEndTime(true);
                     setEndDate(startDate);
                   }}
-                  className="text-xs font-medium opacity-75 hover:opacity-100 transition cursor-pointer"
+                  className="text-xs font-medium opacity-80 hover:opacity-100 transition cursor-pointer"
                   style={{ color: 'var(--theme-text-muted)' }}
                 >
                   + Add end time
@@ -891,8 +889,8 @@ export function InviteStudio({
               )}
             </div>
 
-            {/* 3. Smart Location or Link */}
-            <div className="space-y-2 pb-3 border-b" style={{ borderColor: 'var(--theme-hairline)' }}>
+            {/* 3. Smart Location or Link + Hosted By */}
+            <div className="space-y-3 pb-3 border-b" style={{ borderColor: 'var(--theme-hairline)' }}>
               {!showLocationDetails ? (
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-2">
@@ -907,7 +905,7 @@ export function InviteStudio({
                       maxLength={200}
                       value={singleLocationValue}
                       onChange={(e) => handleSingleLocationChange(e.target.value)}
-                      placeholder="Add location or virtual link"
+                      placeholder="Add address, venue, or link"
                       aria-label="Event location or virtual link"
                       className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
                       style={{
@@ -920,7 +918,7 @@ export function InviteStudio({
                   <button
                     type="button"
                     onClick={() => setShowLocationDetails(true)}
-                    className="pl-6 text-xs font-medium opacity-70 hover:opacity-100 transition cursor-pointer"
+                    className="pl-6 text-xs font-medium opacity-75 hover:opacity-100 transition cursor-pointer"
                     style={{ color: 'var(--theme-text-muted)' }}
                   >
                     + Street address or separate video link
@@ -965,7 +963,7 @@ export function InviteStudio({
                     maxLength={240}
                     value={locationAddress}
                     onChange={(e) => setLocationAddress(e.target.value)}
-                    placeholder="Street address, city, state (for Map)"
+                    placeholder="Street address, city, state"
                     className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
                     style={{
                       backgroundColor: 'var(--theme-surface-bg)',
@@ -989,57 +987,26 @@ export function InviteStudio({
                   />
                 </div>
               )}
-            </div>
 
-            {/* 4. Rich Description */}
-            <RichTextEditor
-              label=""
-              placeholder="Add description (agenda, what to bring, parking...)"
-              value={descriptionHtml}
-              onChange={setDescriptionHtml}
-            />
-          </div>
-
-          {/* Single Closed-By-Default Optional Disclosure */}
-          <details
-            className="group rounded-2xl border backdrop-blur-md overflow-hidden"
-            style={{
-              backgroundColor: 'var(--theme-glass-bg)',
-              borderColor: 'var(--theme-hairline)',
-            }}
-          >
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-xs sm:text-sm font-medium">
-              <span>More options (host, RSVP prompt, guest list)</span>
-              <ChevronDown
-                className="h-4 w-4 opacity-70 transition-transform group-open:rotate-180"
-                aria-hidden="true"
-              />
-            </summary>
-
-            <div
-              className="border-t p-4 space-y-3"
-              style={{ borderColor: 'var(--theme-hairline)' }}
-            >
-              <div>
-                <label
-                  htmlFor="event-host-name"
-                  className="flex items-center gap-1.5 text-xs font-medium mb-1"
+              {/* Hosted By */}
+              <div className="flex items-center gap-2">
+                <User
+                  className="h-4 w-4 shrink-0"
                   style={{ color: 'var(--theme-text-muted)' }}
-                >
-                  <User className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span>Hosted by</span>
-                </label>
+                  aria-hidden="true"
+                />
                 <input
                   id="event-host-name"
                   type="text"
                   maxLength={80}
+                  aria-label="Hosted by"
                   value={effectiveHostName}
                   onChange={(e) => {
                     setHostTouched(true);
                     setHostName(e.target.value);
                   }}
-                  placeholder="Your name or group"
-                  className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                  placeholder="Hosted by (your name)"
+                  className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
                   style={{
                     backgroundColor: 'var(--theme-surface-bg)',
                     borderColor: 'var(--theme-border)',
@@ -1047,114 +1014,298 @@ export function InviteStudio({
                   }}
                 />
               </div>
-
-              <div>
-                <label
-                  htmlFor="event-rsvp-prompt"
-                  className="block text-xs font-medium mb-1"
-                  style={{ color: 'var(--theme-text-muted)' }}
-                >
-                  RSVP note question
-                </label>
-                <input
-                  id="event-rsvp-prompt"
-                  type="text"
-                  maxLength={140}
-                  value={rsvpNotePrompt}
-                  onChange={(e) => setRsvpNotePrompt(e.target.value)}
-                  placeholder="What dish or drink are you bringing?"
-                  className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
-                  style={{
-                    backgroundColor: 'var(--theme-surface-bg)',
-                    borderColor: 'var(--theme-border)',
-                    color: 'var(--theme-text-primary)',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="event-invited-names"
-                  className="block text-xs font-medium mb-1"
-                  style={{ color: 'var(--theme-text-muted)' }}
-                >
-                  Invited guest names (comma-separated, optional)
-                </label>
-                <input
-                  id="event-invited-names"
-                  type="text"
-                  maxLength={1200}
-                  value={invitedNamesRaw}
-                  onChange={(e) => setInvitedNamesRaw(e.target.value)}
-                  placeholder="Alex, Jordan, Sam"
-                  className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
-                  style={{
-                    backgroundColor: 'var(--theme-surface-bg)',
-                    borderColor: 'var(--theme-border)',
-                    color: 'var(--theme-text-primary)',
-                  }}
-                />
-              </div>
-
-              <label className="flex items-center gap-2.5 text-xs sm:text-sm cursor-pointer pt-1">
-                <input
-                  type="checkbox"
-                  checked={hideGuestList}
-                  onChange={(e) => setHideGuestList(e.target.checked)}
-                  className="rounded border"
-                />
-                <span className="inline-flex items-center gap-1.5">
-                  <Lock className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
-                  <span>Hide guest list from guests</span>
-                </span>
-              </label>
             </div>
-          </details>
 
-          {errorMsg ? (
-            <p role="alert" className="text-xs sm:text-sm font-medium text-rose-300 px-1">
-              {errorMsg}
-            </p>
-          ) : null}
+            {/* 4. Rich Description */}
+            <RichTextEditor
+              label=""
+              placeholder="Add event details, what food or gifts to bring, parking..."
+              value={descriptionHtml}
+              onChange={setDescriptionHtml}
+            />
+          </div>
+        </div>
 
-          {savedNotice && eventId ? (
-            <div
-              className="rounded-xl border px-3.5 py-2.5 text-xs sm:text-sm flex items-center justify-between gap-2"
+        {/* Button Color / Gradient Customizer + Style Controls */}
+        <section
+          className="rounded-3xl border shadow-xl p-4 sm:p-5 space-y-3"
+          style={{
+            backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
+            borderColor: 'var(--theme-border)',
+          }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span
+              className="inline-flex items-center gap-1.5 text-xs font-semibold"
+              style={{ color: 'var(--theme-text-primary)' }}
+            >
+              <Palette className="h-3.5 w-3.5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+              <span>Button Style</span>
+            </span>
+
+            <button
+              type="button"
+              aria-expanded={showCustomize}
+              onClick={() => setShowCustomize((prev) => !prev)}
+              className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition hover:opacity-90 cursor-pointer"
               style={{
-                backgroundColor: 'var(--theme-glass-bg)',
-                borderColor: 'var(--theme-accent)',
+                backgroundColor: 'var(--theme-surface-bg)',
+                borderColor: 'var(--theme-hairline)',
+                color: 'var(--theme-text-primary)',
               }}
             >
-              <span className="inline-flex items-center gap-1.5 font-medium">
-                <Check className="h-4 w-4" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-                <span>Saved</span>
-              </span>
-              <Link
-                href={`/e/${eventId}`}
-                className="inline-flex items-center gap-1 font-medium underline underline-offset-2"
-              >
-                <span>View Invite</span>
-                <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
-              </Link>
+              <Sliders className="h-3 w-3" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+              <span>Customize Style</span>
+              <ChevronDown
+                className={`h-3.5 w-3.5 transition-transform ${showCustomize ? 'rotate-180' : ''}`}
+                aria-hidden="true"
+              />
+            </button>
+          </div>
+
+          {/* 1-Row Quick Button Gradient Swatch Picker */}
+          <div className="flex items-center gap-2 overflow-x-auto py-1">
+            <button
+              type="button"
+              aria-label="Match invite theme button gradient"
+              aria-pressed={isThemeMatchActive}
+              onClick={() =>
+                setStyle((prev) => ({
+                  ...prev,
+                  customAccentHex: undefined,
+                  customCtaEndHex: undefined,
+                  ctaStyle: undefined,
+                }))
+              }
+              className={`shrink-0 h-8 rounded-full border px-3 text-[11px] font-semibold inline-flex items-center gap-1.5 transition cursor-pointer ${
+                isThemeMatchActive ? 'ring-2 ring-sky-400' : 'opacity-85 hover:opacity-100'
+              }`}
+              style={{
+                backgroundColor: 'var(--theme-surface-bg)',
+                borderColor: isThemeMatchActive
+                  ? 'var(--theme-accent)'
+                  : 'var(--theme-hairline)',
+                color: 'var(--theme-text-primary)',
+              }}
+            >
+              <span
+                aria-hidden="true"
+                className="h-3.5 w-3.5 rounded-full"
+                style={{
+                  background: `linear-gradient(135deg, ${activePreset.ctaStart} 0%, ${activePreset.ctaEnd} 100%)`,
+                }}
+              />
+              <span>Theme Match</span>
+            </button>
+
+            {CTA_PRESETS.map((swatch) => {
+              const selected =
+                style.customAccentHex?.toLowerCase() === swatch.startHex.toLowerCase() &&
+                (swatch.mode === 'solid'
+                  ? style.ctaStyle === 'solid'
+                  : style.customCtaEndHex?.toLowerCase() === swatch.endHex.toLowerCase());
+              return (
+                <button
+                  key={swatch.id}
+                  type="button"
+                  aria-label={`Use ${swatch.name} button gradient`}
+                  aria-pressed={selected}
+                  title={swatch.name}
+                  onClick={() =>
+                    setStyle((prev) => ({
+                      ...prev,
+                      ctaStyle: swatch.mode,
+                      customAccentHex: swatch.startHex,
+                      customCtaEndHex: swatch.endHex,
+                    }))
+                  }
+                  className={`shrink-0 h-8 w-8 rounded-full border-2 transition cursor-pointer ${
+                    selected ? 'scale-110 ring-2 ring-offset-1 ring-sky-400 border-white' : 'border-black/15'
+                  }`}
+                  style={{
+                    background:
+                      swatch.mode === 'solid'
+                        ? swatch.startHex
+                        : `linear-gradient(135deg, ${swatch.startHex} 0%, ${swatch.endHex} 100%)`,
+                  }}
+                />
+              );
+            })}
+          </div>
+
+          {showCustomize ? (
+            <div className="pt-2 border-t" style={{ borderColor: 'var(--theme-hairline)' }}>
+              <StyleStudioDrawer
+                section="customize"
+                style={style}
+                onChange={setStyle}
+                eventId={eventId}
+                editKey={editKey}
+              />
             </div>
           ) : null}
+        </section>
 
-          {/* Clean Inline Submit Button — Zero Sticky Bar */}
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full rounded-xl py-3.5 px-5 text-sm sm:text-base font-semibold transition active:scale-[0.99] disabled:opacity-60 cursor-pointer shadow-lg"
-            style={primaryCtaStyle}
+        {/* Closed-By-Default Guest & RSVP Options */}
+        <details
+          className="group rounded-3xl border shadow-lg overflow-hidden"
+          style={{
+            backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
+            borderColor: 'var(--theme-hairline)',
+          }}
+        >
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-5 py-3.5 text-xs sm:text-sm font-medium">
+            <span>More options (RSVP question, guest list, time zone)</span>
+            <ChevronDown
+              className="h-4 w-4 opacity-70 transition-transform group-open:rotate-180"
+              aria-hidden="true"
+            />
+          </summary>
+
+          <div
+            className="border-t p-5 space-y-3"
+            style={{ borderColor: 'var(--theme-hairline)' }}
           >
-            {submitting
-              ? mode === 'create'
-                ? 'Creating Invite...'
-                : 'Saving...'
-              : mode === 'create'
-                ? 'Create Invite'
-                : 'Save Changes'}
-          </button>
-        </div>
+            <div>
+              <label
+                htmlFor="event-rsvp-prompt"
+                className="block text-xs font-medium mb-1"
+                style={{ color: 'var(--theme-text-muted)' }}
+              >
+                RSVP note question
+              </label>
+              <input
+                id="event-rsvp-prompt"
+                type="text"
+                maxLength={140}
+                value={rsvpNotePrompt}
+                onChange={(e) => setRsvpNotePrompt(e.target.value)}
+                placeholder="What food, dish, or gift are you bringing?"
+                className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                style={{
+                  backgroundColor: 'var(--theme-surface-bg)',
+                  borderColor: 'var(--theme-border)',
+                  color: 'var(--theme-text-primary)',
+                }}
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="event-invited-names"
+                className="block text-xs font-medium mb-1"
+                style={{ color: 'var(--theme-text-muted)' }}
+              >
+                Invited guest names (comma-separated, optional)
+              </label>
+              <input
+                id="event-invited-names"
+                type="text"
+                maxLength={1200}
+                value={invitedNamesRaw}
+                onChange={(e) => setInvitedNamesRaw(e.target.value)}
+                placeholder="Alex, Jordan, Sam"
+                className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                style={{
+                  backgroundColor: 'var(--theme-surface-bg)',
+                  borderColor: 'var(--theme-border)',
+                  color: 'var(--theme-text-primary)',
+                }}
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="event-timezone"
+                className="flex items-center gap-1.5 text-xs font-medium mb-1"
+                style={{ color: 'var(--theme-text-muted)' }}
+              >
+                <Globe className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>Time zone</span>
+              </label>
+              <select
+                id="event-timezone"
+                aria-label="Event time zone"
+                value={timeZone}
+                onChange={(e) => {
+                  setTimeZone(e.target.value);
+                  setStartDstConflict(null);
+                  setStartDisambiguation(undefined);
+                  setEndDstConflict(null);
+                  setEndDisambiguation(undefined);
+                }}
+                className="w-full rounded-xl border px-3 py-2 text-sm outline-none cursor-pointer"
+                style={{
+                  backgroundColor: 'var(--theme-surface-bg)',
+                  borderColor: 'var(--theme-border)',
+                  color: 'var(--theme-text-primary)',
+                }}
+              >
+                {timeZones.map((tz) => (
+                  <option key={tz} value={tz}>
+                    {tz.replace(/_/g, ' ')}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <label className="flex items-center gap-2.5 text-xs sm:text-sm cursor-pointer pt-1">
+              <input
+                type="checkbox"
+                checked={hideGuestList}
+                onChange={(e) => setHideGuestList(e.target.checked)}
+                className="rounded border"
+              />
+              <span className="inline-flex items-center gap-1.5">
+                <Lock className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
+                <span>Hide guest list from guests</span>
+              </span>
+            </label>
+          </div>
+        </details>
+
+        {errorMsg ? (
+          <p role="alert" className="text-xs sm:text-sm font-medium text-rose-300 px-1">
+            {errorMsg}
+          </p>
+        ) : null}
+
+        {savedNotice && eventId ? (
+          <div
+            className="rounded-2xl border px-4 py-3 text-xs sm:text-sm flex items-center justify-between gap-2"
+            style={{
+              backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
+              borderColor: 'var(--theme-accent)',
+            }}
+          >
+            <span className="inline-flex items-center gap-1.5 font-medium">
+              <Check className="h-4 w-4" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+              <span>Saved</span>
+            </span>
+            <Link
+              href={`/e/${eventId}`}
+              className="inline-flex items-center gap-1 font-medium underline underline-offset-2"
+            >
+              <span>View Invite</span>
+              <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </Link>
+          </div>
+        ) : null}
+
+        {/* Full-Width Live CTA Button Reflecting Custom Gradient / Color */}
+        <button
+          type="submit"
+          disabled={submitting}
+          className="invite-cta-btn w-full min-h-[50px] rounded-full py-3.5 px-5 text-sm sm:text-base font-semibold transition active:scale-[0.99] disabled:opacity-60 cursor-pointer shadow-xl"
+        >
+          {submitting
+            ? mode === 'create'
+              ? 'Creating Invite...'
+              : 'Saving...'
+            : mode === 'create'
+              ? 'Create Invite'
+              : 'Save Changes'}
+        </button>
       </form>
 
       <PublishSuccessDialog

@@ -277,8 +277,11 @@ describe('storage, crypto, sanitizer, calendar & API routes', () => {
           themeId: 'candlelit-dinner',
           fontId: 'editorial-serif',
           effectId: 'warm-bokeh',
-          coverPresetId: 'candlelight',
-          coverLayout: 'square',
+          coverPresetId: 'candlelit-table',
+          coverLayout: 'banner',
+          ctaStyle: 'gradient',
+          customAccentHex: '#e11d48',
+          customCtaEndHex: '#7c3aed',
         },
       }),
     );
@@ -287,6 +290,9 @@ describe('storage, crypto, sanitizer, calendar & API routes', () => {
     const created = await createRes.json();
     expect(created.id).toBeTruthy();
     expect(created.editKey).toBeTruthy();
+    expect(created.event.style.ctaStyle).toBe('gradient');
+    expect(created.event.style.customAccentHex).toBe('#e11d48');
+    expect(created.event.style.customCtaEndHex).toBe('#7c3aed');
     expect(created.guestUrl).toBe(`/e/${created.id}`);
     expect(created.editUrl).toContain(`/e/${created.id}/edit?key=`);
     expect(created.event.descriptionHtml).not.toContain('<script>');

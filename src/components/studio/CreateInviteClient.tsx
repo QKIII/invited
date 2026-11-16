@@ -29,7 +29,7 @@ function getInitialStyle(): InviteStyleConfig {
     fontId: preset.defaultFontId,
     effectId: preset.defaultEffectId,
     coverPresetId: preset.defaultCoverPresetId,
-    coverLayout: 'square',
+    coverLayout: 'banner',
     colorMode: preset.colorMode,
   };
 }
@@ -78,30 +78,37 @@ export function CreateInviteClient({ initialPrompt }: CreateInviteClientProps) {
   );
 
   const themeVars = useMemo(
-    () => resolveThemeCssVars(liveStyle) as React.CSSProperties,
+    () => resolveThemeCssVars(liveStyle),
     [liveStyle],
   );
+  const backdropMode =
+    themeVars['--theme-backdrop-mode'] === 'light' ? 'light' : 'dark';
 
   return (
     <div
       style={{
-        ...themeVars,
+        ...(themeVars as React.CSSProperties),
         backgroundColor: 'var(--theme-page-bg)',
         color: 'var(--theme-text-primary)',
         fontFamily: 'var(--font-invite-body), var(--font-sans), sans-serif',
       }}
       className="min-h-screen relative overflow-x-hidden transition-colors duration-300"
     >
-      <AmbientBackdrop effectId={liveStyle.effectId} />
+      <AmbientBackdrop
+        effectId={liveStyle.effectId}
+        accentColor={themeVars['--theme-accent']}
+        colorMode={backdropMode}
+        className="fixed inset-0 z-0"
+      />
 
       {/* Minimal 48px single-row header */}
-      <header className="relative z-10 h-12 max-w-[480px] lg:max-w-[920px] mx-auto px-4 lg:px-8 flex items-center justify-between gap-2">
+      <header className="relative z-10 h-12 max-w-[580px] mx-auto px-3.5 sm:px-6 flex items-center justify-between gap-2">
         <Link
           href="/"
           className="inline-flex items-center gap-1.5 text-sm font-semibold tracking-tight hover:opacity-80 transition shrink-0"
-          style={{ color: 'var(--theme-text-primary)' }}
+          style={{ color: 'var(--theme-outer-text)' }}
         >
-          <Sparkles className="h-3.5 w-3.5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+          <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
           <span>invited</span>
         </Link>
 
@@ -109,11 +116,11 @@ export function CreateInviteClient({ initialPrompt }: CreateInviteClientProps) {
           <button
             type="button"
             onClick={() => setRecentOpen(true)}
-            className="h-8 inline-flex items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition hover:opacity-90 cursor-pointer"
+            className="h-8 inline-flex items-center gap-1.5 rounded-full border px-3 text-xs font-medium backdrop-blur-md transition hover:opacity-90 cursor-pointer"
             style={{
-              backgroundColor: 'var(--theme-glass-bg)',
-              borderColor: 'var(--theme-hairline)',
-              color: 'var(--theme-text-primary)',
+              backgroundColor: 'var(--theme-outer-pill-bg)',
+              borderColor: 'var(--theme-outer-pill-border)',
+              color: 'var(--theme-outer-text)',
             }}
           >
             <Calendar className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -126,7 +133,7 @@ export function CreateInviteClient({ initialPrompt }: CreateInviteClientProps) {
         </div>
       </header>
 
-      <main className="relative z-10 max-w-[480px] lg:max-w-[920px] mx-auto px-4 lg:px-8 pt-2 sm:pt-4 pb-16">
+      <main className="relative z-10 max-w-[580px] mx-auto px-3.5 sm:px-6 pt-1 sm:pt-2 pb-16">
         <InviteStudio
           key={studioKey}
           mode="create"

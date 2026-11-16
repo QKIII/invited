@@ -43,6 +43,23 @@
   }
 }
 
+.invite-cta-btn {
+  background: var(--theme-cta-bg, linear-gradient(135deg, #0284c7 0%, #1d4ed8 100%));
+  color: var(--theme-cta-text, #ffffff);
+}
+
+@supports (color: contrast-color(#000000)) {
+  .invite-cta-btn {
+    color: contrast-color(var(--theme-cta-mid, #0284c7));
+  }
+}
+
+.sticky-rsvp-bar {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  padding-left: max(0.875rem, env(safe-area-inset-left, 0px));
+  padding-right: max(0.875rem, env(safe-area-inset-right, 0px));
+}
+
 .invite-prose {
   text-wrap: pretty;
   line-height: 1.68;

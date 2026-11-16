@@ -77,7 +77,7 @@ const OCCASION_RULES: OccasionRule[] = [
     defaultTitle: 'Candlelight Celebration Service',
     defaultHour: 19,
     defaultMinute: 0,
-    coverLayout: 'square',
+    coverLayout: 'banner',
     rsvpNotePrompt: 'Share a prayer request, favorite carol, or blessing for the gathering',
     priority: 100,
     keywords: [
@@ -97,9 +97,8 @@ const OCCASION_RULES: OccasionRule[] = [
     ],
     buildDescription: ({ extraNote }) =>
       [
-        `<p>Join us for a warm, reverent gathering filled with candlelight, music, and fellowship as we celebrate together.</p>`,
+        `<p>Join us for a warm evening of candlelight, music, and fellowship.</p>`,
         extraNote ? `<p><strong>Note from the host:</strong> ${escapeHtml(extraNote)}</p>` : '',
-        `<ul><li>Doors open 15 minutes early for quiet reflection and warm drinks.</li><li>Family, friends, and neighbors are warmly welcome.</li></ul>`,
       ]
         .filter(Boolean)
         .join(''),
@@ -111,7 +110,7 @@ const OCCASION_RULES: OccasionRule[] = [
     defaultTitle: 'Cozy Christmas Party',
     defaultHour: 18,
     defaultMinute: 0,
-    coverLayout: 'square',
+    coverLayout: 'banner',
     rsvpNotePrompt: "Let us know what holiday treat, dish, or drink you're bringing!",
     priority: 90,
     keywords: [
@@ -129,9 +128,8 @@ const OCCASION_RULES: OccasionRule[] = [
     ],
     buildDescription: ({ extraNote }) =>
       [
-        `<p>Bundle up and come celebrate the season with good company, festive lights, warm drinks, and plenty of holiday cheer.</p>`,
-        extraNote ? `<p><strong>Good to know:</strong> ${escapeHtml(extraNote)}</p>` : '',
-        `<ul><li>Cozy sweaters and festive attire encouraged.</li><li>Drop what snack, dessert, or drink you'd like to bring when you RSVP.</li></ul>`,
+        `<p>Bundle up and come celebrate the season with good company, warm drinks, and holiday cheer.</p>`,
+        extraNote ? `<p>${escapeHtml(extraNote)}</p>` : '',
       ]
         .filter(Boolean)
         .join(''),
@@ -143,7 +141,7 @@ const OCCASION_RULES: OccasionRule[] = [
     defaultTitle: 'Halloween Costume Party',
     defaultHour: 20,
     defaultMinute: 0,
-    coverLayout: 'square',
+    coverLayout: 'banner',
     rsvpNotePrompt: 'Drop a hint about your costume or what spooky treat you are bringing!',
     priority: 88,
     keywords: [
@@ -172,7 +170,7 @@ const OCCASION_RULES: OccasionRule[] = [
     defaultTitle: 'Autumn Friendsgiving Feast',
     defaultHour: 17,
     defaultMinute: 0,
-    coverLayout: 'square',
+    coverLayout: 'banner',
     rsvpNotePrompt: 'Tell everyone which side dish, pie, or bottle you are bringing!',
     priority: 87,
     keywords: [
@@ -224,7 +222,7 @@ const OCCASION_RULES: OccasionRule[] = [
     defaultTitle: "New Year's Eve Countdown",
     defaultHour: 21,
     defaultMinute: 0,
-    coverLayout: 'square',
+    coverLayout: 'banner',
     rsvpNotePrompt: 'Share a favorite memory from this year or what bubbly/bite you are bringing!',
     priority: 85,
     keywords: [
@@ -251,7 +249,7 @@ const OCCASION_RULES: OccasionRule[] = [
     defaultTitle: "Valentine's Evening Soirée",
     defaultHour: 19,
     defaultMinute: 0,
-    coverLayout: 'square',
+    coverLayout: 'banner',
     rsvpNotePrompt: 'Leave a sweet note or share your favorite dessert / drink pairing!',
     priority: 84,
     keywords: [
@@ -278,7 +276,7 @@ const OCCASION_RULES: OccasionRule[] = [
     defaultTitle: "St. Patrick's Day Gathering",
     defaultHour: 18,
     defaultMinute: 0,
-    coverLayout: 'square',
+    coverLayout: 'banner',
     rsvpNotePrompt: 'Bringing snacks, drinks, or lucky treats? Add a quick note!',
     priority: 83,
     keywords: [
@@ -304,7 +302,7 @@ const OCCASION_RULES: OccasionRule[] = [
     defaultTitle: 'Baby Shower Celebration',
     defaultHour: 14,
     defaultMinute: 0,
-    coverLayout: 'square',
+    coverLayout: 'banner',
     rsvpNotePrompt: 'Leave a sweet note, blessing, or piece of parenting advice for the family!',
     priority: 82,
     keywords: [
@@ -331,7 +329,7 @@ const OCCASION_RULES: OccasionRule[] = [
     defaultTitle: 'Bridal Celebration',
     defaultHour: 11,
     defaultMinute: 30,
-    coverLayout: 'square',
+    coverLayout: 'banner',
     rsvpNotePrompt: 'Share any dietary preferences or a favorite toast for the couple!',
     priority: 81,
     keywords: [
@@ -359,7 +357,7 @@ const OCCASION_RULES: OccasionRule[] = [
     defaultTitle: 'Spring Garden Gathering',
     defaultHour: 12,
     defaultMinute: 0,
-    coverLayout: 'square',
+    coverLayout: 'banner',
     rsvpNotePrompt: 'Bringing a brunch dish, flowers, or treats? Let the host know!',
     priority: 80,
     keywords: [
@@ -416,7 +414,7 @@ const OCCASION_RULES: OccasionRule[] = [
     defaultTitle: 'Birthday Celebration',
     defaultHour: 19,
     defaultMinute: 0,
-    coverLayout: 'square',
+    coverLayout: 'banner',
     rsvpNotePrompt: 'Drop a birthday wish or let us know if you are bringing a treat!',
     priority: 70,
     keywords: [
@@ -440,7 +438,7 @@ const OCCASION_RULES: OccasionRule[] = [
     defaultTitle: 'Winter Fireside Gathering',
     defaultHour: 18,
     defaultMinute: 0,
-    coverLayout: 'square',
+    coverLayout: 'banner',
     rsvpNotePrompt: 'Bringing a warm drink, soup, or sweet treat? Share below!',
     priority: 65,
     keywords: [
@@ -457,9 +455,8 @@ const OCCASION_RULES: OccasionRule[] = [
     ],
     buildDescription: ({ extraNote }) =>
       [
-        `<p>Come in from the crisp winter air for warm company, cozy drinks, and an unhurried evening indoors.</p>`,
-        extraNote ? `<p><strong>Details:</strong> ${escapeHtml(extraNote)}</p>` : '',
-        `<ul><li>Cozy layers encouraged.</li><li>Share any dietary notes or what you're bringing in your RSVP.</li></ul>`,
+        `<p>Come in from the cold for good food, warm drinks, and an easygoing winter evening together.</p>`,
+        extraNote ? `<p>${escapeHtml(extraNote)}</p>` : '',
       ]
         .filter(Boolean)
         .join(''),
@@ -471,7 +468,7 @@ const OCCASION_RULES: OccasionRule[] = [
     defaultTitle: 'Dinner & Gathering',
     defaultHour: 19,
     defaultMinute: 0,
-    coverLayout: 'square',
+    coverLayout: 'banner',
     rsvpNotePrompt: 'Let us know what dish/drink you are bringing or any food allergies!',
     priority: 60,
     keywords: [
@@ -486,9 +483,8 @@ const OCCASION_RULES: OccasionRule[] = [
     ],
     buildDescription: ({ extraNote }) =>
       [
-        `<p>An intimate table, good food, and unrushed conversation with friends old and new.</p>`,
-        extraNote ? `<p><strong>Note:</strong> ${escapeHtml(extraNote)}</p>` : '',
-        `<ul><li>Please mention any allergies or dietary needs when you RSVP.</li><li>Feel free to coordinate dishes or drinks on the event wall below.</li></ul>`,
+        `<p>Pull up a chair for good food and unhurried conversation. Let us know what you're bringing or any allergies when you RSVP.</p>`,
+        extraNote ? `<p>${escapeHtml(extraNote)}</p>` : '',
       ]
         .filter(Boolean)
         .join(''),
@@ -500,7 +496,7 @@ const OCCASION_RULES: OccasionRule[] = [
     defaultTitle: 'Late Night Gathering',
     defaultHour: 21,
     defaultMinute: 0,
-    coverLayout: 'square',
+    coverLayout: 'banner',
     rsvpNotePrompt: 'Drop a track request or let us know who you are rolling through with!',
     priority: 55,
     keywords: [
@@ -528,7 +524,7 @@ const OCCASION_RULES: OccasionRule[] = [
     defaultTitle: 'Studio Gathering',
     defaultHour: 18,
     defaultMinute: 30,
-    coverLayout: 'square',
+    coverLayout: 'banner',
     rsvpNotePrompt: 'Add a quick note or question for the host!',
     priority: 50,
     keywords: [
@@ -1352,9 +1348,8 @@ export function parseEventPrompt(
         extraNote,
       })
     : [
-        `<p>You're invited to <strong>${escapeHtml(title)}</strong>. Stop by, catch up, and enjoy a memorable time together.</p>`,
-        extraNote ? `<p><strong>Host note:</strong> ${escapeHtml(extraNote)}</p>` : '',
-        `<ul><li>Please RSVP yes or no so we can plan ahead.</li></ul>`,
+        `<p>You're invited to <strong>${escapeHtml(title)}</strong> — let us know if you can make it!</p>`,
+        extraNote ? `<p>${escapeHtml(extraNote)}</p>` : '',
       ]
         .filter(Boolean)
         .join('');
@@ -1367,7 +1362,7 @@ export function parseEventPrompt(
     fontId: themePreset.defaultFontId,
     effectId: themePreset.defaultEffectId,
     coverPresetId: themePreset.defaultCoverPresetId,
-    coverLayout: occasionRule?.coverLayout ?? 'square',
+    coverLayout: occasionRule?.coverLayout ?? 'banner',
     colorMode: themePreset.colorMode,
   };
 

@@ -113,9 +113,10 @@ describe('InviteView (post-merge integration)', () => {
 
     expect(container.textContent).toContain('Christmas Eve Candlelight & Cocoa');
     expect(container.textContent).toContain('Hosted by Clara');
-    expect(container.textContent).toContain('You have manage access for this event.');
-    expect(container.textContent).toContain('Manage');
+    expect(container.textContent).toContain('Host view');
+    expect(container.textContent).toContain('Edit Invite');
     expect(container.textContent).toContain('4:00 PM – 7:00 PM PST (your time)');
+    expect(container.querySelector('[data-testid="sticky-rsvp-footer"]')).not.toBeNull();
     expect(container.querySelector('iframe[src^="https://maps.google.com/maps?"]')).not.toBeNull();
 
     const dateTile = container.querySelector('[data-testid="calendar-date-tile"]');
@@ -205,11 +206,10 @@ describe('InviteView (post-merge integration)', () => {
     );
 
     const heroLoc = container.querySelector('[data-testid="hero-location"]');
-    const lowerLoc = container.querySelector('[data-testid="location-section"]');
     expect(heroLoc?.textContent?.match(/42 Maple St/g) ?? []).toHaveLength(1);
-    expect(lowerLoc?.textContent?.match(/42 Maple St/g) ?? []).toHaveLength(1);
-    expect(COVER_PRESETS.some((c) => c.id === 'you-are-invited')).toBe(true);
+    expect(COVER_PRESETS.some((c) => c.id === 'snowy-pines')).toBe(true);
     expect(getThemePreset('winter-snowfall').pageBg).toBe('#082556');
+    expect(getThemePreset('winter-snowfall').cardBg).toBe('#ffffff');
 
     act(() => {
       root.unmount();

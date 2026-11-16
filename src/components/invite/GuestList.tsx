@@ -28,6 +28,7 @@ export function GuestList({
   const isPrivateForViewer = event.hideGuestList && !isHost;
   const hasAnyGuestActivity =
     rsvps.yes.length > 0 || rsvps.no.length > 0 || rsvps.awaitingNames.length > 0;
+  const normalizedHost = event.hostName?.trim().toLowerCase() || '';
 
   if (!isPrivateForViewer && !hasAnyGuestActivity) {
     return null;
@@ -35,23 +36,30 @@ export function GuestList({
 
   if (isPrivateForViewer) {
     return (
-      <section aria-labelledby={headingId} className="space-y-3">
+      <section
+        aria-labelledby={headingId}
+        className="rounded-3xl border shadow-xl p-5 sm:p-6 space-y-3"
+        style={{
+          backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
+          borderColor: 'var(--theme-border)',
+        }}
+      >
         <div
-          className="flex items-center justify-between gap-2 pb-2 border-b"
+          className="flex items-center justify-between gap-2 pb-2.5 border-b"
           style={{ borderColor: 'var(--theme-hairline)' }}
         >
           <h2
             id={headingId}
-            className="text-sm font-medium flex items-center gap-1.5"
+            className="text-base font-bold flex items-center gap-1.5"
             style={{
-              color: 'var(--theme-text-muted)',
+              color: 'var(--theme-text-primary)',
               fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
             }}
           >
-            <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <Lock className="h-4 w-4 shrink-0 opacity-75" aria-hidden="true" />
             <span>Guests</span>
           </h2>
-          <span className="text-xs font-medium" style={{ color: 'var(--theme-text-muted)' }}>
+          <span className="text-xs font-semibold" style={{ color: 'var(--theme-text-muted)' }}>
             {rsvps.totalHeadcount} Going
           </span>
         </div>
@@ -62,7 +70,7 @@ export function GuestList({
 
         {viewerRsvp ? (
           <p className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>
-            Your response: {viewerRsvp.status === 'yes' ? "Yes, I'm going" : "Can't make it"}
+            Your RSVP: {viewerRsvp.status === 'yes' ? "Going 🎉" : "Can't make it"}
             {viewerRsvp.plusOnes > 0 ? ` (+${viewerRsvp.plusOnes})` : ''}
             {viewerRsvp.bringingNote ? ` · ${viewerRsvp.bringingNote}` : ''}
           </p>
@@ -81,16 +89,23 @@ export function GuestList({
         : activeTab;
 
   return (
-    <section aria-labelledby={headingId} className="space-y-3">
+    <section
+      aria-labelledby={headingId}
+      className="rounded-3xl border shadow-xl p-5 sm:p-6 space-y-3.5"
+      style={{
+        backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
+        borderColor: 'var(--theme-border)',
+      }}
+    >
       <div
-        className="flex items-center justify-between gap-3 pb-2 border-b"
+        className="flex items-center justify-between gap-3 pb-2.5 border-b"
         style={{ borderColor: 'var(--theme-hairline)' }}
       >
         <h2
           id={headingId}
-          className="text-sm font-medium"
+          className="text-base font-bold"
           style={{
-            color: 'var(--theme-text-muted)',
+            color: 'var(--theme-text-primary)',
             fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
           }}
         >
@@ -104,12 +119,12 @@ export function GuestList({
                 key={entry.id}
                 name={entry.guestName}
                 size="xs"
-                className="ring-1 ring-black/30"
+                className="ring-1 ring-black/20"
               />
             ))}
             {rsvps.yes.length > 5 ? (
               <span
-                className="inline-flex h-5 items-center justify-center rounded-full px-1.5 text-[10px] font-medium"
+                className="inline-flex h-5 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold"
                 style={{
                   backgroundColor: 'var(--theme-surface-bg)',
                   color: 'var(--theme-text-muted)',
@@ -233,6 +248,17 @@ export function GuestList({
                         >
                           {guest.guestName}
                         </span>
+                        {normalizedHost && guest.guestName.trim().toLowerCase() === normalizedHost ? (
+                          <span
+                            className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                            style={{
+                              backgroundColor: 'var(--theme-surface-bg)',
+                              color: 'var(--theme-accent)',
+                            }}
+                          >
+                            Host
+                          </span>
+                        ) : null}
                         {guest.plusOnes > 0 ? (
                           <span
                             className="rounded-full px-2 py-0.5 text-[11px] font-medium"

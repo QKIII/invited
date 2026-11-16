@@ -1,4 +1,5 @@
 import React, { useId } from 'react';
+import { getCoverPreset } from '@/lib/themes/presets';
 import type { CoverLayout } from '@/types/invite';
 
 export function CoverArt({
@@ -7,6 +8,7 @@ export function CoverArt({
   layout,
   title,
   accentColor,
+  flushTop = false,
   className = '',
   children,
 }: {
@@ -15,6 +17,7 @@ export function CoverArt({
   layout: CoverLayout;
   title?: string;
   accentColor?: string;
+  flushTop?: boolean;
   className?: string;
   children?: React.ReactNode;
 }): React.JSX.Element | null {
@@ -24,15 +27,34 @@ export function CoverArt({
     return null;
   }
 
-  const aspectClass = layout === 'banner' ? 'aspect-[16/9] w-full' : 'aspect-square w-full';
-  const containerClass = `relative overflow-hidden rounded-2xl border border-white/15 shadow-xl ${aspectClass} ${className}`.trim();
+  const aspectClass =
+    layout === 'banner'
+      ? flushTop
+        ? 'aspect-[2/1] w-full'
+        : 'aspect-[16/9] w-full'
+      : 'aspect-square w-full';
+  const frameClass = flushTop
+    ? 'relative overflow-hidden'
+    : 'relative overflow-hidden rounded-2xl border border-white/15 shadow-xl';
+  const containerClass = `${frameClass} ${aspectClass} ${className}`.trim();
 
-  if (customCoverUrl && customCoverUrl.trim().length > 0) {
+  const presetImageUrl = getCoverPreset(coverPresetId)?.imageUrl;
+  const effectiveImageUrl =
+    customCoverUrl && customCoverUrl.trim().length > 0
+      ? customCoverUrl.trim()
+      : presetImageUrl;
+
+  if (effectiveImageUrl) {
     return (
-      <div className={containerClass} data-cover-preset="custom">
+      <div
+        className={containerClass}
+        data-cover-preset={customCoverUrl ? 'custom' : coverPresetId}
+      >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={customCoverUrl}
+          src={effectiveImageUrl}
+          width={960}
+          height={540}
           alt={title ? `${title} cover artwork` : 'Event cover artwork'}
           className="h-full w-full object-cover"
         />

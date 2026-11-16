@@ -39,8 +39,8 @@ const DEFAULT_EDIT_STYLE: InviteStyleConfig = {
   themeId: 'winter-snowfall',
   fontId: 'modern-sans',
   effectId: 'snowfall',
-  coverPresetId: 'you-are-invited',
-  coverLayout: 'square',
+  coverPresetId: 'snowy-pines',
+  coverLayout: 'banner',
   colorMode: getThemePreset('winter-snowfall').colorMode,
 };
 
@@ -170,9 +170,11 @@ export function EditInviteClient({
   );
 
   const themeVars = useMemo(
-    () => resolveThemeCssVars(effectiveStyle) as React.CSSProperties,
+    () => resolveThemeCssVars(effectiveStyle),
     [effectiveStyle],
   );
+  const backdropMode =
+    themeVars['--theme-backdrop-mode'] === 'light' ? 'light' : 'dark';
 
   if (status === 'loading') {
     return (
@@ -269,21 +271,26 @@ export function EditInviteClient({
   return (
     <div
       style={{
-        ...themeVars,
+        ...(themeVars as React.CSSProperties),
         backgroundColor: 'var(--theme-page-bg)',
         color: 'var(--theme-text-primary)',
         fontFamily: 'var(--font-invite-body), var(--font-sans), sans-serif',
       }}
       className="min-h-screen relative overflow-x-hidden transition-colors duration-300"
     >
-      <AmbientBackdrop effectId={effectiveStyle.effectId} />
+      <AmbientBackdrop
+        effectId={effectiveStyle.effectId}
+        accentColor={themeVars['--theme-accent']}
+        colorMode={backdropMode}
+        className="fixed inset-0 z-0"
+      />
 
       {/* Minimal 48px single-row header */}
-      <header className="relative z-10 h-12 max-w-[480px] lg:max-w-[920px] mx-auto px-4 lg:px-8 flex items-center justify-between gap-2">
+      <header className="relative z-10 h-12 max-w-[580px] mx-auto px-3.5 sm:px-6 flex items-center justify-between gap-2">
         <Link
           href={`/e/${eventId}`}
           className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-medium hover:opacity-80 transition shrink-0"
-          style={{ color: 'var(--theme-text-primary)' }}
+          style={{ color: 'var(--theme-outer-text)' }}
         >
           <ArrowLeft className="h-4 w-4 shrink-0" aria-hidden="true" />
           <span>View Invite</span>
@@ -293,10 +300,11 @@ export function EditInviteClient({
           <div
             role="tablist"
             aria-label="Manage mode"
-            className="inline-flex items-center rounded-full border p-0.5"
+            className="inline-flex items-center rounded-full border border-current/20 p-0.5 backdrop-blur-md"
             style={{
-              backgroundColor: 'var(--theme-glass-bg)',
-              borderColor: 'var(--theme-hairline)',
+              backgroundColor:
+                backdropMode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.75)',
+              color: 'var(--theme-outer-text)',
             }}
           >
             <button
@@ -304,15 +312,9 @@ export function EditInviteClient({
               type="button"
               aria-selected={activeTab === 'edit'}
               onClick={() => setActiveTab('edit')}
-              className="rounded-full px-3 py-1 text-xs font-medium transition cursor-pointer"
-              style={
-                activeTab === 'edit'
-                  ? {
-                      backgroundColor: 'var(--theme-accent)',
-                      color: 'var(--theme-on-accent)',
-                    }
-                  : { color: 'var(--theme-text-muted)' }
-              }
+              className={`rounded-full px-3 py-1 text-xs font-medium transition cursor-pointer ${
+                activeTab === 'edit' ? 'invite-cta-btn' : 'opacity-75 hover:opacity-100'
+              }`}
             >
               Edit
             </button>
@@ -321,15 +323,9 @@ export function EditInviteClient({
               type="button"
               aria-selected={activeTab === 'manage'}
               onClick={() => setActiveTab('manage')}
-              className="rounded-full px-3 py-1 text-xs font-medium transition cursor-pointer whitespace-nowrap"
-              style={
-                activeTab === 'manage'
-                  ? {
-                      backgroundColor: 'var(--theme-accent)',
-                      color: 'var(--theme-on-accent)',
-                    }
-                  : { color: 'var(--theme-text-muted)' }
-              }
+              className={`rounded-full px-3 py-1 text-xs font-medium transition cursor-pointer whitespace-nowrap ${
+                activeTab === 'manage' ? 'invite-cta-btn' : 'opacity-75 hover:opacity-100'
+              }`}
             >
               Guests ({detail?.rsvps.totalHeadcount ?? 0})
             </button>
@@ -339,15 +335,15 @@ export function EditInviteClient({
             type="button"
             onClick={() => void handleCopyGuestLink()}
             aria-label="Copy guest invite link"
-            className="h-8 inline-flex items-center gap-1 rounded-full border px-2.5 text-xs font-medium transition hover:opacity-90 cursor-pointer shrink-0"
+            className="h-8 inline-flex items-center gap-1 rounded-full border border-current/25 px-2.5 text-xs font-medium backdrop-blur-md transition hover:opacity-90 cursor-pointer shrink-0"
             style={{
-              backgroundColor: 'var(--theme-glass-bg)',
-              borderColor: 'var(--theme-hairline)',
-              color: 'var(--theme-text-primary)',
+              backgroundColor:
+                backdropMode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.75)',
+              color: 'var(--theme-outer-text)',
             }}
           >
             {copiedGuest ? (
-              <Check className="h-3.5 w-3.5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+              <Check className="h-3.5 w-3.5" aria-hidden="true" />
             ) : (
               <Copy className="h-3.5 w-3.5" aria-hidden="true" />
             )}
@@ -359,11 +355,11 @@ export function EditInviteClient({
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Open guest page in new tab"
-            className="h-8 w-8 rounded-full border inline-flex items-center justify-center transition hover:opacity-90 shrink-0"
+            className="h-8 w-8 rounded-full border border-current/25 inline-flex items-center justify-center backdrop-blur-md transition hover:opacity-90 shrink-0"
             style={{
-              backgroundColor: 'var(--theme-glass-bg)',
-              borderColor: 'var(--theme-hairline)',
-              color: 'var(--theme-text-primary)',
+              backgroundColor:
+                backdropMode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.75)',
+              color: 'var(--theme-outer-text)',
             }}
           >
             <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
@@ -371,7 +367,7 @@ export function EditInviteClient({
         </div>
       </header>
 
-      <main className="relative z-10 max-w-[480px] lg:max-w-[920px] mx-auto px-4 lg:px-8 pt-2 sm:pt-4 pb-16">
+      <main className="relative z-10 max-w-[580px] mx-auto px-3.5 sm:px-6 pt-1 sm:pt-2 pb-16">
         {detail && activeTab === 'edit' ? (
           <InviteStudio
             key={`edit-${detail.event.id}`}
@@ -386,9 +382,9 @@ export function EditInviteClient({
 
         {detail && activeTab === 'manage' ? (
           <div
-            className="rounded-2xl border backdrop-blur-md p-4 sm:p-6"
+            className="rounded-3xl border shadow-xl p-5 sm:p-6"
             style={{
-              backgroundColor: 'var(--theme-glass-bg)',
+              backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
               borderColor: 'var(--theme-border)',
             }}
           >

@@ -11,7 +11,7 @@ interface SubscribeControlProps {
   subscriberCount: number;
   openSignal?: number;
   onSubscribed?: () => void;
-  variant?: 'pill' | 'inline';
+  variant?: 'pill' | 'inline' | 'link';
 }
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
@@ -211,6 +211,15 @@ export function SubscribeControl({
             </span>
           ) : null}
         </button>
+      ) : variant === 'link' ? (
+        <button
+          type="button"
+          onClick={openDialog}
+          className="inline-flex items-center gap-1.5 hover:underline cursor-pointer"
+        >
+          <Bell className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span>Get updates{subscriberCount > 0 ? ` (${subscriberCount})` : ''}</span>
+        </button>
       ) : (
         <button
           type="button"
@@ -231,9 +240,9 @@ export function SubscribeControl({
         ref={dialogRef}
         closedby="any"
         aria-labelledby={titleId}
-        className="w-[calc(100%-2rem)] max-w-md mx-auto my-auto rounded-2xl border p-5 shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm"
+        className="w-[calc(100%-2rem)] max-w-md mx-auto my-auto rounded-3xl border p-5 shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm"
         style={{
-          backgroundColor: 'var(--theme-surface-bg, #0f172a)',
+          backgroundColor: 'var(--theme-card-solid, var(--theme-surface-bg))',
           borderColor: 'var(--theme-border, rgba(255,255,255,0.15))',
           color: 'var(--theme-text-primary, #f8fafc)',
         }}
@@ -290,11 +299,7 @@ export function SubscribeControl({
                   type="button"
                   disabled={pushBusy || pushDone}
                   onClick={() => void handleEnablePush()}
-                  className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition disabled:opacity-60 cursor-pointer"
-                  style={{
-                    backgroundColor: 'var(--theme-accent)',
-                    color: 'var(--theme-on-accent)',
-                  }}
+                  className="invite-cta-btn shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition disabled:opacity-60 cursor-pointer"
                 >
                   {pushDone ? 'Enabled' : pushBusy ? 'Enabling...' : 'Enable'}
                 </button>
@@ -338,11 +343,7 @@ export function SubscribeControl({
               <button
                 type="submit"
                 disabled={emailBusy || !email.trim()}
-                className="shrink-0 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold transition disabled:opacity-50 cursor-pointer inline-flex items-center gap-1.5"
-                style={{
-                  backgroundColor: 'var(--theme-accent)',
-                  color: 'var(--theme-on-accent)',
-                }}
+                className="invite-cta-btn shrink-0 rounded-full px-4 py-2 text-xs sm:text-sm font-semibold transition disabled:opacity-50 cursor-pointer inline-flex items-center gap-1.5"
               >
                 {emailDone ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : null}
                 <span>{emailDone ? 'Saved' : emailBusy ? '...' : 'Save'}</span>

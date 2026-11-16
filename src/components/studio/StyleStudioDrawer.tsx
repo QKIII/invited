@@ -5,6 +5,7 @@ import {
   Check,
   ChevronDown,
   Image as ImageIcon,
+  Palette,
   RefreshCw,
   Sliders,
   Sparkles,
@@ -15,13 +16,14 @@ import {
 import { CoverArt } from '@/components/covers/CoverArt';
 import {
   COVER_PRESETS,
+  CTA_PRESETS,
   EFFECT_OPTIONS,
   FONT_PAIRINGS,
   THEME_PRESETS,
   getThemePreset,
   type ThemePreset,
 } from '@/lib/themes/presets';
-import type { CoverLayout, InviteStyleConfig } from '@/types/invite';
+import type { CoverLayout, CtaStyleMode, InviteStyleConfig } from '@/types/invite';
 
 interface StyleStudioDrawerProps {
   style: InviteStyleConfig;
@@ -31,24 +33,13 @@ interface StyleStudioDrawerProps {
   section?: 'themes' | 'customize' | 'covers' | 'all';
 }
 
-const ACCENT_SWATCHES = [
-  '#7dd3fc',
-  '#34d399',
-  '#f59e0b',
-  '#ef4444',
-  '#fb7185',
-  '#a78bfa',
-  '#d97706',
-  '#10b981',
-];
-
 const SURFACE_SWATCHES = [
+  '#ffffff',
+  '#faf7f2',
   '#0c316e',
   '#0f172a',
   '#1a1423',
   '#14211b',
-  '#faf7f2',
-  '#f8fafc',
 ];
 
 const CATEGORY_TABS: Array<{
@@ -101,6 +92,8 @@ export function StyleStudioDrawer({
       coverPresetId: preset.defaultCoverPresetId,
       colorMode: preset.colorMode,
       customAccentHex: undefined,
+      customCtaEndHex: undefined,
+      ctaStyle: undefined,
       customSurfaceHex: undefined,
     });
   };
@@ -161,7 +154,7 @@ export function StyleStudioDrawer({
       onChange({
         ...style,
         customCoverUrl: uploadedUrl,
-        coverLayout: style.coverLayout === 'none' ? 'square' : style.coverLayout,
+        coverLayout: style.coverLayout === 'none' ? 'banner' : style.coverLayout,
       });
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'Cover photo upload failed.');
@@ -171,114 +164,38 @@ export function StyleStudioDrawer({
     }
   };
 
-  const currentAccent = style.customAccentHex || activePreset.accent;
+  const ctaMode: CtaStyleMode = style.ctaStyle ?? 'gradient';
+  const currentCtaStart = style.customAccentHex || activePreset.ctaStart;
+  const currentCtaEnd = style.customCtaEndHex || activePreset.ctaEnd;
   const currentSurface = style.customSurfaceHex || activePreset.surfaceBg;
   const currentColorMode = style.colorMode || activePreset.colorMode;
 
-  const showThemes = section === 'all' || section === 'themes';
   const showCovers = section === 'all' || section === 'covers';
+  const showThemes = section === 'all' || section === 'themes' || section === 'customize';
   const showCustomize = section === 'all' || section === 'customize';
 
   return (
     <div
-      className="rounded-2xl border backdrop-blur-md p-3.5 space-y-3"
-      style={{
-        backgroundColor: 'var(--theme-glass-bg)',
-        borderColor: 'var(--theme-border)',
-        color: 'var(--theme-text-primary)',
-      }}
+      className="space-y-3"
+      style={{ color: 'var(--theme-text-primary)' }}
     >
-      {showThemes ? (
-        <div className="space-y-2.5">
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Theme categories">
-            {CATEGORY_TABS.map((tab) => {
-              const active = themeCategory === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setThemeCategory(tab.id)}
-                  className="rounded-full border px-2.5 py-1 text-xs font-medium transition cursor-pointer"
-                  style={
-                    active
-                      ? {
-                          backgroundColor: 'var(--theme-accent)',
-                          borderColor: 'var(--theme-accent)',
-                          color: 'var(--theme-on-accent)',
-                        }
-                      : {
-                          backgroundColor: 'transparent',
-                          borderColor: 'var(--theme-hairline)',
-                          color: 'var(--theme-text-muted)',
-                        }
-                  }
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="grid grid-cols-2 gap-1.5 max-h-60 overflow-y-auto pr-0.5">
-            {filteredThemes.map((preset) => {
-              const isSelected = style.themeId === preset.id;
-              return (
-                <button
-                  key={preset.id}
-                  type="button"
-                  aria-pressed={isSelected}
-                  onClick={() => applyThemePreset(preset)}
-                  className="flex items-center gap-2 rounded-xl border p-2 text-left transition cursor-pointer min-w-0"
-                  style={{
-                    backgroundColor: isSelected
-                      ? 'var(--theme-surface-bg)'
-                      : 'transparent',
-                    borderColor: isSelected
-                      ? 'var(--theme-accent)'
-                      : 'var(--theme-hairline)',
-                  }}
-                >
-                  <span
-                    className="h-6 w-6 shrink-0 rounded-lg border flex items-center justify-center text-xs"
-                    style={{
-                      background: `linear-gradient(135deg, ${preset.pageBg} 0%, ${preset.cardBg} 65%, ${preset.accent} 100%)`,
-                      borderColor: 'var(--theme-hairline)',
-                    }}
-                  >
-                    {preset.emoji}
-                  </span>
-                  <span
-                    className="text-xs font-medium truncate flex-1"
-                    style={{ color: 'var(--theme-text-primary)' }}
-                  >
-                    {preset.name}
-                  </span>
-                  {isSelected ? (
-                    <Check
-                      className="h-3.5 w-3.5 shrink-0"
-                      style={{ color: 'var(--theme-accent)' }}
-                      aria-hidden="true"
-                    />
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-
       {showCovers ? (
-        <div className="space-y-3">
+        <div
+          className="rounded-2xl border p-3.5 space-y-3"
+          style={{
+            backgroundColor: 'var(--theme-surface-bg)',
+            borderColor: 'var(--theme-hairline)',
+          }}
+        >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs font-medium" style={{ color: 'var(--theme-text-muted)' }}>
-              Cover Artwork ({style.customCoverUrl ? 'Custom Photo' : activeCover.name})
+            <span className="text-xs font-semibold" style={{ color: 'var(--theme-text-primary)' }}>
+              Cover Art · {style.customCoverUrl ? 'Custom Photo' : activeCover.name}
             </span>
             {style.customCoverUrl ? (
               <button
                 type="button"
                 onClick={() => onChange({ ...style, customCoverUrl: undefined })}
-                className="inline-flex items-center gap-1 text-xs font-medium text-rose-300 hover:opacity-80 cursor-pointer"
+                className="inline-flex items-center gap-1 text-xs font-medium text-rose-500 hover:opacity-80 cursor-pointer"
               >
                 <Trash2 className="h-3 w-3" aria-hidden="true" />
                 Remove photo
@@ -304,18 +221,18 @@ export function StyleStudioDrawer({
               }}
             >
               <Upload className="h-3.5 w-3.5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-              <span>{uploadingCover ? 'Uploading...' : 'Upload Photo'}</span>
+              <span>{uploadingCover ? 'Uploading...' : 'Upload your own photo'}</span>
             </label>
 
             {style.customCoverUrl ? (
               <div
-                className="h-8 w-8 overflow-hidden rounded-lg border"
+                className="h-8 w-12 overflow-hidden rounded-lg border"
                 style={{ borderColor: 'var(--theme-hairline)' }}
               >
                 <CoverArt
                   coverPresetId={style.coverPresetId}
                   customCoverUrl={style.customCoverUrl}
-                  layout="square"
+                  layout="banner"
                   className="h-full w-full object-cover"
                 />
               </div>
@@ -323,12 +240,12 @@ export function StyleStudioDrawer({
           </div>
 
           {uploadError ? (
-            <p className="text-xs text-rose-400" role="alert">
+            <p className="text-xs text-rose-500" role="alert">
               {uploadError}
             </p>
           ) : null}
 
-          <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto pr-0.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-56 overflow-y-auto pr-0.5">
             {COVER_PRESETS.map((cover) => {
               const isSelected = !style.customCoverUrl && style.coverPresetId === cover.id;
               return (
@@ -341,18 +258,32 @@ export function StyleStudioDrawer({
                       ...style,
                       coverPresetId: cover.id,
                       customCoverUrl: undefined,
-                      coverLayout: style.coverLayout === 'none' ? 'square' : style.coverLayout,
+                      coverLayout: style.coverLayout === 'none' ? 'banner' : style.coverLayout,
                     })
                   }
-                  className="flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-left text-xs font-medium transition cursor-pointer min-w-0"
+                  className="rounded-xl border p-1.5 text-left transition cursor-pointer min-w-0 space-y-1"
                   style={{
-                    backgroundColor: isSelected ? 'var(--theme-surface-bg)' : 'transparent',
+                    backgroundColor: isSelected ? 'var(--theme-card-bg)' : 'transparent',
                     borderColor: isSelected ? 'var(--theme-accent)' : 'var(--theme-hairline)',
                     color: 'var(--theme-text-primary)',
                   }}
                 >
-                  <span aria-hidden="true">{cover.emoji}</span>
-                  <span className="truncate">{cover.name}</span>
+                  {cover.imageUrl ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      src={cover.imageUrl}
+                      alt=""
+                      className="h-12 w-full rounded-lg object-cover"
+                    />
+                  ) : (
+                    <div
+                      className="h-12 w-full rounded-lg flex items-center justify-center text-lg"
+                      style={{ backgroundColor: 'var(--theme-glass-bg)' }}
+                    >
+                      {cover.emoji}
+                    </div>
+                  )}
+                  <p className="text-[11px] font-medium truncate px-0.5">{cover.name}</p>
                 </button>
               );
             })}
@@ -361,10 +292,247 @@ export function StyleStudioDrawer({
       ) : null}
 
       {showCustomize ? (
-        <div className="space-y-2">
+        <div className="space-y-2.5">
+          {/* Custom CTA Button Gradient / Solid Editor */}
+          <div
+            className="rounded-2xl border p-3.5 space-y-3"
+            style={{
+              backgroundColor: 'var(--theme-surface-bg)',
+              borderColor: 'var(--theme-hairline)',
+            }}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold">Custom Button Gradient</span>
+
+              <div className="flex items-center gap-2">
+                <div
+                  className="inline-flex items-center rounded-lg border p-0.5"
+                  style={{ borderColor: 'var(--theme-hairline)' }}
+                >
+                  {(['gradient', 'solid'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      aria-pressed={ctaMode === mode}
+                      onClick={() =>
+                        onChange({
+                          ...style,
+                          ctaStyle: mode,
+                          customAccentHex: style.customAccentHex || activePreset.ctaStart,
+                          customCtaEndHex:
+                            mode === 'gradient'
+                              ? style.customCtaEndHex || activePreset.ctaEnd
+                              : undefined,
+                        })
+                      }
+                      className="rounded-md px-2.5 py-1 text-[11px] font-medium capitalize transition cursor-pointer"
+                      style={
+                        ctaMode === mode
+                          ? {
+                              backgroundColor: 'var(--theme-accent)',
+                              color: 'var(--theme-on-accent)',
+                            }
+                          : { color: 'var(--theme-text-muted)' }
+                      }
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+
+                {(style.customAccentHex || style.customCtaEndHex || style.ctaStyle) ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onChange({
+                        ...style,
+                        customAccentHex: undefined,
+                        customCtaEndHex: undefined,
+                        ctaStyle: undefined,
+                      })
+                    }
+                    className="inline-flex items-center gap-1 text-[11px] font-medium opacity-75 hover:opacity-100 cursor-pointer"
+                    style={{ color: 'var(--theme-text-muted)' }}
+                  >
+                    <RefreshCw className="h-3 w-3" aria-hidden="true" />
+                    Reset
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {CTA_PRESETS.map((swatch) => {
+                const selected =
+                  currentCtaStart.toLowerCase() === swatch.startHex.toLowerCase() &&
+                  (swatch.mode === 'solid'
+                    ? ctaMode === 'solid'
+                    : currentCtaEnd.toLowerCase() === swatch.endHex.toLowerCase());
+                return (
+                  <button
+                    key={swatch.id}
+                    type="button"
+                    aria-label={`Set button style ${swatch.name}`}
+                    aria-pressed={selected}
+                    title={swatch.name}
+                    onClick={() =>
+                      onChange({
+                        ...style,
+                        ctaStyle: swatch.mode,
+                        customAccentHex: swatch.startHex,
+                        customCtaEndHex: swatch.endHex,
+                      })
+                    }
+                    className={`h-7 w-7 rounded-full border-2 transition cursor-pointer ${
+                      selected ? 'scale-110 ring-2 ring-offset-1 ring-sky-400 border-white' : 'border-black/15'
+                    }`}
+                    style={{
+                      background:
+                        swatch.mode === 'solid'
+                          ? swatch.startHex
+                          : `linear-gradient(135deg, ${swatch.startHex} 0%, ${swatch.endHex} 100%)`,
+                    }}
+                  />
+                );
+              })}
+
+              <label className="inline-flex items-center gap-1.5 text-[11px] font-medium pl-1 cursor-pointer">
+                <span style={{ color: 'var(--theme-text-muted)' }}>
+                  {ctaMode === 'solid' ? 'Color' : 'From'}
+                </span>
+                <input
+                  aria-label="Button primary color"
+                  type="color"
+                  value={currentCtaStart}
+                  onChange={(e) =>
+                    onChange({
+                      ...style,
+                      ctaStyle: ctaMode,
+                      customAccentHex: e.target.value,
+                    })
+                  }
+                  className="h-7 w-8 cursor-pointer rounded border bg-transparent"
+                />
+              </label>
+
+              {ctaMode === 'gradient' ? (
+                <label className="inline-flex items-center gap-1.5 text-[11px] font-medium cursor-pointer">
+                  <span style={{ color: 'var(--theme-text-muted)' }}>To</span>
+                  <input
+                    aria-label="Button gradient end color"
+                    type="color"
+                    value={currentCtaEnd}
+                    onChange={(e) =>
+                      onChange({
+                        ...style,
+                        ctaStyle: 'gradient',
+                        customAccentHex: currentCtaStart,
+                        customCtaEndHex: e.target.value,
+                      })
+                    }
+                    className="h-7 w-8 cursor-pointer rounded border bg-transparent"
+                  />
+                </label>
+              ) : null}
+            </div>
+          </div>
+
+          {showThemes ? (
+            <details className="group rounded-xl border overflow-hidden" style={{ borderColor: 'var(--theme-hairline)' }}>
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3.5 py-2.5 text-xs font-medium">
+                <span className="inline-flex items-center gap-2">
+                  <Palette className="h-3.5 w-3.5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+                  <span>All 18 Themes</span>
+                </span>
+                <span className="inline-flex items-center gap-1.5 opacity-75">
+                  <span>{activePreset.emoji} {activePreset.name}</span>
+                  <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" aria-hidden="true" />
+                </span>
+              </summary>
+
+              <div className="border-t p-3 space-y-2.5" style={{ borderColor: 'var(--theme-hairline)' }}>
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Theme categories">
+                  {CATEGORY_TABS.map((tab) => {
+                    const active = themeCategory === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => setThemeCategory(tab.id)}
+                        className="rounded-full border px-2.5 py-1 text-xs font-medium transition cursor-pointer"
+                        style={
+                          active
+                            ? {
+                                backgroundColor: 'var(--theme-accent)',
+                                borderColor: 'var(--theme-accent)',
+                                color: 'var(--theme-on-accent)',
+                              }
+                            : {
+                                backgroundColor: 'transparent',
+                                borderColor: 'var(--theme-hairline)',
+                                color: 'var(--theme-text-muted)',
+                              }
+                        }
+                      >
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="grid grid-cols-2 gap-1.5 max-h-52 overflow-y-auto pr-0.5">
+                  {filteredThemes.map((preset) => {
+                    const isSelected = style.themeId === preset.id;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={() => applyThemePreset(preset)}
+                        className="flex items-center gap-2 rounded-xl border p-2 text-left transition cursor-pointer min-w-0"
+                        style={{
+                          backgroundColor: isSelected
+                            ? 'var(--theme-surface-bg)'
+                            : 'transparent',
+                          borderColor: isSelected
+                            ? 'var(--theme-accent)'
+                            : 'var(--theme-hairline)',
+                        }}
+                      >
+                        <span
+                          className="h-6 w-6 shrink-0 rounded-lg border flex items-center justify-center text-xs"
+                          style={{
+                            background: `linear-gradient(135deg, ${preset.pageBg} 0%, ${preset.ctaStart} 100%)`,
+                            borderColor: 'var(--theme-hairline)',
+                          }}
+                        >
+                          {preset.emoji}
+                        </span>
+                        <span
+                          className="text-xs font-medium truncate flex-1"
+                          style={{ color: 'var(--theme-text-primary)' }}
+                        >
+                          {preset.name}
+                        </span>
+                        {isSelected ? (
+                          <Check
+                            className="h-3.5 w-3.5 shrink-0"
+                            style={{ color: 'var(--theme-accent)' }}
+                            aria-hidden="true"
+                          />
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </details>
+          ) : null}
+
           {/* Typography */}
           <details className="group rounded-xl border overflow-hidden" style={{ borderColor: 'var(--theme-hairline)' }}>
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-xs font-medium">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3.5 py-2.5 text-xs font-medium">
               <span className="inline-flex items-center gap-2">
                 <Type className="h-3.5 w-3.5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
                 <span>Typography</span>
@@ -413,10 +581,10 @@ export function StyleStudioDrawer({
 
           {/* Ambient Effect */}
           <details className="group rounded-xl border overflow-hidden" style={{ borderColor: 'var(--theme-hairline)' }}>
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-xs font-medium">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3.5 py-2.5 text-xs font-medium">
               <span className="inline-flex items-center gap-2">
                 <Sparkles className="h-3.5 w-3.5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-                <span>Effect</span>
+                <span>Ambient Effect</span>
               </span>
               <span className="inline-flex items-center gap-1.5 opacity-75">
                 <span>
@@ -449,23 +617,15 @@ export function StyleStudioDrawer({
             </div>
           </details>
 
-          {/* Cover Layout & Colors */}
+          {/* Cover Frame & Card Surface */}
           <details className="group rounded-xl border overflow-hidden" style={{ borderColor: 'var(--theme-hairline)' }}>
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-xs font-medium">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3.5 py-2.5 text-xs font-medium">
               <span className="inline-flex items-center gap-2">
                 <Sliders className="h-3.5 w-3.5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-                <span>Layout &amp; Colors</span>
+                <span>Card &amp; Cover Layout</span>
               </span>
               <span className="inline-flex items-center gap-1.5 opacity-75">
-                <span
-                  aria-hidden="true"
-                  className="h-3 w-3 rounded-full border"
-                  style={{
-                    backgroundColor: currentAccent,
-                    borderColor: 'var(--theme-hairline)',
-                  }}
-                />
-                <span className="capitalize">{style.coverLayout}</span>
+                <span className="capitalize">{style.coverLayout} · {currentColorMode}</span>
                 <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" aria-hidden="true" />
               </span>
             </summary>
@@ -473,13 +633,13 @@ export function StyleStudioDrawer({
             <div className="border-t p-3 space-y-3" style={{ borderColor: 'var(--theme-hairline)' }}>
               <div className="space-y-1.5">
                 <span className="text-[11px] font-medium" style={{ color: 'var(--theme-text-muted)' }}>
-                  Cover Frame
+                  Cover Aspect
                 </span>
                 <div className="grid grid-cols-3 gap-1.5">
                   {(
                     [
+                      { value: 'banner', label: 'Banner 2:1' },
                       { value: 'square', label: 'Square 1:1' },
-                      { value: 'banner', label: 'Wide 16:9' },
                       { value: 'none', label: 'No Cover' },
                     ] as Array<{ value: CoverLayout; label: string }>
                   ).map((option) => {
@@ -514,56 +674,23 @@ export function StyleStudioDrawer({
 
               <div className="space-y-1.5">
                 <label
-                  htmlFor="custom-accent-color"
-                  className="block text-[11px] font-medium"
-                  style={{ color: 'var(--theme-text-muted)' }}
-                >
-                  Accent Color
-                </label>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {ACCENT_SWATCHES.map((hex) => (
-                    <button
-                      key={hex}
-                      type="button"
-                      aria-label={`Set accent color ${hex}`}
-                      onClick={() => onChange({ ...style, customAccentHex: hex })}
-                      className={`h-6 w-6 rounded-full border-2 transition cursor-pointer ${
-                        currentAccent.toLowerCase() === hex.toLowerCase()
-                          ? 'scale-110 border-white'
-                          : 'border-white/25'
-                      }`}
-                      style={{ backgroundColor: hex }}
-                    />
-                  ))}
-                  <input
-                    id="custom-accent-color"
-                    type="color"
-                    value={currentAccent}
-                    onChange={(e) => onChange({ ...style, customAccentHex: e.target.value })}
-                    className="h-6 w-8 cursor-pointer rounded border bg-transparent"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label
                   htmlFor="custom-surface-color"
                   className="block text-[11px] font-medium"
                   style={{ color: 'var(--theme-text-muted)' }}
                 >
-                  Surface Color
+                  Card &amp; Background Tone
                 </label>
                 <div className="flex flex-wrap items-center gap-1.5">
                   {SURFACE_SWATCHES.map((hex) => (
                     <button
                       key={hex}
                       type="button"
-                      aria-label={`Set surface color ${hex}`}
+                      aria-label={`Set card surface color ${hex}`}
                       onClick={() => onChange({ ...style, customSurfaceHex: hex })}
                       className={`h-6 w-6 rounded-full border-2 transition cursor-pointer ${
                         currentSurface.toLowerCase() === hex.toLowerCase()
-                          ? 'scale-110 border-white'
-                          : 'border-white/25'
+                          ? 'scale-110 ring-2 ring-sky-400 border-white'
+                          : 'border-black/20'
                       }`}
                       style={{ backgroundColor: hex }}
                     />
@@ -583,7 +710,7 @@ export function StyleStudioDrawer({
                   className="inline-flex items-center gap-1 rounded-lg border p-0.5"
                   style={{ borderColor: 'var(--theme-hairline)' }}
                 >
-                  {(['dark', 'light'] as const).map((mode) => (
+                  {(['light', 'dark'] as const).map((mode) => (
                     <button
                       key={mode}
                       type="button"
@@ -601,7 +728,7 @@ export function StyleStudioDrawer({
                             }
                       }
                     >
-                      {mode}
+                      {mode} card
                     </button>
                   ))}
                 </div>
@@ -611,7 +738,6 @@ export function StyleStudioDrawer({
                   onClick={() =>
                     onChange({
                       ...style,
-                      customAccentHex: undefined,
                       customSurfaceHex: undefined,
                       colorMode: activePreset.colorMode,
                     })
@@ -620,17 +746,13 @@ export function StyleStudioDrawer({
                   style={{ color: 'var(--theme-text-muted)' }}
                 >
                   <RefreshCw className="h-3 w-3" aria-hidden="true" />
-                  Reset
+                  Reset card
                 </button>
               </div>
             </div>
           </details>
 
-          {section === 'customize' ? (
-            <div className="pt-1">
-              <ImageIcon className="sr-only" aria-hidden="true" />
-            </div>
-          ) : null}
+          <ImageIcon className="sr-only" aria-hidden="true" />
         </div>
       ) : null}
     </div>
