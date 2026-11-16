@@ -33,6 +33,7 @@ import { StyleStudioDrawer, type StudioDrawerTab } from './StyleStudioDrawer';
 interface InviteStudioProps {
   mode: 'create' | 'edit';
   initialDraft?: ParsedEventDraft | null;
+  skipSavedDraft?: boolean;
   initialEvent?: EventMeta;
   eventId?: string;
   editKey?: string;
@@ -84,6 +85,7 @@ interface StoredStudioDraft {
 export function InviteStudio({
   mode,
   initialDraft,
+  skipSavedDraft = false,
   initialEvent,
   eventId,
   editKey,
@@ -195,7 +197,14 @@ export function InviteStudio({
 
   // Hydrate saved draft once in create mode when no explicit initialDraft was supplied
   useEffect(() => {
-    if (mode !== 'create' || initialDraft) {
+    if (mode !== 'create' || initialDraft || skipSavedDraft) {
+      if (skipSavedDraft) {
+        try {
+          window.localStorage.removeItem(CREATE_DRAFT_KEY);
+        } catch {
+          // Ignore storage access errors
+        }
+      }
       draftHydratedRef.current = true;
       return;
     }
@@ -232,7 +241,7 @@ export function InviteStudio({
         draftHydratedRef.current = true;
       }
     });
-  }, [mode, initialDraft]);
+  }, [mode, initialDraft, skipSavedDraft]);
 
   // Auto-persist create draft so partial invites survive refresh and show Draft indicator
   useEffect(() => {

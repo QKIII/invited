@@ -5,6 +5,11 @@ export type AmbientEffectId =
   | 'prism-gradient'
   | 'liquid-chrome'
   | 'cyber-grid'
+  | 'lava-lamp'
+  | 'water-caustics'
+  | 'twilight-clouds'
+  | 'stained-glass'
+  | 'disco-prism'
   | 'snowfall'
   | 'rain-glass'
   | 'christmas-lights'
@@ -18,8 +23,13 @@ export type AmbientEffectId =
   | 'floating-hearts'
   | 'champagne-sparkle'
   | 'warm-bokeh'
+  | 'fireflies'
+  | 'shooting-stars'
+  | 'paper-lanterns'
   | 'static-glow'
   | 'static-grain'
+  | 'static-linen'
+  | 'static-watercolor'
   | 'none';
 
 export type FontPairingId =

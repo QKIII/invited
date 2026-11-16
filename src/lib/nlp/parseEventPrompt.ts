@@ -1088,7 +1088,16 @@ export function parseEventPrompt(
   const refOffsetMinutes = getChronoOffsetMinutes(refDate, safeTimeZone);
 
   const occasionRule = matchOccasion(cleanedPrompt);
-  const themePreset = getThemePreset(occasionRule?.themeId ?? 'aurora-midnight');
+  const pelicanCue = /\b(?:pelican|penguin|breakfast exchange)\b/i.test(cleanedPrompt);
+  const discoCue = /\b(?:y2k|disco|mirrorball|karaoke|dance party|afterparty)\b/i.test(cleanedPrompt);
+
+  let resolvedThemeId = occasionRule?.themeId ?? 'aurora-midnight';
+  if (pelicanCue) {
+    resolvedThemeId = 'winter-snowfall';
+  } else if (discoCue && !occasionRule) {
+    resolvedThemeId = /\by2k\b/i.test(cleanedPrompt) ? 'y2k-chrome' : 'sunset-disco';
+  }
+  const themePreset = getThemePreset(resolvedThemeId);
 
   // 1. Extract virtual URL and host name first.
   const urlResult = extractVirtualUrl(cleanedPrompt);
@@ -1319,8 +1328,76 @@ export function parseEventPrompt(
     fallbackTitle,
   );
 
-  // 6. Preserve only an explicit user note (never inject synthetic AI boilerplate descriptions).
-  const detectedOccasionLabel = occasionRule?.label ?? 'Evening Gathering';
+  let matchedCoverPresetId = themePreset.defaultCoverPresetId;
+  let matchedEffectId = themePreset.defaultEffectId;
+  let matchedLabel = occasionRule?.label ?? 'Evening Gathering';
+
+  if (pelicanCue) {
+    matchedCoverPresetId = 'handdrawn-pelican-holiday';
+    matchedLabel = 'Pelican Breakfast';
+  } else if (/\b(?:taco|margarita|fiesta|enchilada|nachos)\b/i.test(cleanedPrompt)) {
+    matchedCoverPresetId = /\b(?:patio|backyard|courtyard|outdoor)\b/i.test(cleanedPrompt)
+      ? 'handdrawn-taco-patio'
+      : 'pattern-taco-fiesta';
+    matchedLabel = 'Taco Night';
+  } else if (/\b(?:pool|swim|flamingo|splash)\b/i.test(cleanedPrompt)) {
+    matchedCoverPresetId = 'handdrawn-pool-party';
+    matchedEffectId = 'water-caustics';
+    matchedLabel = 'Pool Party';
+  } else if (/\b(?:beach|ocean|surf|coast|seaside)\b/i.test(cleanedPrompt)) {
+    matchedCoverPresetId = 'pattern-beach-day';
+    matchedEffectId = 'water-caustics';
+    matchedLabel = 'Beach Hang';
+  } else if (/\b(?:campfire|bonfire|s'?mores|firepit)\b/i.test(cleanedPrompt)) {
+    matchedCoverPresetId = 'handdrawn-campfire-smores';
+    matchedEffectId = 'fireflies';
+    matchedLabel = 'Campfire';
+  } else if (/\b(?:ramen|sushi|dumpling|izakaya|noodle)\b/i.test(cleanedPrompt)) {
+    matchedCoverPresetId = 'pattern-sushi-ramen';
+    matchedEffectId = 'paper-lanterns';
+    matchedLabel = 'Dinner Night';
+  } else if (/\b(?:pancake|waffle|breakfast|brunch)\b/i.test(cleanedPrompt)) {
+    matchedCoverPresetId = /\b(?:bridal|wedding)\b/i.test(cleanedPrompt)
+      ? themePreset.defaultCoverPresetId
+      : 'handdrawn-pancake-brunch';
+  } else if (/\b(?:coffee|espresso|latte|matcha|bakery|croissant)\b/i.test(cleanedPrompt)) {
+    matchedCoverPresetId = /\bmartini\b/i.test(cleanedPrompt)
+      ? 'vector-espresso-martini'
+      : 'pattern-coffee-pastries';
+  } else if (/\b(?:cheese|charcuterie|tasting|vineyard|pinot|cabernet)\b/i.test(cleanedPrompt)) {
+    matchedCoverPresetId = 'pattern-cheese-wine';
+  } else if (/\b(?:pizza|game night|board game|trivia|poker)\b/i.test(cleanedPrompt)) {
+    matchedCoverPresetId = 'handdrawn-pizza-games';
+  } else if (/\b(?:movie|film|cinema|screening|popcorn)\b/i.test(cleanedPrompt)) {
+    matchedCoverPresetId = 'handdrawn-movie-popcorn';
+    matchedEffectId = 'shooting-stars';
+    matchedLabel = 'Movie Night';
+  } else if (/\bbook club\b/i.test(cleanedPrompt)) {
+    matchedCoverPresetId = 'handdrawn-book-club';
+    matchedLabel = 'Book Club';
+  } else if (/\b(?:graduation|graduate|commencement)\b/i.test(cleanedPrompt)) {
+    matchedCoverPresetId = 'handdrawn-graduation-toss';
+    matchedLabel = 'Graduation';
+  } else if (/\b(?:housewarming|new home|new apartment|moved in)\b/i.test(cleanedPrompt)) {
+    matchedCoverPresetId = 'handdrawn-housewarming-door';
+    matchedLabel = 'Housewarming';
+  } else if (/\bkaraoke\b/i.test(cleanedPrompt)) {
+    matchedCoverPresetId = 'handdrawn-karaoke-lounge';
+    matchedEffectId = 'disco-prism';
+  } else if (/\b(?:disco|mirrorball)\b/i.test(cleanedPrompt)) {
+    matchedCoverPresetId = 'vector-disco-mirrorball';
+    matchedEffectId = 'disco-prism';
+  } else if (/\b(?:vinyl|record|listening party|dj)\b/i.test(cleanedPrompt)) {
+    matchedCoverPresetId = 'vector-vinyl-turntable';
+  } else if (/\brooftop\b/i.test(cleanedPrompt)) {
+    matchedCoverPresetId = 'handdrawn-rooftop-stringlights';
+  } else if (/\b(?:tennis|pickleball)\b/i.test(cleanedPrompt)) {
+    matchedCoverPresetId = 'vector-tennis-club';
+  } else if (/\b(?:sunset|cloud|golden hour)\b/i.test(cleanedPrompt) && !occasionRule) {
+    matchedEffectId = 'twilight-clouds';
+  }
+
+  const detectedOccasionLabel = matchedLabel;
   const descriptionHtml = extraNote ? `<p>${escapeHtml(extraNote)}</p>` : '';
 
   const rsvpNotePrompt =
@@ -1329,8 +1406,8 @@ export function parseEventPrompt(
   const style: InviteStyleConfig = {
     themeId: themePreset.id,
     fontId: themePreset.defaultFontId,
-    effectId: themePreset.defaultEffectId,
-    coverPresetId: themePreset.defaultCoverPresetId,
+    effectId: matchedEffectId,
+    coverPresetId: matchedCoverPresetId,
     coverLayout: occasionRule?.coverLayout ?? 'banner',
     colorMode: themePreset.colorMode,
     ...(themePreset.defaultCardStyle ? { cardStyle: themePreset.defaultCardStyle } : {}),

@@ -116,7 +116,8 @@
 /* Directional top & bottom top-layer choreography using @starting-style and discrete overlay transitions */
 .sheet-from-top,
 .sheet-from-bottom,
-.popover-reveal {
+.popover-reveal,
+.modal-reveal {
   opacity: 0;
   transition-property: opacity, transform, display, overlay;
   transition-duration: 0.28s;
@@ -134,12 +135,16 @@
   .popover-reveal {
     transform: translate3d(0, 0.5rem, 0) scale(0.97);
   }
+  .modal-reveal {
+    transform: translate3d(0, 1rem, 0) scale(0.96);
+  }
 }
 
 :is(
   .sheet-from-top:is([open], :popover-open, .\:popover-open),
   .sheet-from-bottom:is([open], :popover-open, .\:popover-open),
-  .popover-reveal:is(:popover-open, .\:popover-open)
+  .popover-reveal:is(:popover-open, .\:popover-open),
+  .modal-reveal:is([open], :popover-open, .\:popover-open)
 ):where(:not([data-closing])) {
   opacity: 1;
   @starting-style {
@@ -166,11 +171,55 @@
   --sheet-enter-transform: translate3d(0, 0.5rem, 0) scale(0.97);
 }
 
+.modal-reveal:is([open], :popover-open, .\:popover-open):where(:not([data-closing])) {
+  --sheet-enter-transform: translate3d(0, 1rem, 0) scale(0.96);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sheet-from-top,
   .sheet-from-bottom,
-  .popover-reveal {
+  .popover-reveal,
+  .modal-reveal {
     transition-duration: 0.1s;
+  }
+
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+/* Smooth fluid transitions for Home / NLP preview / Cover crossfade */
+.invite-grid-expand {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 0.36s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.28s ease;
+}
+
+.invite-grid-expand[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.invite-grid-expand > div {
+  overflow: hidden;
+  min-height: 0;
+}
+
+@keyframes inviteCoverFade {
+  from {
+    opacity: 0.45;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .invite-cover-img {
+    animation: inviteCoverFade 0.28s ease-out both;
   }
 }
 

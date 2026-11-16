@@ -9,13 +9,14 @@ export const metadata: Metadata = {
 };
 
 interface CreatePageProps {
-  searchParams: Promise<{ prompt?: string; from?: string }>;
+  searchParams: Promise<{ prompt?: string; from?: string; blank?: string }>;
 }
 
 export default async function CreatePage({ searchParams }: CreatePageProps) {
   const resolved = await searchParams;
   const initialPrompt =
     typeof resolved?.prompt === 'string' ? resolved.prompt : undefined;
+  const skipSavedDraft = resolved?.blank === '1';
 
   return (
     <Suspense
@@ -25,7 +26,7 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
         </div>
       }
     >
-      <CreateInviteClient initialPrompt={initialPrompt} />
+      <CreateInviteClient initialPrompt={initialPrompt} skipSavedDraft={skipSavedDraft} />
     </Suspense>
   );
 }

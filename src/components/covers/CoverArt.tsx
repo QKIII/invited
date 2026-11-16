@@ -75,11 +75,12 @@ export function CoverArt({
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
+          key={effectiveImageUrl}
           src={effectiveImageUrl}
           width={960}
           height={540}
           alt={title ? `${title} cover artwork` : 'Event cover artwork'}
-          className="h-full w-full object-cover"
+          className="h-full w-full object-cover invite-cover-img"
         />
         {children ? (
           <div className="pointer-events-none absolute inset-0 flex items-end justify-end p-3 z-10">

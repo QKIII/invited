@@ -30,6 +30,7 @@ interface Particle {
     | 'confetti'
     | 'bat'
     | 'bokeh'
+    | 'lantern'
     | 'raindrop';
 }
 
@@ -57,7 +58,13 @@ interface ShootingStar {
 const POSITION_RE = /\b(?:fixed|absolute|relative|sticky|static)\b/;
 
 function isStaticEffect(effectId: AmbientEffectId): boolean {
-  return effectId === 'none' || effectId === 'static-glow' || effectId === 'static-grain';
+  return (
+    effectId === 'none' ||
+    effectId === 'static-glow' ||
+    effectId === 'static-grain' ||
+    effectId === 'static-linen' ||
+    effectId === 'static-watercolor'
+  );
 }
 
 function getPalette(effectId: AmbientEffectId, accentColor?: string, isLight?: boolean): string[] {
@@ -72,13 +79,20 @@ function getPalette(effectId: AmbientEffectId, accentColor?: string, isLight?: b
     case 'prism-gradient':
     case 'liquid-chrome':
     case 'cyber-grid':
+    case 'stained-glass':
+    case 'disco-prism':
       return isLight
         ? ['#ffffff', accent, '#38bdf8', '#f472b6']
         : ['#ffffff', '#e0f2fe', accent, '#fde68a'];
     case 'christmas-lights':
       return ['#fde68a', '#fb7185', '#6ee7b7', '#ffffff'];
     case 'starlight-radiance':
+    case 'shooting-stars':
       return ['#fde68a', '#f5c451', '#fef3c7', '#ffffff'];
+    case 'fireflies':
+      return ['#fde047', '#bef264', '#fcd34d', '#d9f99d'];
+    case 'paper-lanterns':
+      return ['#fb923c', '#f59e0b', '#fb7185', '#fde68a'];
     case 'halloween-bats':
       return isLight ? ['#3b0764', '#581c87', '#c2410c'] : ['#1f102e', '#2e1065', '#fb923c'];
     case 'autumn-leaves':
@@ -203,13 +217,59 @@ function createParticles(
     'champagne-sparkle': 54,
     'warm-bokeh': 26,
     aurora: 30,
+    fireflies: 34,
+    'shooting-stars': 36,
+    'paper-lanterns': 18,
   };
 
   const count = countByEffect[effectId] ?? 0;
   const particles: Particle[] = [];
 
   for (let i = 0; i < count; i++) {
-    if (effectId === 'rain-glass') {
+    if (effectId === 'fireflies') {
+      const isGlow = i % 3 === 0;
+      particles.push({
+        x: rand(0, width),
+        y: rand(height * 0.25, height * 0.95),
+        vx: rand(-0.22, 0.22),
+        vy: rand(-0.26, 0.08),
+        size: isGlow ? rand(10, 22) : rand(2, 4),
+        alpha: isGlow ? rand(0.14, 0.28) : rand(0.45, 0.92),
+        phase: rand(0, Math.PI * 2),
+        rotation: 0,
+        vRot: 0,
+        color: pick(),
+        shape: isGlow ? 'bokeh' : 'circle',
+      });
+    } else if (effectId === 'paper-lanterns') {
+      particles.push({
+        x: rand(width * 0.06, width * 0.94),
+        y: rand(0, height),
+        vx: rand(-0.1, 0.14),
+        vy: rand(-0.48, -0.18),
+        size: rand(7, 13),
+        alpha: rand(0.48, 0.85),
+        phase: rand(0, Math.PI * 2),
+        rotation: rand(-0.08, 0.08),
+        vRot: 0,
+        color: pick(),
+        shape: 'lantern',
+      });
+    } else if (effectId === 'shooting-stars') {
+      particles.push({
+        x: rand(0, width),
+        y: rand(0, height),
+        vx: rand(-0.05, 0.05),
+        vy: rand(-0.04, 0.04),
+        size: rand(1.6, 3.8),
+        alpha: rand(0.32, 0.85),
+        phase: rand(0, Math.PI * 2),
+        rotation: 0,
+        vRot: 0,
+        color: pick(),
+        shape: i % 3 === 0 ? 'star' : 'circle',
+      });
+    } else if (effectId === 'rain-glass') {
       const isDropletOrb = i % 6 === 0;
       particles.push({
         x: rand(0, width),
@@ -410,6 +470,7 @@ export function AmbientBackdrop({
   secondaryColor,
   colorMode = 'dark',
   fixedViewport = false,
+  turbulence = 0,
   className = '',
 }: {
   effectId: AmbientEffectId;
@@ -418,6 +479,7 @@ export function AmbientBackdrop({
   secondaryColor?: string;
   colorMode?: 'dark' | 'light';
   fixedViewport?: boolean;
+  turbulence?: number;
   className?: string;
 }): React.JSX.Element {
   const webglCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -457,6 +519,7 @@ export function AmbientBackdrop({
         isLight,
         effectId,
         reducedMotion,
+        turbulence,
       });
       webglControllerRef.current = controller;
       controller?.resize(width, height);
@@ -468,6 +531,7 @@ export function AmbientBackdrop({
         isLight,
         effectId,
         reducedMotion,
+        turbulence,
       });
     }
 
@@ -509,17 +573,22 @@ export function AmbientBackdrop({
         isLight,
         effectId,
         reducedMotion,
+        turbulence,
       });
     };
-    mediaQuery?.addEventListener('change', handleMotion);
+    mediaQuery?.addEventListener('change', onMotion);
+
+    function onMotion(e: MediaQueryListEvent) {
+      handleMotion(e);
+    }
 
     return () => {
       ro?.disconnect();
       window.removeEventListener('resize', handleResize);
       document.removeEventListener('visibilitychange', handleVisibility);
-      mediaQuery?.removeEventListener('change', handleMotion);
+      mediaQuery?.removeEventListener('change', onMotion);
     };
-  }, [effectId, resolvedPageBg, accent, secondary, isLight, staticMode]);
+  }, [effectId, resolvedPageBg, accent, secondary, isLight, staticMode, turbulence]);
 
   useEffect(() => {
     return () => {
@@ -634,8 +703,10 @@ export function AmbientBackdrop({
         p.shape === 'star' ||
         effectId === 'lullaby-stars' ||
         effectId === 'aurora' ||
+        effectId === 'fireflies' ||
+        effectId === 'shooting-stars' ||
         effectId === 'christmas-lights'
-          ? 0.55 + 0.45 * Math.sin(timeTick * 0.04 + p.phase)
+          ? 0.48 + 0.52 * Math.sin(timeTick * 0.045 + p.phase)
           : 1;
       ctx.globalAlpha = Math.max(0.04, Math.min(1, p.alpha * twinkle));
       ctx.fillStyle = p.color;
@@ -646,6 +717,26 @@ export function AmbientBackdrop({
         case 'star':
           drawFourPointStar(ctx, p.size);
           break;
+        case 'lantern': {
+          const w = p.size * 1.1;
+          const h = p.size * 1.45;
+          const aura = ctx.createRadialGradient(0, 0, p.size * 0.2, 0, 0, p.size * 2.2);
+          aura.addColorStop(0, p.color);
+          aura.addColorStop(1, 'transparent');
+          ctx.fillStyle = aura;
+          ctx.beginPath();
+          ctx.arc(0, 0, p.size * 2.2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.roundRect(-w * 0.5, -h * 0.5, w, h, w * 0.35);
+          ctx.fill();
+          ctx.fillStyle = '#fef9c3';
+          ctx.beginPath();
+          ctx.arc(0, h * 0.22, p.size * 0.24, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+        }
         case 'crystal':
           drawSnowflakeCrystal(ctx, p.size, p.color);
           break;
@@ -707,14 +798,15 @@ export function AmbientBackdrop({
       ctx.clearRect(0, 0, width, height);
       tick += 1;
 
-      if (effectId === 'starlight-radiance' || effectId === 'lullaby-stars') {
-        if (animate && !shootingStar && tick - lastShootingStar > 220) {
+      if (effectId === 'starlight-radiance' || effectId === 'lullaby-stars' || effectId === 'shooting-stars') {
+        const starCadence = effectId === 'shooting-stars' ? 75 : 220;
+        if (animate && !shootingStar && tick - lastShootingStar > starCadence) {
           lastShootingStar = tick;
           shootingStar = {
-            x: width * (0.2 + Math.random() * 0.6),
-            y: height * (0.08 + Math.random() * 0.22),
-            vx: 6.5,
-            vy: 2.6,
+            x: width * (0.12 + Math.random() * 0.65),
+            y: height * (0.06 + Math.random() * 0.28),
+            vx: effectId === 'shooting-stars' ? 8.2 : 6.5,
+            vy: effectId === 'shooting-stars' ? 3.4 : 2.6,
             life: 0,
             maxLife: 34,
             color: effectId === 'starlight-radiance' ? '#fef3c7' : '#e0f2fe',
@@ -915,9 +1007,25 @@ export function AmbientBackdrop({
         />
       ) : null}
 
-      {/* Static Paper Grain texture */}
+      {/* Static Paper Grain / Linen / Watercolor overlays */}
       {effectId === 'static-grain' && (
         <div className={`absolute inset-0 ${styles.paperGrainOverlay}`} />
+      )}
+      {effectId === 'static-linen' && (
+        <div className={`absolute inset-0 ${styles.linenOverlay}`} />
+      )}
+      {effectId === 'static-watercolor' && (
+        <>
+          <div
+            className="absolute inset-0"
+            style={{
+              background: isLight
+                ? `radial-gradient(ellipse 75% 60% at 15% 20%, ${accent}36, transparent 70%), radial-gradient(ellipse 80% 65% at 88% 75%, ${secondary}32, transparent 72%)`
+                : `radial-gradient(ellipse 75% 60% at 15% 20%, ${accent}48, transparent 70%), radial-gradient(ellipse 80% 65% at 88% 75%, ${secondary}44, transparent 72%)`,
+            }}
+          />
+          <div className={`absolute inset-0 ${styles.watercolorOverlay}`} />
+        </>
       )}
 
       {/* CSS atmospheric ribbons (soft complement + instant SSR first paint) */}

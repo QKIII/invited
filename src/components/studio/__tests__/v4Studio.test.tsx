@@ -1,13 +1,23 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RichTextEditor } from '@/components/editor/RichTextEditor';
+import { HomeLandingClient } from '@/components/home/HomeLandingClient';
 import { GuestAvatar } from '@/components/invite/GuestAvatar';
 import { HostManagementPanel } from '@/components/studio/HostManagementPanel';
 import { InviteStudio } from '@/components/studio/InviteStudio';
 import { PublishSuccessDialog } from '@/components/studio/PublishSuccessDialog';
 import { RecentEventsDialog } from '@/components/studio/RecentEventsDialog';
 import type { EventDetailResponse, EventMeta } from '@/types/invite';
+
+const pushMock = vi.fn();
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: pushMock,
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+  }),
+}));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -75,16 +85,23 @@ describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & 
     expect(dialog).not.toBeNull();
     expect(dialog.getAttribute('data-live-sheet')).toBe('true');
     expect(dialog.className).toContain('sheet-from-bottom');
-    expect(dialog.querySelectorAll('[data-cover-style-group]')).toHaveLength(40);
+    expect(dialog.querySelectorAll('[data-cover-style-group]')).toHaveLength(72);
 
-    for (const group of ['hand-drawn', 'vector', 'pencil', 'oil-paint', 'pattern'] as const) {
+    const expectedCounts = {
+      'hand-drawn': 18,
+      pattern: 16,
+      vector: 14,
+      pencil: 12,
+      'oil-paint': 12,
+    } as const;
+    for (const [group, count] of Object.entries(expectedCounts)) {
       const filterBtn = dialog.querySelector<HTMLButtonElement>(
         `[data-testid="cover-style-filter-${group}"]`,
       )!;
       await act(async () => {
         filterBtn.click();
       });
-      expect(dialog.querySelectorAll(`[data-cover-style-group="${group}"]`)).toHaveLength(8);
+      expect(dialog.querySelectorAll(`[data-cover-style-group="${group}"]`)).toHaveLength(count);
     }
 
     const themeTab = dialog.querySelector<HTMLButtonElement>('[data-testid="studio-tab-theme"]')!;
@@ -99,12 +116,19 @@ describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & 
     await act(async () => {
       bgTab.click();
     });
-    expect(dialog.querySelectorAll('[data-effect-kind="animated"]')).toHaveLength(17);
-    expect(dialog.querySelectorAll('[data-effect-kind="static"]')).toHaveLength(3);
-    expect(dialog.querySelector('[data-effect-option="liquid-chrome"]')).not.toBeNull();
-    expect(dialog.querySelector('[data-effect-option="cyber-grid"]')).not.toBeNull();
-    expect(dialog.querySelector('[data-effect-option="static-glow"]')).not.toBeNull();
-    expect(dialog.querySelector('[data-effect-option="static-grain"]')).not.toBeNull();
+    expect(dialog.querySelectorAll('[data-effect-kind="animated"]')).toHaveLength(25);
+    expect(dialog.querySelectorAll('[data-effect-kind="static"]')).toHaveLength(5);
+    expect(dialog.querySelector('[data-effect-option="cyber-grid"]')?.textContent).toContain('Neon Silk');
+    expect(dialog.querySelector('[data-effect-option="lava-lamp"]')).not.toBeNull();
+    expect(dialog.querySelector('[data-effect-option="water-caustics"]')).not.toBeNull();
+    expect(dialog.querySelector('[data-effect-option="twilight-clouds"]')).not.toBeNull();
+    expect(dialog.querySelector('[data-effect-option="stained-glass"]')).not.toBeNull();
+    expect(dialog.querySelector('[data-effect-option="disco-prism"]')).not.toBeNull();
+    expect(dialog.querySelector('[data-effect-option="fireflies"]')).not.toBeNull();
+    expect(dialog.querySelector('[data-effect-option="shooting-stars"]')).not.toBeNull();
+    expect(dialog.querySelector('[data-effect-option="paper-lanterns"]')).not.toBeNull();
+    expect(dialog.querySelector('[data-effect-option="static-linen"]')).not.toBeNull();
+    expect(dialog.querySelector('[data-effect-option="static-watercolor"]')).not.toBeNull();
 
     const styleTab = dialog.querySelector<HTMLButtonElement>('[data-testid="studio-tab-style"]')!;
     await act(async () => {
@@ -214,6 +238,9 @@ describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & 
     );
     expect(p.container.textContent).toContain('Your invite is ready');
     expect(p.container.textContent).toContain('Link for guests');
+    expect(p.container.textContent).toContain('This link is for your guests');
+    expect(p.container.textContent).toContain('This link is for you to edit the event');
+    expect(p.container.textContent).toContain('Save this link somewhere safe');
     expect(p.container.textContent).not.toMatch(EMOJI_RE);
     p.unmount();
 
@@ -224,5 +251,45 @@ describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & 
     expect(h.container.textContent).toContain('Going');
     expect(h.container.textContent).not.toMatch(EMOJI_RE);
     h.unmount();
+  });
+
+  it('transitions from Home Hero into real-time NLP starter with turbulence filter and navigates to /create', async () => {
+    pushMock.mockReset();
+    const { container, unmount } = renderIntoDom(<HomeLandingClient />);
+
+    expect(container.querySelector('[data-testid="home-hero-card"]')).not.toBeNull();
+    expect(container.querySelector('#nlp-turbulence-displacement')).not.toBeNull();
+    expect(container.textContent).not.toMatch(EMOJI_RE);
+
+    const createBtn = container.querySelector<HTMLButtonElement>(
+      '[data-testid="home-create-invite-btn"]',
+    )!;
+    await act(async () => {
+      createBtn.click();
+    });
+
+    const input = container.querySelector<HTMLTextAreaElement>(
+      '[data-testid="nlp-prompt-input"]',
+    )!;
+    expect(input).not.toBeNull();
+
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+      setter.call(input, 'Patio taco night Friday at 7pm at 42 Maple St hosted by Ivan');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    const preview = container.querySelector('[data-testid="live-nlp-preview"]')!;
+    expect(preview).not.toBeNull();
+    expect(preview.textContent).toContain('42 Maple St');
+    expect(preview.textContent).toContain('Ivan');
+
+    const form = input.closest('form')!;
+    await act(async () => {
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    expect(pushMock).toHaveBeenCalledWith('/create');
+    expect(window.sessionStorage.getItem('invited_studio_draft')).toContain('42 Maple St');
+    unmount();
   });
 });

@@ -111,7 +111,7 @@ describe('curated themes, fonts, effects, and covers', () => {
     }
   });
 
-  it('covers all 7 font pairings, 20 animated/static backgrounds, and 40 curated covers across 5 mediums', () => {
+  it('covers all 7 font pairings, 30 animated/static backgrounds, and 72 image-backed covers across 5 mediums', () => {
     const expectedFonts: FontPairingId[] = [
       'editorial-serif',
       'modern-sans',
@@ -128,12 +128,20 @@ describe('curated themes, fonts, effects, and covers', () => {
       'aurora',
       'liquid-chrome',
       'cyber-grid',
+      'lava-lamp',
+      'water-caustics',
+      'twilight-clouds',
+      'stained-glass',
+      'disco-prism',
       'snowfall',
       'rain-glass',
       'christmas-lights',
       'starlight-radiance',
       'warm-bokeh',
       'lullaby-stars',
+      'shooting-stars',
+      'fireflies',
+      'paper-lanterns',
       'fireworks',
       'confetti',
       'botanical-petals',
@@ -143,18 +151,21 @@ describe('curated themes, fonts, effects, and covers', () => {
       'halloween-bats',
       'static-glow',
       'static-grain',
+      'static-linen',
+      'static-watercolor',
       'none',
     ];
     expect(EFFECT_OPTIONS.map((e) => e.id)).toEqual(expectedEffects);
-    expect(EFFECT_OPTIONS.filter((e) => e.animated)).toHaveLength(17);
-    expect(EFFECT_OPTIONS.filter((e) => !e.animated)).toHaveLength(3);
+    expect(EFFECT_OPTIONS.find((e) => e.id === 'cyber-grid')?.name).toBe('Neon Silk');
+    expect(EFFECT_OPTIONS.filter((e) => e.animated)).toHaveLength(25);
+    expect(EFFECT_OPTIONS.filter((e) => !e.animated)).toHaveLength(5);
 
-    expect(COVER_PRESETS).toHaveLength(40);
-    expect(COVER_PRESETS.filter((c) => c.styleGroup === 'hand-drawn')).toHaveLength(8);
-    expect(COVER_PRESETS.filter((c) => c.styleGroup === 'vector')).toHaveLength(8);
-    expect(COVER_PRESETS.filter((c) => c.styleGroup === 'pencil')).toHaveLength(8);
-    expect(COVER_PRESETS.filter((c) => c.styleGroup === 'oil-paint')).toHaveLength(8);
-    expect(COVER_PRESETS.filter((c) => c.styleGroup === 'pattern')).toHaveLength(8);
+    expect(COVER_PRESETS).toHaveLength(72);
+    expect(COVER_PRESETS.filter((c) => c.styleGroup === 'hand-drawn')).toHaveLength(18);
+    expect(COVER_PRESETS.filter((c) => c.styleGroup === 'pattern')).toHaveLength(16);
+    expect(COVER_PRESETS.filter((c) => c.styleGroup === 'vector')).toHaveLength(14);
+    expect(COVER_PRESETS.filter((c) => c.styleGroup === 'pencil')).toHaveLength(12);
+    expect(COVER_PRESETS.filter((c) => c.styleGroup === 'oil-paint')).toHaveLength(12);
 
     const coverIds = new Set(COVER_PRESETS.map((c) => c.id));
     for (const preset of THEME_PRESETS) {
@@ -162,6 +173,7 @@ describe('curated themes, fonts, effects, and covers', () => {
     }
 
     for (const cover of COVER_PRESETS) {
+      expect(cover.imageUrl).toBeTruthy();
       if (cover.imageUrl) {
         const diskPath = path.join(process.cwd(), 'public', cover.imageUrl);
         expect(fs.existsSync(diskPath)).toBe(true);
@@ -459,6 +471,29 @@ describe('deterministic NLP event prompt parser', () => {
     expect(withNote.locationName).toBe('Mt. Olive Chapel');
     expect(withNote.hostName).toBe('Rev. Thomas');
     expect(withNote.descriptionHtml).toContain('Candles provided!');
+  });
+
+  it('matches enriched covers and vibes for taco nights, pool parties, campfires, movies, and pelican breakfasts', () => {
+    const taco = parseEventPrompt('Patio taco night Friday at 7pm at 42 Maple St', REF_DATE, NY_TZ);
+    expect(taco.style.coverPresetId).toBe('handdrawn-taco-patio');
+    expect(taco.detectedOccasionLabel).toBe('Taco Night');
+
+    const pool = parseEventPrompt('Summer pool party Saturday at 2pm', REF_DATE, NY_TZ);
+    expect(pool.style.coverPresetId).toBe('handdrawn-pool-party');
+    expect(pool.style.effectId).toBe('water-caustics');
+
+    const campfire = parseEventPrompt('Lakeside bonfire and smores Saturday at 8pm', REF_DATE, NY_TZ);
+    expect(campfire.style.coverPresetId).toBe('handdrawn-campfire-smores');
+    expect(campfire.style.effectId).toBe('fireflies');
+
+    const pelican = parseEventPrompt(
+      'Christmas breakfast with Blue Pelican Dec 5 at 9:30am hosted by Ivan',
+      REF_DATE,
+      NY_TZ,
+    );
+    expect(pelican.style.themeId).toBe('winter-snowfall');
+    expect(pelican.style.coverPresetId).toBe('handdrawn-pelican-holiday');
+    expect(pelican.hostName).toBe('Ivan');
   });
 
   it('provides 6 valid starter prompts in EXAMPLE_EVENT_PROMPTS', () => {

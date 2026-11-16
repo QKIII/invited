@@ -152,9 +152,10 @@ export function PublishSuccessDialog({
   return (
     <dialog
       ref={dialogRef}
-      closedby="any"
+      closedby="closerequest"
+      data-testid="publish-success-modal"
       aria-labelledby="publish-success-heading"
-      className="sheet-from-bottom w-full sm:w-[calc(100%-2rem)] max-w-md mx-auto mt-auto mb-0 sm:my-auto rounded-t-3xl sm:rounded-3xl border p-5 shadow-2xl backdrop-blur-2xl"
+      className="modal-reveal w-[calc(100%-1.5rem)] sm:w-[calc(100%-2rem)] max-w-md m-auto rounded-3xl border p-5 sm:p-6 shadow-2xl backdrop-blur-2xl"
       style={{
         backgroundColor: 'var(--theme-card-solid, #121a2e)',
         borderColor: 'var(--theme-border, rgba(255,255,255,0.16))',
@@ -206,8 +207,8 @@ export function PublishSuccessDialog({
           >
             <div>
               <p className="text-xs font-semibold">Link for guests</p>
-              <p className="text-[11px] mt-0.5" style={{ color: 'var(--theme-text-muted)' }}>
-                Send this link to anyone you want to invite.
+              <p className="text-xs mt-0.5 leading-relaxed" style={{ color: 'var(--theme-text-muted)' }}>
+                This link is for your guests — send it to anyone you want to invite.
               </p>
             </div>
             <div
@@ -271,7 +272,7 @@ export function PublishSuccessDialog({
             ) : null}
           </div>
 
-          {/* Private Edit Link */}
+          {/* Link for Host to Edit */}
           <div
             className="rounded-2xl border p-4 space-y-2.5"
             style={{
@@ -279,14 +280,14 @@ export function PublishSuccessDialog({
               borderColor: 'var(--theme-hairline, rgba(255,255,255,0.14))',
             }}
           >
-            <div className="flex items-center justify-between gap-2">
+            <div>
               <span className="inline-flex items-center gap-1.5 text-xs font-semibold">
-                <KeyRound className="h-3.5 w-3.5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-                <span>Your private edit link</span>
+                <KeyRound className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+                <span>Link for you to edit the event</span>
               </span>
-              <span className="text-[11px]" style={{ color: 'var(--theme-text-muted)' }}>
-                Keep private
-              </span>
+              <p className="text-xs mt-0.5 leading-relaxed" style={{ color: 'var(--theme-text-muted)' }}>
+                This link is for you to edit the event. Save this link somewhere safe.
+              </p>
             </div>
 
             <div
@@ -355,6 +356,9 @@ export function PublishSuccessDialog({
                 <span>Edit invite</span>
               </Link>
             </div>
+            <p className="text-[11px]" style={{ color: 'var(--theme-text-muted)' }}>
+              Also saved in My Invites on this browser.
+            </p>
           </div>
         </div>
       ) : null}

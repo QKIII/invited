@@ -62,10 +62,10 @@ const COVER_STYLE_FILTERS: Array<{
 }> = [
   { id: 'all', label: 'All' },
   { id: 'hand-drawn', label: 'Illustrated', icon: 'illustrated' },
+  { id: 'pattern', label: 'Object patterns', icon: 'pattern' },
   { id: 'vector', label: 'Minimal vector', icon: 'graphic' },
   { id: 'pencil', label: 'Pencil', icon: 'pencil' },
   { id: 'oil-paint', label: 'Oil & paint', icon: 'painted' },
-  { id: 'pattern', label: 'Patterns', icon: 'pattern' },
 ];
 
 const CARD_SURFACE_OPTIONS: Array<{ id: CardSurfaceStyle; label: string }> = [
@@ -280,14 +280,24 @@ export function StyleStudioDrawer({
       data-live-sheet="true"
       aria-labelledby={headingId}
       data-testid="theme-studio-dialog"
-      className="sheet-from-bottom fixed inset-x-0 bottom-0 top-auto z-50 mx-auto mb-0 w-full sm:w-[min(94vw,540px)] max-h-[44dvh] sm:max-h-[48dvh] rounded-t-3xl border-x border-t shadow-[0_-18px_50px_rgba(0,0,0,0.42)] p-0 overflow-hidden backdrop-blur-2xl"
+      className={`sheet-from-bottom fixed inset-x-0 bottom-0 top-auto z-50 mx-auto mb-0 w-full sm:w-[min(94vw,540px)] ${
+        tab === 'cover' || tab === 'background'
+          ? 'max-h-[52dvh] sm:max-h-[56dvh]'
+          : 'max-h-[44dvh] sm:max-h-[48dvh]'
+      } rounded-t-3xl border-x border-t shadow-[0_-18px_50px_rgba(0,0,0,0.42)] p-0 overflow-hidden backdrop-blur-2xl`}
       style={{
         backgroundColor: 'var(--theme-card-solid, #121a2e)',
         borderColor: 'var(--theme-border, rgba(255,255,255,0.18))',
         color: 'var(--theme-text-primary, #f8fafc)',
       }}
     >
-      <div className="flex flex-col max-h-[44dvh] sm:max-h-[48dvh]">
+      <div
+        className={`flex flex-col ${
+          tab === 'cover' || tab === 'background'
+            ? 'max-h-[52dvh] sm:max-h-[56dvh]'
+            : 'max-h-[44dvh] sm:max-h-[48dvh]'
+        }`}
+      >
         {/* Drag handle + Compact Header + 4-Tab Switcher */}
         <div
           className="shrink-0 border-b px-4 pt-2 pb-2.5 space-y-2"

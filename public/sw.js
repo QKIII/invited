@@ -1,4 +1,4 @@
-const STATIC_CACHE = 'invited-static-v6';
+const STATIC_CACHE = 'invited-static-v7';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
