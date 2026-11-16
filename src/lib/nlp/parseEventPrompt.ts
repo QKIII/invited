@@ -6,6 +6,8 @@ export interface ParsedEventDraft {
   title: string;
   startIso: string;
   endIso?: string;
+  hasExplicitDate?: boolean;
+  hasExplicitTime?: boolean;
   timeZone: string;
   locationName?: string;
   locationAddress?: string;
@@ -1112,6 +1114,27 @@ export function parseEventPrompt(
       )
     : [];
 
+  const isCertainDateResult = (r: chrono.ParsedResult) =>
+    r.start.isCertain('day') ||
+    r.start.isCertain('month') ||
+    r.start.isCertain('weekday') ||
+    r.start.isCertain('year');
+
+  // chrono-node greedily merges leading "night/morning/evening/afternoon" into the following
+  // date expression (e.g. "night Friday at 7pm"), dropping the weekday/date certainty.
+  const resolvedChronoResults = chronoResults.flatMap((r) => {
+    const trimmed = r.text.replace(/^(?:night|morning|evening|afternoon)\s+/i, '');
+    if (trimmed !== r.text && trimmed.length > 0 && !isCertainDateResult(r)) {
+      const recovered = chrono.parse(
+        trimmed,
+        { instant: refDate, timezone: refOffsetMinutes },
+        { forwardDate: true },
+      );
+      if (recovered.length > 0) return [...recovered, r];
+    }
+    return [r];
+  });
+
   // 3. Detect standalone written/numeric ordinals ("on the ninth", "on the 9th") that chrono skips.
   const ordinalMatch = ORDINAL_PATTERN.exec(cleanedPrompt);
   let ordinalDay: number | undefined;
@@ -1132,14 +1155,8 @@ export function parseEventPrompt(
   }
 
   // Merge date/time resolution across chrono + ordinal fallback + holiday fallback.
-  const dateChrono = chronoResults.find(
-    (r) =>
-      r.start.isCertain('day') ||
-      r.start.isCertain('month') ||
-      r.start.isCertain('weekday') ||
-      r.start.isCertain('year'),
-  );
-  const timeChrono = chronoResults.find((r) => r.start.isCertain('hour'));
+  const dateChrono = resolvedChronoResults.find(isCertainDateResult);
+  const timeChrono = resolvedChronoResults.find((r) => r.start.isCertain('hour'));
 
   let year = refWall.year;
   let month = refWall.month;
@@ -1229,6 +1246,10 @@ export function parseEventPrompt(
       }
     }
   }
+
+  const hasExplicitTime = Boolean(
+    timeChrono || /\b(?:noon|midnight|sunrise)\b/i.test(cleanedPrompt),
+  );
 
   const startIso = zonedWallTimeToIso(year, month, day, hour, minute, safeTimeZone);
 
@@ -1415,8 +1436,15 @@ export function parseEventPrompt(
 
   const confidenceChips: Array<{ icon: string; label: string; value: string }> = [
     { icon: 'title', label: 'Title', value: title },
-    { icon: 'calendar', label: 'When', value: formatWhenChip(startIso, endIso, safeTimeZone) },
   ];
+
+  if (hasExplicitDate || hasExplicitTime) {
+    confidenceChips.push({
+      icon: 'calendar',
+      label: 'When',
+      value: formatWhenChip(startIso, endIso, safeTimeZone),
+    });
+  }
 
   if (locationResult.locationName) {
     confidenceChips.push({
@@ -1450,6 +1478,8 @@ export function parseEventPrompt(
     title,
     startIso,
     ...(endIso ? { endIso } : {}),
+    hasExplicitDate,
+    hasExplicitTime,
     timeZone: safeTimeZone,
     ...(locationResult.locationName ? { locationName: locationResult.locationName } : {}),
     ...(locationResult.locationAddress ? { locationAddress: locationResult.locationAddress } : {}),

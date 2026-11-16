@@ -505,6 +505,31 @@ describe('deterministic NLP event prompt parser', () => {
       expect(parsed.rsvpNotePrompt.length).toBeGreaterThan(5);
     }
   });
+
+  it('tracks explicit date/time flags and recovers weekdays after "night" or "morning"', () => {
+    const dateless = parseEventPrompt('Taco party', REF_DATE, NY_TZ);
+    expect(dateless.title).toBe('Taco Party');
+    expect(dateless.hasExplicitDate).toBe(false);
+    expect(dateless.hasExplicitTime).toBe(false);
+    expect(dateless.confidenceChips.some((c) => c.label === 'When')).toBe(false);
+
+    const timeOnly = parseEventPrompt('Taco party at 7pm', REF_DATE, NY_TZ);
+    expect(timeOnly.hasExplicitDate).toBe(false);
+    expect(timeOnly.hasExplicitTime).toBe(true);
+    expect(timeOnly.confidenceChips.some((c) => c.label === 'When')).toBe(true);
+
+    const nightWeekday = parseEventPrompt('Patio taco night Friday at 7pm', REF_DATE, NY_TZ);
+    expect(nightWeekday.title).toBe('Patio Taco Night');
+    expect(nightWeekday.hasExplicitDate).toBe(true);
+    expect(nightWeekday.hasExplicitTime).toBe(true);
+    const formatted = new Intl.DateTimeFormat('en-US', {
+      timeZone: NY_TZ,
+      weekday: 'short',
+      hour: 'numeric',
+    }).format(new Date(nightWeekday.startIso));
+    expect(formatted).toContain('Fri');
+    expect(formatted).toContain('7');
+  });
 });
 
 describe('AmbientBackdrop and CoverArt components', () => {

@@ -54,14 +54,6 @@ function getDefaultStyle(): InviteStyleConfig {
   };
 }
 
-function getDefaultDateString(): string {
-  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  const yyyy = tomorrow.getFullYear();
-  const mm = String(tomorrow.getMonth() + 1).padStart(2, '0');
-  const dd = String(tomorrow.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
 const CREATE_DRAFT_KEY = 'invited_create_draft_v1';
 
 interface StoredStudioDraft {
@@ -102,22 +94,30 @@ export function InviteStudio({
 
   const initialSource = initialEvent ?? initialDraft;
   const initialStyle: InviteStyleConfig = initialSource?.style ?? getDefaultStyle();
+  const hasExplicitInitialDate = Boolean(
+    initialEvent?.startIso ||
+      (initialDraft?.startIso && initialDraft.hasExplicitDate !== false),
+  );
+  const hasExplicitInitialTime = Boolean(
+    initialEvent?.startIso ||
+      (initialDraft?.startIso && initialDraft.hasExplicitTime !== false),
+  );
 
   const [title, setTitle] = useState<string>(initialSource?.title ?? '');
   const [startDate, setStartDate] = useState<string>(() => {
-    const raw = initialSource?.startIso?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1];
-    return raw || getDefaultDateString();
+    if (!hasExplicitInitialDate) return '';
+    return initialSource?.startIso?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? '';
   });
   const [startTime, setStartTime] = useState<string>(() => {
-    const raw = initialSource?.startIso?.match(/T(\d{2}:\d{2})/)?.[1];
-    return raw || '18:00';
+    if (!hasExplicitInitialTime) return '';
+    return initialSource?.startIso?.match(/T(\d{2}:\d{2})/)?.[1] ?? '';
   });
   const [hasEndTime, setHasEndTime] = useState<boolean>(
     Boolean(initialSource?.endIso),
   );
   const [endDate, setEndDate] = useState<string>(() => {
-    const raw = initialSource?.endIso?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1];
-    return raw || getDefaultDateString();
+    if (!initialSource?.endIso) return '';
+    return initialSource.endIso.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? '';
   });
   const [endTime, setEndTime] = useState<string>(() => {
     const raw = initialSource?.endIso?.match(/T(\d{2}:\d{2})/)?.[1];
@@ -185,9 +185,9 @@ export function InviteStudio({
     endDate: string;
     endTime: string;
   }>(() => ({
-    startDate: initialEvent?.startIso?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] || getDefaultDateString(),
+    startDate: initialEvent?.startIso?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] || '',
     startTime: initialEvent?.startIso?.match(/T(\d{2}:\d{2})/)?.[1] || '18:00',
-    endDate: initialEvent?.endIso?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] || getDefaultDateString(),
+    endDate: initialEvent?.endIso?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] || '',
     endTime: initialEvent?.endIso?.match(/T(\d{2}:\d{2})/)?.[1] || '21:00',
   }));
 
@@ -302,10 +302,10 @@ export function InviteStudio({
 
   function clearCreateDraft() {
     setTitle('');
-    setStartDate(getDefaultDateString());
-    setStartTime('18:00');
+    setStartDate('');
+    setStartTime('');
     setHasEndTime(false);
-    setEndDate(getDefaultDateString());
+    setEndDate('');
     setEndTime('21:00');
     setLocationName('');
     setLocationAddress('');
@@ -333,11 +333,11 @@ export function InviteStudio({
         setTimeZone(getBrowserTimeZone());
       }
     });
-    if (initialSource?.startIso) {
+    if (initialSource?.startIso && (hasExplicitInitialDate || hasExplicitInitialTime)) {
       const tz = initialSource.timeZone || getBrowserTimeZone();
       void isoToLocalFields(initialSource.startIso, tz).then(({ date, time }) => {
-        if (active && date) setStartDate(date);
-        if (active && time) setStartTime(time);
+        if (active && hasExplicitInitialDate && date) setStartDate(date);
+        if (active && hasExplicitInitialTime && time) setStartTime(time);
         if (active && initialEvent) {
           setInitialDateBaseline((prev) => ({
             ...prev,
@@ -364,7 +364,7 @@ export function InviteStudio({
     return () => {
       active = false;
     };
-  }, [initialEvent, initialSource?.endIso, initialSource?.startIso, initialSource?.timeZone]);
+  }, [hasExplicitInitialDate, hasExplicitInitialTime, initialEvent, initialSource?.endIso, initialSource?.startIso, initialSource?.timeZone]);
 
   useEffect(() => {
     const el = titleTextareaRef.current;

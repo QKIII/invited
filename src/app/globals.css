@@ -780,3 +780,86 @@
     line-height: 1;
   }
 }
+
+/* Home hero 1-character-at-a-time typography morph wave & staggered starter chips */
+.hero-char-glyph {
+  display: inline-block;
+  transition: color 0.35s ease;
+}
+
+.hero-showcase-pill,
+.hero-pause-btn {
+  position: relative;
+}
+
+@media (pointer: coarse) {
+  .hero-showcase-pill::after,
+  .hero-pause-btn::after {
+    content: "";
+    position: absolute;
+    inset: -6px;
+  }
+}
+
+@keyframes heroCharMorph {
+  0% {
+    opacity: 0.95;
+    transform: translate3d(0, 2px, 0) scale(0.96);
+  }
+  45% {
+    opacity: 1;
+    transform: translate3d(0, -4px, 0) scale(1.06);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes chipFadeUp {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .hero-char-glyph[data-wave-active="true"] {
+    will-change: transform, opacity;
+    animation: heroCharMorph 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .starter-chip-list > .starter-chip {
+    --stagger-step: 0.055s;
+    animation: chipFadeUp 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  @supports (animation-delay: calc(sibling-index() * 0.1s)) {
+    .starter-chip-list > .starter-chip {
+      animation-delay: calc(sibling-index() * var(--stagger-step));
+    }
+  }
+
+  @supports not (animation-delay: calc(sibling-index() * 0.1s)) {
+    .starter-chip-list > .starter-chip:nth-child(1) {
+      animation-delay: 0.055s;
+    }
+    .starter-chip-list > .starter-chip:nth-child(2) {
+      animation-delay: 0.11s;
+    }
+    .starter-chip-list > .starter-chip:nth-child(3) {
+      animation-delay: 0.165s;
+    }
+    .starter-chip-list > .starter-chip:nth-child(4) {
+      animation-delay: 0.22s;
+    }
+  }
+
+  .stage-card-enter {
+    animation: chipFadeUp 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}

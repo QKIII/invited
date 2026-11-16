@@ -2,12 +2,20 @@ import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RichTextEditor } from '@/components/editor/RichTextEditor';
-import { HomeLandingClient } from '@/components/home/HomeLandingClient';
+import {
+  HERO_SHOWCASE_CYCLE,
+  HomeLandingClient,
+} from '@/components/home/HomeLandingClient';
 import { GuestAvatar } from '@/components/invite/GuestAvatar';
 import { HostManagementPanel } from '@/components/studio/HostManagementPanel';
 import { InviteStudio } from '@/components/studio/InviteStudio';
 import { PublishSuccessDialog } from '@/components/studio/PublishSuccessDialog';
 import { RecentEventsDialog } from '@/components/studio/RecentEventsDialog';
+import {
+  EFFECT_OPTIONS,
+  FONT_PAIRINGS,
+  THEME_PRESETS,
+} from '@/lib/themes/presets';
 import type { EventDetailResponse, EventMeta } from '@/types/invite';
 
 const pushMock = vi.fn();
@@ -54,7 +62,8 @@ describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & 
     const { container, unmount } = renderIntoDom(<InviteStudio mode="create" />);
 
     expect(container.querySelector('[data-testid="prompt-entry-card"]')).toBeNull();
-    expect(container.querySelector('#event-start-date')).not.toBeNull();
+    expect(container.querySelector<HTMLInputElement>('#event-start-date')?.value).toBe('');
+    expect(container.querySelector<HTMLInputElement>('#event-start-time')?.value).toBe('');
     expect(container.querySelector('#event-invited-names')).toBeNull();
     expect(container.textContent).not.toContain('Invited guests');
     expect(container.querySelector('[data-testid="edit-theme-button"]')).not.toBeNull();
@@ -314,44 +323,126 @@ describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & 
     }
   });
 
-  it('transitions from Home Hero into real-time NLP starter with turbulence filter and navigates to /create', async () => {
+  it('cycles all themes, animated backgrounds, and 1-char-at-a-time hero typography, and shows compact preview above NLP input', async () => {
     pushMock.mockReset();
+
+    expect(HERO_SHOWCASE_CYCLE.length).toBeGreaterThanOrEqual(25);
+    const animatedEffectIds = EFFECT_OPTIONS.filter((e) => e.animated).map((e) => e.id);
+    const coveredEffects = new Set(HERO_SHOWCASE_CYCLE.map((s) => s.effectId));
+    const coveredThemes = new Set(HERO_SHOWCASE_CYCLE.map((s) => s.themeId));
+    const coveredFonts = new Set(HERO_SHOWCASE_CYCLE.map((s) => s.fontId));
+    for (const id of animatedEffectIds) expect(coveredEffects.has(id)).toBe(true);
+    for (const t of THEME_PRESETS) expect(coveredThemes.has(t.id)).toBe(true);
+    for (const f of FONT_PAIRINGS) expect(coveredFonts.has(f.id)).toBe(true);
+
+    vi.useFakeTimers();
     const { container, unmount } = renderIntoDom(<HomeLandingClient />);
+    try {
+      const heroCard = container.querySelector('[data-testid="home-hero-card"]')!;
+      expect(heroCard).not.toBeNull();
+      expect(container.querySelector('[data-testid="hero-next-theme-btn"]')).toBeNull();
+      expect(container.querySelector('#nlp-turbulence-displacement')).not.toBeNull();
+      expect(container.textContent).not.toMatch(EMOJI_RE);
+      expect(heroCard.textContent).not.toContain('\u2014');
 
-    expect(container.querySelector('[data-testid="home-hero-card"]')).not.toBeNull();
-    expect(container.querySelector('#nlp-turbulence-displacement')).not.toBeNull();
-    expect(container.textContent).not.toMatch(EMOJI_RE);
+      const heading = container.querySelector('#home-hero-heading')!;
+      expect(heading.getAttribute('aria-label')).toBe('Invites people actually want to open.');
+      expect(heading.textContent).toBe('Invites people actually want to open.');
+      const glyphs = container.querySelectorAll<HTMLSpanElement>('.hero-char-glyph');
+      expect(glyphs).toHaveLength(32);
 
-    const createBtn = container.querySelector<HTMLButtonElement>(
-      '[data-testid="home-create-invite-btn"]',
-    )!;
-    await act(async () => {
-      createBtn.click();
-    });
+      const subtitle = container.querySelector('[data-testid="home-hero-subtitle"]')!;
+      const footnote = container.querySelector('[data-testid="home-hero-footnote"]')!;
+      expect(subtitle.textContent).not.toContain('\u2014');
+      expect(footnote.textContent).toBe('No sign-ups · No app downloads');
 
-    const input = container.querySelector<HTMLTextAreaElement>(
-      '[data-testid="nlp-prompt-input"]',
-    )!;
-    expect(input).not.toBeNull();
+      // Pause button sits quietly in header and toggles aria-label without aria-pressed (WCAG 2.2.2)
+      const pauseBtn = container.querySelector<HTMLButtonElement>('[data-testid="hero-pause-btn"]')!;
+      expect(heroCard.contains(pauseBtn)).toBe(false);
+      expect(pauseBtn.getAttribute('aria-pressed')).toBeNull();
+      expect(pauseBtn.getAttribute('aria-label')).toBe('Pause theme showcase');
 
-    await act(async () => {
-      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
-      setter.call(input, 'Patio taco night Friday at 7pm at 42 Maple St hosted by Ivan');
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-    });
+      // Auto-cycling advances theme & sweeps typography one character at a time
+      await act(async () => {
+        vi.advanceTimersByTime(3800);
+      });
+      expect(heroCard.getAttribute('data-showcase-theme')).toBe('y2k-chrome');
 
-    const preview = container.querySelector('[data-testid="live-nlp-preview"]')!;
-    expect(preview).not.toBeNull();
-    expect(preview.textContent).toContain('42 Maple St');
-    expect(preview.textContent).toContain('Ivan');
+      await act(async () => {
+        vi.advanceTimersByTime(140);
+      });
+      const midFonts = Array.from(
+        container.querySelectorAll<HTMLSpanElement>('.hero-char-glyph'),
+      ).map((el) => el.getAttribute('data-char-font'));
+      expect(midFonts[0]).toBe('y2k-display');
+      expect(midFonts[midFonts.length - 1]).toBe('editorial-serif');
 
-    const form = input.closest('form')!;
-    await act(async () => {
-      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    });
-    expect(pushMock).toHaveBeenCalledWith('/create');
-    expect(window.sessionStorage.getItem('invited_studio_draft')).toContain('42 Maple St');
-    unmount();
+      await act(async () => {
+        vi.advanceTimersByTime(1000);
+      });
+      const endFonts = Array.from(
+        container.querySelectorAll<HTMLSpanElement>('.hero-char-glyph'),
+      ).map((el) => el.getAttribute('data-char-font'));
+      expect(endFonts.every((f) => f === 'y2k-display')).toBe(true);
+
+      await act(async () => {
+        pauseBtn.click();
+      });
+      expect(pauseBtn.getAttribute('aria-label')).toBe('Play theme showcase');
+
+      vi.useRealTimers();
+
+      const createBtn = container.querySelector<HTMLButtonElement>(
+        '[data-testid="home-create-invite-btn"]',
+      )!;
+      await act(async () => {
+        createBtn.click();
+      });
+
+      const promptCard = container.querySelector('[data-testid="prompt-starter-card"]')!;
+      expect(promptCard.textContent).not.toContain('\u2014');
+      expect(container.querySelector('[data-testid="live-detected-theme-pill"]')).toBeNull();
+      const input = container.querySelector<HTMLTextAreaElement>(
+        '[data-testid="nlp-prompt-input"]',
+      )!;
+      expect(input).not.toBeNull();
+
+      // Dateless prompt must omit fabricated date/time & occasion/sparkle tags
+      await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+        setter.call(input, 'Taco party');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      const datelessPreview = container.querySelector('[data-testid="live-nlp-preview"]')!;
+      expect(datelessPreview.textContent).toBe('Taco Party');
+      expect(datelessPreview.textContent).not.toContain('Taco Night');
+
+      await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+        setter.call(input, 'Patio taco night Friday at 7pm at 42 Maple St hosted by Ivan');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+
+      const preview = container.querySelector('[data-testid="live-nlp-preview"]')!;
+      expect(preview).not.toBeNull();
+      expect(preview.textContent).toContain('7:00 PM');
+      expect(preview.textContent).toContain('42 Maple St');
+      expect(preview.textContent).toContain('Ivan');
+      // Preview must sit above the input field in DOM flow so both stay visible above mobile keyboard
+      expect(
+        Boolean(preview.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING),
+      ).toBe(true);
+
+      const form = input.closest('form')!;
+      await act(async () => {
+        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      });
+      expect(pushMock).toHaveBeenCalledWith('/create');
+      expect(window.sessionStorage.getItem('invited_studio_draft')).toContain('42 Maple St');
+    } finally {
+      vi.useRealTimers();
+      unmount();
+    }
   });
 
   it('defaults edit-notify-guests-checkbox unchecked for style-only tweaks and auto-checks on title, location, or date edits', async () => {

@@ -85,8 +85,7 @@ export function InviteIcon({
     case 'star':
       return (
         <svg {...common}>
-          <path d="M12 2.5v19M5.5 12h13" />
-          <path d="M12 6.5 13.8 10.2 17.5 12 13.8 13.8 12 17.5 10.2 13.8 6.5 12l3.7-1.8Z" />
+          <path d="M20.4 14.8A8.5 8.5 0 0 1 9.2 3.6a8.5 8.5 0 1 0 11.2 11.2Z" />
         </svg>
       );
 
@@ -121,7 +120,8 @@ export function InviteIcon({
         <svg {...common}>
           <path d="M7.5 4h6l-.8 5.2a2.5 2.5 0 0 1-4.4 0L7.5 4Z" />
           <path d="M10.5 11.7V19M8 19h5" />
-          <path d="M16.5 5.5v2M15.5 6.5h2M18 11v1.5" />
+          <circle cx="16.5" cy="6.5" r="1" />
+          <circle cx="18.2" cy="10.2" r="0.75" />
         </svg>
       );
 
@@ -165,7 +165,6 @@ export function InviteIcon({
       return (
         <svg {...common}>
           <path d="M7.5 18h9.2a3.8 3.8 0 0 0 .4-7.6A5 5 0 0 0 7.4 9.5 3.6 3.6 0 0 0 7.5 18Z" />
-          <path d="M9.5 5.5v2M8.5 6.5h2" />
         </svg>
       );
 
