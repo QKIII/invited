@@ -22,6 +22,7 @@ import {
 } from '@/lib/storage/errors';
 import { validateCoverImage } from '@/lib/storage/media';
 import type {
+  ActiveEmailNotifyLevel,
   AmbientEffectId,
   CardSurfaceStyle,
   CommentRecord,
@@ -35,6 +36,7 @@ import type {
   RsvpStatus,
   StoredEventMeta,
   StoredRsvpRecord,
+  ViewerSubscription,
 } from '@/types/invite';
 
 export const ALLOWED_REACTION_EMOJIS = [
@@ -96,6 +98,27 @@ const SAFE_ID_RE = /^[a-zA-Z0-9_-]{1,80}$/;
 const HEX_COLOR_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
+/**
+ * Normalizes an arbitrary value into a valid active email notification level.
+ */
+export function normalizeNotifyLevel(value: unknown): ActiveEmailNotifyLevel {
+  if (value === 'changes' || value === 'host_posts' || value === 'all_posts') {
+    return value;
+  }
+  return 'host_posts';
+}
+
+/**
+ * Validates and normalizes an email address string (lowercase, trimmed).
+ */
+export function normalizeValidEmail(value: unknown): string {
+  const rawEmail = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (!rawEmail || rawEmail.length > 254 || !EMAIL_RE.test(rawEmail)) {
+    throw new ValidationError('Valid email address is required');
+  }
+  return rawEmail;
+}
+
 export interface PushSubscriptionPayload {
   endpoint: string;
   expirationTime?: number | null;
@@ -112,7 +135,10 @@ export interface SubscriberRecord {
   subscription?: PushSubscriptionPayload;
   email?: string;
   label?: string;
+  notifyLevel?: ActiveEmailNotifyLevel;
+  guestTokenHash?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface CreateEventInput {
@@ -546,6 +572,7 @@ export async function getEventDetail(
 
   let storedRsvps: StoredRsvpRecord[] = [];
   let comments: CommentRecord[] = [];
+  let subscribers: SubscriberRecord[] = [];
   let subscriberCount = 0;
 
   if (storedMeta.storageVersion === 2) {
@@ -561,7 +588,8 @@ export async function getEventDetail(
       ]);
       storedRsvps = [...(rawRsvps ?? [])];
       comments = [...(rawComments ?? [])];
-      subscriberCount = (rawSubscribers ?? []).length;
+      subscribers = [...(rawSubscribers ?? [])];
+      subscriberCount = subscribers.length;
     }
   } else if (options?.summaryOnly) {
     const rsvpKeys = await listPrefix(`events/${id}/rsvps/`);
@@ -576,15 +604,21 @@ export async function getEventDetail(
       listPrefix(`events/${id}/subscribers/`),
     ]);
 
-    const [rawRsvps, rawComments] = await Promise.all([
+    const [rawRsvps, rawComments, rawSubscribers] = await Promise.all([
       Promise.all(rsvpKeys.map((k) => getJson<StoredRsvpRecord>(k))),
       Promise.all(commentKeys.map((k) => getJson<CommentRecord>(k))),
+      options?.guestToken && subscriberKeys.length > 0
+        ? Promise.all(subscriberKeys.map((k) => getJson<SubscriberRecord>(k)))
+        : Promise.resolve<Array<SubscriberRecord | null>>([]),
     ]);
 
     storedRsvps = rawRsvps.filter(
       (r): r is StoredRsvpRecord => r !== null,
     );
     comments = rawComments.filter((c): c is CommentRecord => c !== null);
+    subscribers = rawSubscribers.filter(
+      (s): s is SubscriberRecord => s !== null,
+    );
     subscriberCount = subscriberKeys.length;
   }
 
@@ -594,12 +628,27 @@ export async function getEventDetail(
   const isHost = verifySecret(options?.editKey, storedMeta.editKeyHash);
 
   let viewerRsvp: RsvpRecord | undefined;
+  let viewerSubscription: ViewerSubscription | undefined;
   if (options?.guestToken) {
     const matched = storedRsvps.find((r) =>
       verifySecret(options.guestToken, r.guestTokenHash),
     );
     if (matched) {
       viewerRsvp = stripRsvpSecret(matched);
+    }
+
+    const matchedSub = subscribers.find(
+      (r) =>
+        r.kind === 'email' &&
+        Boolean(r.email) &&
+        Boolean(r.guestTokenHash) &&
+        verifySecret(options.guestToken, r.guestTokenHash!),
+    );
+    if (matchedSub && matchedSub.email) {
+      viewerSubscription = {
+        email: matchedSub.email,
+        notifyLevel: matchedSub.notifyLevel ?? 'host_posts',
+      };
     }
   }
 
@@ -636,20 +685,23 @@ export async function getEventDetail(
     comments,
     subscriberCount,
     ...(viewerRsvp ? { viewerRsvp } : {}),
+    ...(viewerSubscription ? { viewerSubscription } : {}),
     isHost,
   };
 }
 
 /**
- * Updates mutable event fields after verifying the host capability key.
+ * Updates mutable event fields after verifying the host capability key,
+ * returning both the previous and updated public event metadata.
  */
-export async function updateEvent(
+export async function updateEventWithPrevious(
   id: string,
   editKey: string | null | undefined,
   patch: UpdateEventPatch,
-): Promise<EventMeta> {
+): Promise<{ previous: EventMeta; updated: EventMeta }> {
   const existing = await loadStoredEventOrThrow(id);
   assertHostAuth(editKey, existing);
+  const previous = stripEventSecret(existing);
 
   const nextTitle =
     patch.title !== undefined
@@ -744,7 +796,19 @@ export async function updateEvent(
   };
 
   await putJson(eventMetaKey(id), updated);
-  return stripEventSecret(updated);
+  return { previous, updated: stripEventSecret(updated) };
+}
+
+/**
+ * Updates mutable event fields after verifying the host capability key.
+ */
+export async function updateEvent(
+  id: string,
+  editKey: string | null | undefined,
+  patch: UpdateEventPatch,
+): Promise<EventMeta> {
+  const { updated } = await updateEventWithPrevious(id, editKey, patch);
+  return updated;
 }
 
 /**
@@ -936,6 +1000,11 @@ export async function deleteRsvp(
         return current.filter((_, i) => i !== idx);
       },
     );
+    if (auth?.guestToken?.trim()) {
+      await removeGuestEmailSubscription(id, {
+        guestToken: auth.guestToken,
+      }).catch(() => {});
+    }
     return;
   }
 
@@ -951,6 +1020,11 @@ export async function deleteRsvp(
   }
 
   await deletePath(key);
+  if (auth?.guestToken?.trim()) {
+    await removeGuestEmailSubscription(id, {
+      guestToken: auth.guestToken,
+    }).catch(() => {});
+  }
 }
 
 /**
@@ -1165,12 +1239,16 @@ export async function addSubscriber(
         kind: 'email';
         email: string;
         label?: string;
+        notifyLevel?: ActiveEmailNotifyLevel;
+        guestToken?: string | null;
       },
 ): Promise<{
   id: string;
   eventId: string;
   kind: 'webpush' | 'email';
   createdAt: string;
+  notifyLevel?: ActiveEmailNotifyLevel;
+  isNewOrChangedEmail: boolean;
 }> {
   const event = await loadStoredEventOrThrow(id);
   const label = normalizeOptionalText(payload?.label, 80);
@@ -1178,6 +1256,8 @@ export async function addSubscriber(
   let validatedPush: { endpointUrl: string; sub: PushSubscriptionPayload } | null =
     null;
   let validatedEmail: string | null = null;
+  let emailGuestTokenHash: string | undefined;
+  let requestedNotifyLevel: ActiveEmailNotifyLevel | undefined;
 
   if (payload?.kind === 'webpush') {
     const sub = payload.subscription;
@@ -1206,19 +1286,24 @@ export async function addSubscriber(
     }
     validatedPush = { endpointUrl, sub };
   } else if (payload?.kind === 'email') {
-    const rawEmail =
-      typeof payload.email === 'string'
-        ? payload.email.trim().toLowerCase()
-        : '';
-    if (!rawEmail || rawEmail.length > 254 || !EMAIL_RE.test(rawEmail)) {
-      throw new ValidationError('Valid email address is required');
-    }
-    validatedEmail = rawEmail;
+    validatedEmail = normalizeValidEmail(payload.email);
+    const trimmedToken =
+      typeof payload.guestToken === 'string' ? payload.guestToken.trim() : '';
+    emailGuestTokenHash = trimmedToken ? hashSecret(trimmedToken) : undefined;
+    requestedNotifyLevel =
+      payload.notifyLevel !== undefined
+        ? normalizeNotifyLevel(payload.notifyLevel)
+        : undefined;
   } else {
     throw new ValidationError("Subscriber kind must be 'webpush' or 'email'");
   }
 
-  const buildRecord = (existingRecords: SubscriberRecord[]): SubscriberRecord => {
+  const buildRecord = (
+    existingRecords: SubscriberRecord[],
+  ): {
+    record: SubscriberRecord;
+    isNewOrChangedEmail: boolean;
+  } => {
     if (validatedPush) {
       const { endpointUrl, sub } = validatedPush;
       const duplicate = existingRecords.find(
@@ -1230,52 +1315,89 @@ export async function addSubscriber(
         ? duplicate.createdAt
         : new Date().toISOString();
       return {
-        id: subId,
-        eventId: id,
-        kind: 'webpush',
-        subscription: {
-          endpoint: endpointUrl,
-          expirationTime: sub.expirationTime ?? null,
-          keys: {
-            p256dh: sub.keys.p256dh.trim(),
-            auth: sub.keys.auth.trim(),
+        record: {
+          id: subId,
+          eventId: id,
+          kind: 'webpush',
+          subscription: {
+            endpoint: endpointUrl,
+            expirationTime: sub.expirationTime ?? null,
+            keys: {
+              p256dh: sub.keys.p256dh.trim(),
+              auth: sub.keys.auth.trim(),
+            },
           },
+          ...(label ? { label } : {}),
+          createdAt,
         },
-        ...(label ? { label } : {}),
-        createdAt,
+        isNewOrChangedEmail: false,
       };
     }
 
     const rawEmail = validatedEmail!;
-    const duplicate = existingRecords.find(
+    const byToken = emailGuestTokenHash
+      ? existingRecords.find(
+          (r) => r.kind === 'email' && r.guestTokenHash === emailGuestTokenHash,
+        )
+      : undefined;
+    const byEmail = existingRecords.find(
       (r) => r.kind === 'email' && r.email === rawEmail,
     );
+    const duplicate = byToken ?? byEmail;
+    const isNewOrChangedEmail = !duplicate || duplicate.email !== rawEmail;
     const subId = duplicate ? duplicate.id : generateId(12);
-    const createdAt = duplicate
-      ? duplicate.createdAt
-      : new Date().toISOString();
+    const now = new Date().toISOString();
+    const createdAt = duplicate ? duplicate.createdAt : now;
+    const notifyLevel =
+      requestedNotifyLevel ?? duplicate?.notifyLevel ?? 'host_posts';
+    const nextGuestTokenHash = emailGuestTokenHash ?? duplicate?.guestTokenHash;
+    const nextLabel = label ?? duplicate?.label;
+
     return {
-      id: subId,
-      eventId: id,
-      kind: 'email',
-      email: rawEmail,
-      ...(label ? { label } : {}),
-      createdAt,
+      record: {
+        id: subId,
+        eventId: id,
+        kind: 'email',
+        email: rawEmail,
+        notifyLevel,
+        ...(nextGuestTokenHash ? { guestTokenHash: nextGuestTokenHash } : {}),
+        ...(nextLabel ? { label: nextLabel } : {}),
+        createdAt,
+        updatedAt: now,
+      },
+      isNewOrChangedEmail,
     };
   };
 
   if (event.storageVersion === 2) {
     let saved!: SubscriberRecord;
+    let isNewOrChangedEmail = false;
     await updateJsonAtomically<SubscriberRecord[]>(
       subscribersCollectionKey(id),
       [],
       (current) => {
-        saved = buildRecord(current);
-        const idx = current.findIndex((r) => r.id === saved.id);
-        const next = [...current];
-        if (idx >= 0) {
-          next[idx] = saved;
-        } else {
+        const built = buildRecord(current);
+        saved = built.record;
+        isNewOrChangedEmail = built.isNewOrChangedEmail;
+        const next: SubscriberRecord[] = [];
+        let replaced = false;
+        for (const r of current) {
+          if (r.id === saved.id) {
+            next.push(saved);
+            replaced = true;
+          } else if (
+            saved.kind === 'email' &&
+            r.kind === 'email' &&
+            (r.email === saved.email ||
+              (saved.guestTokenHash &&
+                r.guestTokenHash === saved.guestTokenHash))
+          ) {
+            continue;
+          } else {
+            next.push(r);
+          }
+        }
+        if (!replaced) {
           next.push(saved);
         }
         return next;
@@ -1286,6 +1408,8 @@ export async function addSubscriber(
       eventId: id,
       kind: saved.kind,
       createdAt: saved.createdAt,
+      ...(saved.kind === 'email' ? { notifyLevel: saved.notifyLevel } : {}),
+      isNewOrChangedEmail,
     };
   }
 
@@ -1294,14 +1418,83 @@ export async function addSubscriber(
     await Promise.all(existingKeys.map((k) => getJson<SubscriberRecord>(k)))
   ).filter((r): r is SubscriberRecord => r !== null);
 
-  const record = buildRecord(existingRecords);
-  await putJson(subscriberKey(id, record.id), record);
+  const { record, isNewOrChangedEmail } = buildRecord(existingRecords);
+  const redundant = existingRecords.filter(
+    (r) =>
+      r.id !== record.id &&
+      record.kind === 'email' &&
+      r.kind === 'email' &&
+      (r.email === record.email ||
+        (record.guestTokenHash && r.guestTokenHash === record.guestTokenHash)),
+  );
+  await Promise.all([
+    putJson(subscriberKey(id, record.id), record),
+    ...redundant.map((r) => deletePath(subscriberKey(id, r.id))),
+  ]);
+
   return {
     id: record.id,
     eventId: id,
     kind: record.kind,
     createdAt: record.createdAt,
+    ...(record.kind === 'email' ? { notifyLevel: record.notifyLevel } : {}),
+    isNewOrChangedEmail,
   };
+}
+
+/**
+ * Atomically removes any `email` subscriber matching the guest token or lowercase email address.
+ */
+export async function removeGuestEmailSubscription(
+  id: string,
+  auth: { guestToken?: string | null; email?: string | null },
+): Promise<boolean> {
+  const guestToken = auth?.guestToken?.trim() || undefined;
+  const email = auth?.email?.trim().toLowerCase() || undefined;
+  if (!guestToken && !email) {
+    return false;
+  }
+
+  const event = await loadStoredEventOrThrow(id);
+
+  const matches = (rec: SubscriberRecord | null): boolean => {
+    if (!rec || rec.kind !== 'email') {
+      return false;
+    }
+    if (
+      guestToken &&
+      rec.guestTokenHash &&
+      verifySecret(guestToken, rec.guestTokenHash)
+    ) {
+      return true;
+    }
+    if (email && rec.email === email) {
+      return true;
+    }
+    return false;
+  };
+
+  if (event.storageVersion === 2) {
+    let removed = false;
+    await updateJsonAtomically<SubscriberRecord[]>(
+      subscribersCollectionKey(id),
+      [],
+      (current) => {
+        const next = current.filter((rec) => !matches(rec));
+        removed = next.length < current.length;
+        return removed ? next : current;
+      },
+    );
+    return removed;
+  }
+
+  const keys = await listPrefix(`events/${id}/subscribers/`);
+  const records = await Promise.all(
+    keys.map(async (k) => ({ key: k, rec: await getJson<SubscriberRecord>(k) })),
+  );
+  const matching = records.filter(({ rec }) => matches(rec));
+  await Promise.all(matching.map((m) => deletePath(m.key)));
+  return matching.length > 0;
 }
 
 /**

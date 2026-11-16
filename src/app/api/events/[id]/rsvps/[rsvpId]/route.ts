@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { deleteRsvp } from '@/lib/storage/events';
+import { deleteRsvp, getEventDetail } from '@/lib/storage/events';
 import {
   extractEditKey,
   extractGuestToken,
@@ -15,9 +15,10 @@ export async function DELETE(req: Request, context: RouteContext) {
     const guestToken = extractGuestToken(req);
 
     await deleteRsvp(id, rsvpId, { editKey, guestToken });
+    const detail = await getEventDetail(id, { editKey }).catch(() => null);
 
     return NextResponse.json(
-      { deleted: true, rsvpId },
+      { deleted: true, rsvpId, ...(detail ? { detail } : {}) },
       { status: 200, headers: { 'Cache-Control': 'no-store' } },
     );
   } catch (err) {

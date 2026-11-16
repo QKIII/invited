@@ -1,14 +1,34 @@
 import { NextResponse } from 'next/server';
+import {
+  isEmailConfigured,
+  sendSubscriptionConfirmationEmail,
+} from '@/lib/notifications/email';
 import { notifyEventSubscribers } from '@/lib/notifications/push';
-import { getEventDetail, upsertRsvp } from '@/lib/storage/events';
+import {
+  addSubscriber,
+  getEventDetail,
+  normalizeNotifyLevel,
+  normalizeValidEmail,
+  removeGuestEmailSubscription,
+  upsertRsvp,
+} from '@/lib/storage/events';
 import {
   extractEditKey,
   extractGuestToken,
   handleRouteError,
   readJsonBody,
 } from '@/lib/storage/http';
+import type { ActiveEmailNotifyLevel } from '@/types/invite';
 
 type RouteContext = { params: Promise<{ id: string }> };
+
+function requestOrigin(req: Request): string | null {
+  try {
+    return new URL(req.url).origin;
+  } catch {
+    return null;
+  }
+}
 
 export async function POST(req: Request, context: RouteContext) {
   try {
@@ -20,7 +40,17 @@ export async function POST(req: Request, context: RouteContext) {
       bringingNote?: string;
       guestToken?: string;
       postToWall?: boolean;
+      emailUpdates?: {
+        enabled?: boolean;
+        email?: string;
+        notifyLevel?: ActiveEmailNotifyLevel;
+      };
     }>(req);
+
+    const validatedEmail =
+      body.emailUpdates?.enabled === true
+        ? normalizeValidEmail(body.emailUpdates.email)
+        : null;
 
     const guestToken =
       typeof body.guestToken === 'string' && body.guestToken.trim()
@@ -36,11 +66,36 @@ export async function POST(req: Request, context: RouteContext) {
       postToWall: body.postToWall,
     });
 
+    let emailSub:
+      | Awaited<ReturnType<typeof addSubscriber>>
+      | undefined;
+    if (body.emailUpdates?.enabled === true && validatedEmail) {
+      const notifyLevel =
+        body.emailUpdates.notifyLevel !== undefined
+          ? normalizeNotifyLevel(body.emailUpdates.notifyLevel)
+          : undefined;
+      emailSub = await addSubscriber(id, {
+        kind: 'email',
+        email: validatedEmail,
+        notifyLevel,
+        guestToken: result.guestToken,
+        label: result.rsvp.guestName,
+      });
+    } else if (body.emailUpdates?.enabled === false) {
+      await removeGuestEmailSubscription(id, {
+        guestToken: result.guestToken,
+        email: body.emailUpdates.email,
+      });
+    }
+
     const editKey = extractEditKey(req);
     const detail = await getEventDetail(id, {
       editKey,
       guestToken: result.guestToken,
     });
+
+    let emailSent = false;
+    const emailConfigured = isEmailConfigured();
 
     if (detail) {
       const statusLabel = result.rsvp.status === 'yes' ? 'is going' : "can't make it";
@@ -53,6 +108,24 @@ export async function POST(req: Request, context: RouteContext) {
         },
         { includeEmail: false },
       ).catch(() => {});
+
+      if (
+        body.emailUpdates?.enabled === true &&
+        emailSub &&
+        emailSub.isNewOrChangedEmail &&
+        emailConfigured &&
+        validatedEmail
+      ) {
+        const emailRes = await sendSubscriptionConfirmationEmail({
+          to: validatedEmail,
+          event: detail.event,
+          subId: emailSub.id,
+          baseUrl: requestOrigin(req),
+          rsvpStatus: result.rsvp.status,
+          notifyLevel: emailSub.notifyLevel,
+        }).catch(() => ({ sent: false, skipped: false }));
+        emailSent = emailRes.sent;
+      }
     }
 
     return NextResponse.json(
@@ -60,6 +133,7 @@ export async function POST(req: Request, context: RouteContext) {
         rsvp: result.rsvp,
         guestToken: result.guestToken,
         ...(result.wallComment ? { wallComment: result.wallComment } : {}),
+        ...(emailSub ? { emailSent, emailConfigured } : {}),
         detail,
       },
       { status: 200, headers: { 'Cache-Control': 'no-store' } },
