@@ -575,17 +575,139 @@
   }
 }
 
-/* Brand-consistent native range slider & checkbox controls */
+/* Normalized cross-browser range slider & accessible checkbox controls */
 .invite-notify-slider {
-  accent-color: var(--theme-accent);
+  --slider-track-size: 0.45rem;
+  --slider-thumb-size: 1.25rem;
+  --slider-track-radius: 999px;
+  --slider-thumb-radius: 50%;
+  --slider-fill-color: var(--theme-accent, #0284c7);
+  --slider-track-color: #64748b;
+  --slider-track-color: color-mix(in srgb, var(--theme-text-muted, #94a3b8) 42%, transparent);
+  --slider-thumb-color: var(--slider-fill-color);
+  --slider-direction: to right;
+  --attr-min: attr(min type(<number>), 1);
+  --attr-max: attr(max type(<number>), 3);
+  --control-value: attr(value type(<number>), 2);
+  --slider-progress: calc(
+    progress(var(--control-value), var(--attr-min), var(--attr-max)) * 100%
+  );
+
+  appearance: none;
+  -webkit-appearance: none;
+  inline-size: 100%;
+  block-size: 2.5rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color-scheme: light dark;
   cursor: pointer;
 }
 
+.invite-notify-slider:dir(rtl) {
+  --slider-direction: to left;
+}
+
+@supports not (opacity: progress(1, 0, 100)) {
+  .invite-notify-slider {
+    --slider-progress: calc(
+      (var(--control-value) - var(--attr-min)) /
+      (var(--attr-max) - var(--attr-min)) * 100%
+    );
+  }
+}
+
+.invite-notify-slider::-webkit-slider-runnable-track {
+  block-size: var(--slider-track-size);
+  border: 0;
+  border-radius: var(--slider-track-radius);
+  background: linear-gradient(
+    var(--slider-direction),
+    var(--slider-fill-color) var(--slider-progress),
+    var(--slider-track-color) var(--slider-progress)
+  );
+}
+
+.invite-notify-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  inline-size: var(--slider-thumb-size);
+  block-size: var(--slider-thumb-size);
+  margin-block-start: calc(
+    (var(--slider-track-size) - var(--slider-thumb-size)) / 2
+  );
+  border: 2px solid var(--theme-on-accent, #ffffff);
+  border-radius: var(--slider-thumb-radius);
+  background: var(--slider-thumb-color);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.28);
+  transition: scale 140ms ease-out;
+}
+
+.invite-notify-slider:active::-webkit-slider-thumb {
+  scale: 1.08;
+}
+
+.invite-notify-slider::-moz-range-track {
+  block-size: var(--slider-track-size);
+  border: 0;
+  border-radius: var(--slider-track-radius);
+  background: var(--slider-track-color);
+}
+
+.invite-notify-slider::-moz-range-progress {
+  block-size: var(--slider-track-size);
+  border-radius: var(--slider-track-radius);
+  background: var(--slider-fill-color);
+}
+
+.invite-notify-slider::-moz-range-thumb {
+  inline-size: var(--slider-thumb-size);
+  block-size: var(--slider-thumb-size);
+  border: 2px solid var(--theme-on-accent, #ffffff);
+  border-radius: var(--slider-thumb-radius);
+  background: var(--slider-thumb-color);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.28);
+  transition: scale 140ms ease-out;
+}
+
+.invite-notify-slider:active::-moz-range-thumb {
+  scale: 1.08;
+}
+
 .invite-notify-slider:focus-visible {
-  outline: 2px solid var(--theme-accent, currentColor);
-  outline-offset: 2px;
+  outline: 2px solid var(--slider-fill-color);
+  outline-offset: 4px;
   border-radius: 9999px;
+}
+
+/* Floating animated bell indicator tethered above the slider thumb */
+.slider-bell-callout {
+  opacity: 0;
+  pointer-events: none;
+  transform-origin: bottom center;
+  transform: translate3d(-50%, 6px, 0) scale(0.8);
+  transition:
+    opacity 150ms ease-out,
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.slider-bell-callout[data-visible="true"] {
+  opacity: 1;
+  transform: translate3d(-50%, 0, 0) scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slider-bell-callout {
+    transform: translate3d(-50%, 0, 0) scale(1);
+    transition: opacity 150ms ease-out;
+  }
+
+  .invite-notify-slider::-webkit-slider-thumb,
+  .invite-notify-slider::-moz-range-thumb {
+    transition: none;
+  }
 }
 
 .invite-checkbox {
@@ -600,57 +722,6 @@
 }
 
 @supports not (accent-color: #000) {
-  .invite-notify-slider {
-    -webkit-appearance: none;
-    appearance: none;
-    background: transparent;
-  }
-
-  .invite-notify-slider::-webkit-slider-runnable-track {
-    width: 100%;
-    height: 8px;
-    background: linear-gradient(
-      to right,
-      var(--theme-accent, #0369a1) var(--progress, 50%),
-      var(--theme-border, #cbd5e1) var(--progress, 50%)
-    );
-    border-radius: 9999px;
-  }
-
-  .invite-notify-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    height: 18px;
-    width: 18px;
-    border-radius: 50%;
-    background: var(--theme-accent, #0369a1);
-    border: 2px solid var(--theme-on-accent, #ffffff);
-    cursor: pointer;
-    margin-top: -5px;
-  }
-
-  .invite-notify-slider::-moz-range-track {
-    width: 100%;
-    height: 8px;
-    background: var(--theme-border, #cbd5e1);
-    border-radius: 9999px;
-  }
-
-  .invite-notify-slider::-moz-range-thumb {
-    height: 18px;
-    width: 18px;
-    border-radius: 50%;
-    border: 2px solid var(--theme-on-accent, #ffffff);
-    background: var(--theme-accent, #0369a1);
-    cursor: pointer;
-  }
-
-  .invite-notify-slider::-moz-range-progress {
-    background-color: var(--theme-accent, #0369a1);
-    height: 8px;
-    border-radius: 9999px;
-  }
-
   /* Canonical visually-hidden checkbox fallback per brand-consistent-forms */
   input[type="checkbox"].invite-checkbox {
     position: absolute !important;

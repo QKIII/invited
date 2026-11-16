@@ -401,7 +401,7 @@ describe('RsvpPanel', () => {
     unmount();
   });
 
-  it('reveals email input + 3-stop bell slider, animates bell classes, submits emailUpdates, and persists email to deviceProfile', async () => {
+  it('reveals email input + minimal Less/More slider with floating animated bell on drag/focus/step and submits emailUpdates', async () => {
     const event = createSampleEvent();
     const onRsvpSuccess = vi.fn();
 
@@ -445,6 +445,7 @@ describe('RsvpPanel', () => {
       '[data-testid="rsvp-email-updates-toggle"]',
     )!;
     expect(toggle.checked).toBe(false);
+    expect(container.querySelector('[data-testid="slider-floating-bell"]')).toBeNull();
 
     await act(async () => {
       toggle.click();
@@ -452,40 +453,52 @@ describe('RsvpPanel', () => {
 
     const emailInput = container.querySelector<HTMLInputElement>('[data-testid="rsvp-email-input"]')!;
     const slider = container.querySelector<HTMLInputElement>('[data-testid="rsvp-notify-slider"]')!;
-    const stopChanges = container.querySelector<HTMLButtonElement>('[data-testid="notify-stop-changes"]')!;
-    const stopHost = container.querySelector<HTMLButtonElement>('[data-testid="notify-stop-host_posts"]')!;
-    const stopAll = container.querySelector<HTMLButtonElement>('[data-testid="notify-stop-all_posts"]')!;
+    const floatingBell = container.querySelector<HTMLElement>('[data-testid="slider-floating-bell"]')!;
 
     expect(emailInput).not.toBeNull();
     expect(slider).not.toBeNull();
     expect(slider.value).toBe('2');
-    expect(stopChanges).not.toBeNull();
-    expect(stopHost).not.toBeNull();
-    expect(stopAll).not.toBeNull();
+    expect(floatingBell).not.toBeNull();
+    // No bottom tap buttons or top tags
+    expect(container.querySelector('[data-testid^="notify-stop-"]')).toBeNull();
+    expect(container.textContent).toContain('Less');
+    expect(container.textContent).toContain('More');
     expect(container.querySelector('.bell-swing-host')).not.toBeNull();
+    expect(floatingBell.style.left).toContain('0.5');
 
-    // Switch to 'changes' -> bell-swing-changes
+    // Step left via keyboard ArrowLeft -> 'changes' (stop 1)
     await act(async () => {
-      stopChanges.click();
+      slider.focus();
+      slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
     });
     expect(slider.value).toBe('1');
+    expect(floatingBell.getAttribute('data-visible')).toBe('true');
+    expect(floatingBell.style.left).toContain('0');
     expect(container.querySelector('.bell-swing-changes')).not.toBeNull();
 
-    // Switch back to 'host_posts' -> bell-swing-host
+    // Drag across to 'host_posts' (stop 2) then 'all_posts' (stop 3)
+    const sliderSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
     await act(async () => {
-      stopHost.click();
+      slider.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      sliderSetter.call(slider, '2.05');
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    expect(slider.value).toBe('2');
     expect(container.querySelector('.bell-swing-host')).not.toBeNull();
 
-    // Switch to 'all_posts' -> bell-swing-all + clapper + 4 wave paths
     await act(async () => {
-      stopAll.click();
+      sliderSetter.call(slider, '2.85');
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    expect(slider.value).toBe('3');
     expect(container.querySelector('.bell-swing-all')).not.toBeNull();
     expect(container.querySelector('.bell-clapper-all')).not.toBeNull();
     expect(container.querySelectorAll('.bell-waves-pop path')).toHaveLength(4);
+
+    // Release snaps cleanly to stop 3 ('all_posts')
+    await act(async () => {
+      window.dispatchEvent(new Event('pointerup'));
+    });
+    expect(slider.value).toBe('3');
+    expect(floatingBell.style.left).toContain('1');
 
     // Fill valid email and submit
     await act(async () => {
@@ -914,9 +927,6 @@ describe('EventWall & SubscribeControl', () => {
     const slider = container.querySelector<HTMLInputElement>(
       '[data-testid="subscribe-notify-slider"]',
     )!;
-    const stopAll = container.querySelector<HTMLButtonElement>(
-      '[data-testid="subscribe-notify-stop-all_posts"]',
-    )!;
     const emailInput = container.querySelector<HTMLInputElement>(
       'input[type="email"][name="email"]',
     )!;
@@ -924,10 +934,13 @@ describe('EventWall & SubscribeControl', () => {
     expect(slider).not.toBeNull();
     expect(slider.value).toBe('1');
     expect(emailInput.value).toBe('maya@example.com');
+    expect(container.querySelector('[data-testid^="subscribe-notify-stop-"]')).toBeNull();
     expect(container.querySelector('.bell-swing-changes')).not.toBeNull();
 
     await act(async () => {
-      stopAll.click();
+      const sliderSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+      sliderSetter.call(slider, '3');
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
     });
     expect(slider.value).toBe('3');
     expect(container.querySelector('.bell-swing-all')).not.toBeNull();

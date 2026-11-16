@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useId, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type {
   ActiveEmailNotifyLevel,
   EmailNotifyLevel,
@@ -34,26 +34,22 @@ export const EMAIL_NOTIFY_LEVEL_META: Record<
   {
     value: 1 | 2 | 3;
     label: string;
-    badgeLabel: string;
     description: string;
   }
 > = {
   changes: {
     value: 1,
     label: 'Event updates',
-    badgeLabel: 'Updates',
     description: 'Only time, location, or event detail changes',
   },
   host_posts: {
     value: 2,
     label: 'Host posts',
-    badgeLabel: 'Host posts',
     description: 'Event detail changes + host announcements',
   },
   all_posts: {
     value: 3,
     label: 'All posts',
-    badgeLabel: 'All posts',
     description: 'Event changes, host posts & every wall comment',
   },
 };
@@ -63,8 +59,8 @@ export function levelToValue(level: ActiveEmailNotifyLevel): 1 | 2 | 3 {
 }
 
 export function valueToLevel(val: number): ActiveEmailNotifyLevel {
-  if (val <= 1) return 'changes';
-  if (val >= 3) return 'all_posts';
+  if (val < 1.67) return 'changes';
+  if (val > 2.33) return 'all_posts';
   return 'host_posts';
 }
 
@@ -77,7 +73,7 @@ interface AnimatedBellProps {
 export function AnimatedBell({
   level,
   pulseKey = 0,
-  className = 'w-8 h-6',
+  className = 'w-7 h-5',
 }: AnimatedBellProps) {
   const swingClass =
     level === 'changes'
@@ -182,105 +178,200 @@ interface NotifyLevelSliderProps {
   notifyLevel: ActiveEmailNotifyLevel;
   onNotifyLevelChange: (level: ActiveEmailNotifyLevel) => void;
   sliderTestId?: string;
-  stopTestIdPrefix?: string;
   disabled?: boolean;
+  revealPulse?: number;
 }
 
 export function NotifyLevelSlider({
   notifyLevel,
   onNotifyLevelChange,
   sliderTestId = 'rsvp-notify-slider',
-  stopTestIdPrefix = 'notify-stop',
   disabled = false,
+  revealPulse = 0,
 }: NotifyLevelSliderProps) {
   const sliderId = useId();
-  const descId = useId();
-  const val = levelToValue(notifyLevel);
+  const [dragValue, setDragValue] = useState<number | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const [lingerVisible, setLingerVisible] = useState(false);
+  const [bellPulse, setBellPulse] = useState(0);
+  const lingerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastRevealPulseRef = useRef(revealPulse);
+
+  const clearLingerTimer = useCallback(() => {
+    if (lingerTimerRef.current) {
+      clearTimeout(lingerTimerRef.current);
+      lingerTimerRef.current = null;
+    }
+  }, []);
+
+  const triggerLinger = useCallback(
+    (ms = 750) => {
+      clearLingerTimer();
+      setLingerVisible(true);
+      lingerTimerRef.current = setTimeout(() => {
+        setLingerVisible(false);
+        lingerTimerRef.current = null;
+      }, ms);
+    },
+    [clearLingerTimer],
+  );
+
+  useEffect(() => {
+    return () => clearLingerTimer();
+  }, [clearLingerTimer]);
+
+  useEffect(() => {
+    if (revealPulse > lastRevealPulseRef.current) {
+      lastRevealPulseRef.current = revealPulse;
+      queueMicrotask(() => {
+        setBellPulse((p) => p + 1);
+        triggerLinger(850);
+      });
+    }
+  }, [revealPulse, triggerLinger]);
+
+  useEffect(() => {
+    if (!isDragging) return;
+    const endDrag = () => {
+      setIsDragging(false);
+      setDragValue(null);
+      triggerLinger(750);
+    };
+    window.addEventListener('pointerup', endDrag);
+    window.addEventListener('pointercancel', endDrag);
+    window.addEventListener('touchend', endDrag);
+    window.addEventListener('touchcancel', endDrag);
+    return () => {
+      window.removeEventListener('pointerup', endDrag);
+      window.removeEventListener('pointercancel', endDrag);
+      window.removeEventListener('touchend', endDrag);
+      window.removeEventListener('touchcancel', endDrag);
+    };
+  }, [isDragging, triggerLinger]);
+
+  const stopVal = levelToValue(notifyLevel);
+  const currentVal = dragValue ?? stopVal;
+  const clampedRatio = Math.max(0, Math.min(1, (currentVal - 1) / 2));
   const activeMeta = EMAIL_NOTIFY_LEVEL_META[notifyLevel];
+  const bubbleVisible = !disabled && (isDragging || isFocused || lingerVisible);
+
+  function handlePointerDown() {
+    if (disabled) return;
+    clearLingerTimer();
+    setIsDragging(true);
+    setBellPulse((p) => p + 1);
+  }
+
+  function handleSliderChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const raw = Number(e.target.value);
+    const nextLevel = valueToLevel(raw);
+    if (isDragging) {
+      setDragValue(raw);
+    } else {
+      setDragValue(null);
+      triggerLinger(750);
+    }
+    if (nextLevel !== notifyLevel) {
+      setBellPulse((p) => p + 1);
+      onNotifyLevelChange(nextLevel);
+    } else if (!isDragging) {
+      setBellPulse((p) => p + 1);
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (disabled) return;
+    let nextStop: number | null = null;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+      nextStop = Math.max(1, stopVal - 1);
+    } else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+      nextStop = Math.min(3, stopVal + 1);
+    } else if (e.key === 'Home') {
+      nextStop = 1;
+    } else if (e.key === 'End') {
+      nextStop = 3;
+    }
+
+    if (nextStop !== null) {
+      e.preventDefault();
+      setDragValue(null);
+      const nextLevel = valueToLevel(nextStop);
+      setBellPulse((p) => p + 1);
+      triggerLinger(750);
+      if (nextLevel !== notifyLevel) {
+        onNotifyLevelChange(nextLevel);
+      }
+    }
+  }
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <label
-          htmlFor={sliderId}
-          className="text-xs font-medium"
-          style={{ color: 'var(--theme-text-muted)' }}
-        >
-          Email frequency
-        </label>
-        <span
-          className="rounded-full border px-2 py-0.5 text-[11px] font-semibold"
-          style={{
-            backgroundColor: 'var(--theme-card-bg)',
-            borderColor: 'var(--theme-accent)',
-            color: 'var(--theme-accent)',
-          }}
-        >
-          {activeMeta.label}
-        </span>
-      </div>
+    <div className="flex items-center gap-3 pt-1">
+      <label htmlFor={sliderId} className="sr-only">
+        Email notification frequency
+      </label>
 
-      <input
-        type="range"
-        id={sliderId}
-        name="notifyLevelStop"
-        data-testid={sliderTestId}
-        min={1}
-        max={3}
-        step={1}
-        disabled={disabled}
-        value={val}
-        aria-valuetext={`${activeMeta.label}: ${activeMeta.description}`}
-        aria-describedby={descId}
-        onChange={(e) => onNotifyLevelChange(valueToLevel(Number(e.target.value)))}
-        style={{ '--progress': `${((val - 1) / 2) * 100}%` } as React.CSSProperties}
-        className="invite-notify-slider w-full h-7"
-      />
-
-      <div
-        className="grid grid-cols-3 gap-1.5"
-        role="group"
-        aria-label="Notification level options"
-      >
-        {ACTIVE_EMAIL_NOTIFY_LEVELS.map((levelKey) => {
-          const meta = EMAIL_NOTIFY_LEVEL_META[levelKey];
-          const isSelected = notifyLevel === levelKey;
-          return (
-            <button
-              key={levelKey}
-              type="button"
-              disabled={disabled}
-              data-testid={`${stopTestIdPrefix}-${levelKey}`}
-              aria-pressed={isSelected}
-              onClick={() => onNotifyLevelChange(levelKey)}
-              className="min-h-[36px] rounded-xl border px-2 py-1.5 text-[11px] sm:text-xs font-semibold transition cursor-pointer disabled:opacity-50"
-              style={
-                isSelected
-                  ? {
-                      backgroundColor: 'var(--theme-accent)',
-                      borderColor: 'var(--theme-accent)',
-                      color: 'var(--theme-on-accent)',
-                    }
-                  : {
-                      backgroundColor: 'var(--theme-card-bg)',
-                      borderColor: 'var(--theme-hairline)',
-                      color: 'var(--theme-text-muted)',
-                    }
-              }
-            >
-              {meta.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <p
-        id={descId}
-        className="text-xs leading-snug"
+      <span
+        className="text-xs font-medium shrink-0 select-none"
         style={{ color: 'var(--theme-text-muted)' }}
       >
-        {activeMeta.description}
-      </p>
+        Less
+      </span>
+
+      <div className="relative flex-1 flex items-center">
+        <div
+          data-testid="slider-floating-bell"
+          data-visible={bubbleVisible ? 'true' : 'false'}
+          aria-hidden="true"
+          className="slider-bell-callout z-10 absolute bottom-full mb-1.5 rounded-full border px-2 py-1 shadow-lg backdrop-blur-md"
+          style={{
+            left: `calc(10px + ${clampedRatio} * (100% - 20px))`,
+            backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
+            borderColor: 'var(--theme-accent)',
+          }}
+        >
+          <AnimatedBell
+            key={`${notifyLevel}-${bellPulse}`}
+            level={notifyLevel}
+            pulseKey={bellPulse}
+            className="w-7 h-5"
+          />
+        </div>
+
+        <input
+          type="range"
+          id={sliderId}
+          name="notifyLevelStop"
+          data-testid={sliderTestId}
+          min={1}
+          max={3}
+          step={0.01}
+          disabled={disabled}
+          value={currentVal}
+          aria-valuetext={`${activeMeta.label}: ${activeMeta.description}`}
+          onPointerDown={handlePointerDown}
+          onTouchStart={handlePointerDown}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+          onKeyDown={handleKeyDown}
+          onChange={handleSliderChange}
+          style={
+            {
+              '--attr-min': 1,
+              '--attr-max': 3,
+              '--control-value': currentVal,
+            } as React.CSSProperties
+          }
+          className="invite-notify-slider w-full"
+        />
+      </div>
+
+      <span
+        className="text-xs font-medium shrink-0 select-none"
+        style={{ color: 'var(--theme-text-muted)' }}
+      >
+        More
+      </span>
     </div>
   );
 }
@@ -313,24 +404,15 @@ export function EmailUpdatesControl({
   const toggleId = useId();
   const generatedEmailId = useId();
   const errorId = useId();
-  const [bellPulse, setBellPulse] = useState(0);
+  const [revealPulse, setRevealPulse] = useState(0);
 
   const resolvedEmailId = emailInputId ?? generatedEmailId;
-  const bellLevel: EmailNotifyLevel = enabled ? notifyLevel : 'off';
-  const statusLabel = enabled
-    ? EMAIL_NOTIFY_LEVEL_META[notifyLevel].badgeLabel
-    : 'Off';
 
   function handleToggleChange(nextEnabled: boolean) {
     if (nextEnabled) {
-      setBellPulse((p) => p + 1);
+      setRevealPulse((p) => p + 1);
     }
     onEnabledChange(nextEnabled);
-  }
-
-  function handleLevelChange(nextLevel: ActiveEmailNotifyLevel) {
-    setBellPulse((p) => p + 1);
-    onNotifyLevelChange(nextLevel);
   }
 
   return (
@@ -341,55 +423,29 @@ export function EmailUpdatesControl({
         borderColor: enabled ? 'var(--theme-accent)' : 'var(--theme-hairline)',
       }}
     >
-      <div className="flex items-center justify-between gap-2 min-h-[48px]">
-        <div className="flex items-center gap-2.5 flex-1 min-w-0 min-h-[48px]">
-          <input
-            type="checkbox"
-            id={toggleId}
-            name="emailUpdatesEnabled"
-            data-testid="rsvp-email-updates-toggle"
-            checked={enabled}
-            onChange={(e) => handleToggleChange(e.target.checked)}
-            className="invite-checkbox h-4 w-4 shrink-0 rounded"
-            style={{ accentColor: 'var(--theme-accent)' }}
-          />
-          <label
-            htmlFor={toggleId}
-            className="invite-checkbox-label flex-1 min-h-[48px] inline-flex items-center text-xs sm:text-sm font-medium cursor-pointer"
-            style={{ color: 'var(--theme-text-primary)' }}
-          >
-            Email me event updates
-          </label>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setBellPulse((p) => p + 1)}
-          aria-label={
-            enabled
-              ? `Replay notification bell preview (${EMAIL_NOTIFY_LEVEL_META[notifyLevel].label})`
-              : 'Notification alerts off'
-          }
-          className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 min-h-[34px] text-[11px] font-semibold transition hover:opacity-90 cursor-pointer shrink-0"
-          style={{
-            backgroundColor: 'var(--theme-card-bg)',
-            borderColor: enabled ? 'var(--theme-accent)' : 'var(--theme-hairline)',
-            color: enabled ? 'var(--theme-accent)' : 'var(--theme-text-muted)',
-          }}
+      <div className="flex items-center gap-2.5 min-h-[48px]">
+        <input
+          type="checkbox"
+          id={toggleId}
+          name="emailUpdatesEnabled"
+          data-testid="rsvp-email-updates-toggle"
+          checked={enabled}
+          onChange={(e) => handleToggleChange(e.target.checked)}
+          className="invite-checkbox h-4 w-4 shrink-0 rounded"
+          style={{ accentColor: 'var(--theme-accent)' }}
+        />
+        <label
+          htmlFor={toggleId}
+          className="invite-checkbox-label flex-1 min-h-[48px] inline-flex items-center text-xs sm:text-sm font-medium cursor-pointer"
+          style={{ color: 'var(--theme-text-primary)' }}
         >
-          <AnimatedBell
-            key={`${bellLevel}-${bellPulse}`}
-            level={bellLevel}
-            pulseKey={bellPulse}
-            className="w-7 h-5"
-          />
-          <span>{statusLabel}</span>
-        </button>
+          Email me event updates
+        </label>
       </div>
 
       {enabled ? (
         <div
-          className="pt-2.5 pb-2 border-t space-y-3"
+          className="pt-2.5 pb-2 border-t space-y-2.5"
           style={{ borderColor: 'var(--theme-hairline)' }}
         >
           <div>
@@ -439,9 +495,9 @@ export function EmailUpdatesControl({
 
           <NotifyLevelSlider
             notifyLevel={notifyLevel}
-            onNotifyLevelChange={handleLevelChange}
+            onNotifyLevelChange={onNotifyLevelChange}
             sliderTestId="rsvp-notify-slider"
-            stopTestIdPrefix="notify-stop"
+            revealPulse={revealPulse}
           />
         </div>
       ) : null}

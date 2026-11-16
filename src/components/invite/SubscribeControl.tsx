@@ -18,8 +18,6 @@ import {
 } from '@/lib/client/deviceProfile';
 import { closeTopLayer, setupDialogLightDismiss } from '@/lib/polyfills/ui';
 import {
-  AnimatedBell,
-  EMAIL_NOTIFY_LEVEL_META,
   NotifyLevelSlider,
   validateEmailAddress,
   type ActiveEmailNotifyLevel,
@@ -83,7 +81,7 @@ export function SubscribeControl({
     useState<ActiveEmailNotifyLevel | null>(null);
   const [emailTouched, setEmailTouched] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
-  const [bellPulse, setBellPulse] = useState(0);
+  const [revealPulse, setRevealPulse] = useState(0);
   const [emailBusy, setEmailBusy] = useState(false);
   const [emailDone, setEmailDone] = useState(false);
   const [emailMessage, setEmailMessage] = useState<string | null>(null);
@@ -239,7 +237,7 @@ export function SubscribeControl({
       setEmailOverride(null);
       setNotifyLevelOverride(null);
       setEmailDone(true);
-      setBellPulse((p) => p + 1);
+      setRevealPulse((p) => p + 1);
       setEmailMessage(
         data.emailSent
           ? "Confirmation sent! We'll email you based on your alert preference."
@@ -398,34 +396,14 @@ export function SubscribeControl({
                 borderColor: 'var(--theme-hairline)',
               }}
             >
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <Mail className="h-3.5 w-3.5" aria-hidden="true" />
                 <span
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold"
+                  className="text-xs font-semibold"
                   style={{ color: 'var(--theme-text-primary)' }}
                 >
-                  <Mail className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span>Email updates</span>
+                  Email updates
                 </span>
-
-                <button
-                  type="button"
-                  onClick={() => setBellPulse((p) => p + 1)}
-                  aria-label={`Replay notification bell preview (${EMAIL_NOTIFY_LEVEL_META[notifyLevel].label})`}
-                  className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition hover:opacity-90 cursor-pointer shrink-0"
-                  style={{
-                    backgroundColor: 'var(--theme-card-bg)',
-                    borderColor: 'var(--theme-accent)',
-                    color: 'var(--theme-accent)',
-                  }}
-                >
-                  <AnimatedBell
-                    key={`${notifyLevel}-${bellPulse}`}
-                    level={notifyLevel}
-                    pulseKey={bellPulse}
-                    className="w-6 h-5"
-                  />
-                  <span>{EMAIL_NOTIFY_LEVEL_META[notifyLevel].badgeLabel}</span>
-                </button>
               </div>
 
               <div>
@@ -498,11 +476,10 @@ export function SubscribeControl({
                 notifyLevel={notifyLevel}
                 onNotifyLevelChange={(next) => {
                   setNotifyLevelOverride(next);
-                  setBellPulse((p) => p + 1);
                   if (emailDone) setEmailDone(false);
                 }}
                 sliderTestId="subscribe-notify-slider"
-                stopTestIdPrefix="subscribe-notify-stop"
+                revealPulse={revealPulse}
               />
 
               {emailMessage ? (
