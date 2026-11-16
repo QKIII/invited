@@ -279,6 +279,9 @@ export function RsvpPanel({
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
+      if (editKey) {
+        headers['x-edit-key'] = editKey;
+      }
       if (guestToken) {
         headers['x-guest-token'] = guestToken;
       }

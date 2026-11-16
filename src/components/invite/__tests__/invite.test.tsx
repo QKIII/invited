@@ -719,7 +719,7 @@ describe('GuestList', () => {
     expect(container.textContent).toContain('2 Going');
     expect(container.textContent).toContain('1 Not coming');
     expect(container.textContent).toContain('2 Waiting on');
-    expect(container.textContent).toContain('Spiced cider');
+    expect(container.textContent).not.toContain('Spiced cider');
     expect(container.textContent).toContain('+1');
     expect(container.textContent).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
 

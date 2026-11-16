@@ -833,6 +833,7 @@ export async function upsertRsvp(
     status: string;
     plusOnes?: number;
     bringingNote?: string;
+    editKey?: string | null;
     guestToken?: string | null;
     postToWall?: boolean;
   },
@@ -957,6 +958,7 @@ export async function upsertRsvp(
       authorName: guestName,
       body: bringingNote,
       rsvpStatus: status,
+      editKey: payload.editKey,
       guestToken,
     });
   }

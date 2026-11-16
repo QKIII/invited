@@ -71,7 +71,6 @@ export function GuestList({
           <p className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>
             Your RSVP: {viewerRsvp.status === 'yes' ? 'Going' : "Can't make it"}
             {viewerRsvp.plusOnes > 0 ? ` (+${viewerRsvp.plusOnes})` : ''}
-            {viewerRsvp.bringingNote ? ` · ${viewerRsvp.bringingNote}` : ''}
           </p>
         ) : null}
       </section>
@@ -269,14 +268,6 @@ export function GuestList({
                           </span>
                         ) : null}
                       </div>
-                      {guest.bringingNote ? (
-                        <p
-                          className="text-xs leading-relaxed break-words mt-0.5"
-                          style={{ color: 'var(--theme-text-muted)' }}
-                        >
-                          {guest.bringingNote}
-                        </p>
-                      ) : null}
                     </div>
                   </div>
                 </li>
@@ -303,14 +294,6 @@ export function GuestList({
                   >
                     {guest.guestName}
                   </p>
-                  {guest.bringingNote ? (
-                    <p
-                      className="text-xs leading-relaxed break-words mt-0.5"
-                      style={{ color: 'var(--theme-text-muted)' }}
-                    >
-                      {guest.bringingNote}
-                    </p>
-                  ) : null}
                 </div>
               </li>
             ))}

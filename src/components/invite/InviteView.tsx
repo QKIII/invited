@@ -706,6 +706,7 @@ export function InviteView({
         {/* Comments Card */}
         <EventWall
           eventId={event.id}
+          hostName={event.hostName}
           comments={detail.comments}
           isHost={detail.isHost}
           editKey={editKey}

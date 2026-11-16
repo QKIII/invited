@@ -432,6 +432,32 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-accent, #34d399) 22%, transparent);
 }
 
+.theme-glass-input {
+  field-sizing: content;
+  background-color: color-mix(in srgb, var(--theme-accent, #34d399) 8%, var(--theme-card-surface));
+  border-color: color-mix(in srgb, var(--theme-accent, #34d399) 24%, var(--theme-border));
+  color: var(--theme-text-primary);
+  caret-color: var(--theme-accent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  transition:
+    background-color 0.35s ease,
+    border-color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.theme-glass-input::placeholder {
+  color: var(--theme-text-muted);
+  opacity: 0.78;
+}
+
+.theme-glass-input:focus,
+.theme-glass-input:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--theme-accent, #34d399) 68%, var(--theme-text-primary));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-accent, #34d399) 22%, transparent);
+}
+
 @supports (color: contrast-color(#000000)) {
   .invite-cta-btn {
     color: contrast-color(var(--theme-cta-mid, #0284c7));

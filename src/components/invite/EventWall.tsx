@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Send, Trash2 } from 'lucide-react';
 import {
   DEFAULT_WALL_REACTIONS,
@@ -19,6 +19,7 @@ import { GuestAvatar } from './GuestAvatar';
 
 interface EventWallProps {
   eventId: string;
+  hostName?: string;
   comments: CommentRecord[];
   isHost: boolean;
   editKey: string | null;
@@ -31,6 +32,7 @@ interface EventWallProps {
 
 export function EventWall({
   eventId,
+  hostName,
   comments,
   isHost,
   editKey,
@@ -40,7 +42,7 @@ export function EventWall({
   onCommentsChange,
   onRefreshDetail,
 }: EventWallProps) {
-  const headingId = useId();
+  const normalizedHost = hostName?.trim().toLowerCase() || '';
   const deviceProfile = useSyncExternalStore(
     subscribeDeviceProfile,
     getDeviceProfile,
@@ -244,53 +246,12 @@ export function EventWall({
   return (
     <section
       id="wall-section"
-      aria-labelledby={headingId}
+      aria-label="Comments"
       className="invite-glass-card rounded-3xl border p-5 sm:p-6 space-y-3.5"
       style={{
         borderColor: 'var(--theme-border)',
       }}
     >
-      <div
-        className="flex items-center justify-between gap-2 pb-2.5 border-b"
-        style={{ borderColor: 'var(--theme-hairline)' }}
-      >
-        <div className="flex items-center gap-2">
-          <h2
-            id={headingId}
-            className="text-base font-bold"
-            style={{
-              color: 'var(--theme-text-primary)',
-              fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
-            }}
-          >
-            Comments{comments.length > 0 ? ` (${comments.length})` : ''}
-          </h2>
-          {hasDraftMessage ? (
-            <span
-              data-testid="wall-draft-badge"
-              className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold"
-              style={{
-                backgroundColor: 'var(--theme-surface-bg)',
-                borderColor: 'var(--theme-accent)',
-                color: 'var(--theme-accent)',
-              }}
-            >
-              <span>Draft</span>
-            </span>
-          ) : null}
-        </div>
-        {hasDraftMessage ? (
-          <button
-            type="button"
-            onClick={() => setBody('')}
-            className="text-xs opacity-70 hover:opacity-100 underline underline-offset-2 cursor-pointer"
-            style={{ color: 'var(--theme-text-muted)' }}
-          >
-            Clear
-          </button>
-        ) : null}
-      </div>
-
       <form onSubmit={handleFormSubmit} className="space-y-2">
         {showNameInput && (composerFocused || body.trim() || editingAuthorName || errorMsg) ? (
           <input
@@ -301,12 +262,7 @@ export function EventWall({
             value={authorName}
             onChange={(e) => setCustomAuthorName(e.target.value)}
             placeholder="Your name"
-            className="w-full rounded-xl border px-3.5 py-2 text-base sm:text-sm outline-none focus:ring-2"
-            style={{
-              backgroundColor: 'var(--theme-surface-bg)',
-              borderColor: 'var(--theme-border)',
-              color: 'var(--theme-text-primary)',
-            }}
+            className="theme-glass-input w-full rounded-2xl border px-3.5 py-2.5 text-base sm:text-sm"
           />
         ) : null}
 
@@ -314,7 +270,7 @@ export function EventWall({
           {effectiveAuthorName ? (
             <GuestAvatar name={effectiveAuthorName} size="sm" className="shrink-0" />
           ) : null}
-          <div className="flex-1 min-w-0 flex items-end gap-2">
+          <div className="flex-1 min-w-0 flex items-center gap-2">
             <textarea
               id="wall-comment-body"
               rows={composerFocused || body.trim() ? 2 : 1}
@@ -325,12 +281,7 @@ export function EventWall({
               onKeyDown={handleBodyKeyDown}
               placeholder={composerFocused ? "Add a note or what you're bringing..." : 'Add a note...'}
               aria-label="Comment message"
-              className="w-full min-w-0 rounded-xl border px-3.5 py-2 text-base sm:text-sm outline-none focus:ring-2 resize-y"
-              style={{
-                backgroundColor: 'var(--theme-surface-bg)',
-                borderColor: 'var(--theme-border)',
-                color: 'var(--theme-text-primary)',
-              }}
+              className="theme-glass-input w-full min-w-0 min-h-[42px] max-h-[120px] rounded-2xl border px-3.5 py-2.5 text-base sm:text-sm leading-snug resize-none"
             />
             <button
               type="submit"
@@ -344,17 +295,49 @@ export function EventWall({
           </div>
         </div>
 
-        {!showNameInput && effectiveAuthorName && (composerFocused || body.trim()) ? (
-          <p className="text-xs pl-9" style={{ color: 'var(--theme-text-muted)' }}>
-            Posting as <span className="font-medium">{effectiveAuthorName}</span> ·{' '}
-            <button
-              type="button"
-              onClick={() => setEditingAuthorName(true)}
-              className="underline underline-offset-2 hover:opacity-100 cursor-pointer"
-            >
-              Change
-            </button>
-          </p>
+        {(!showNameInput && effectiveAuthorName && (composerFocused || hasDraftMessage)) ||
+        hasDraftMessage ? (
+          <div
+            className="flex items-center justify-between gap-2 text-xs pl-9"
+            style={{ color: 'var(--theme-text-muted)' }}
+          >
+            {!showNameInput && effectiveAuthorName && (composerFocused || hasDraftMessage) ? (
+              <p>
+                Posting as <span className="font-medium">{effectiveAuthorName}</span> ·{' '}
+                <button
+                  type="button"
+                  onClick={() => setEditingAuthorName(true)}
+                  className="underline underline-offset-2 hover:opacity-100 cursor-pointer"
+                >
+                  Change
+                </button>
+              </p>
+            ) : (
+              <span />
+            )}
+
+            {hasDraftMessage ? (
+              <div className="flex items-center gap-2 shrink-0">
+                <span
+                  data-testid="wall-draft-badge"
+                  className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold"
+                  style={{
+                    borderColor: 'var(--theme-accent)',
+                    color: 'var(--theme-accent)',
+                  }}
+                >
+                  Draft
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setBody('')}
+                  className="text-xs opacity-70 hover:opacity-100 underline underline-offset-2 cursor-pointer"
+                >
+                  Clear
+                </button>
+              </div>
+            ) : null}
+          </div>
         ) : null}
 
         {errorMsg ? (
@@ -370,6 +353,10 @@ export function EventWall({
             const existingReactions = Object.entries(comment.reactions ?? {}).filter(
               ([, count]) => count > 0,
             );
+            const showHostBadge =
+              comment.isHost ||
+              (Boolean(normalizedHost) &&
+                comment.authorName.trim().toLowerCase() === normalizedHost);
             return (
               <li
                 key={comment.id}
@@ -387,7 +374,7 @@ export function EventWall({
                         >
                           {comment.authorName}
                         </span>
-                        {comment.isHost ? (
+                        {showHostBadge ? (
                           <span
                             className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
                             style={{

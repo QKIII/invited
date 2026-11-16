@@ -52,6 +52,7 @@ export async function POST(req: Request, context: RouteContext) {
         ? normalizeValidEmail(body.emailUpdates.email)
         : null;
 
+    const editKey = extractEditKey(req);
     const guestToken =
       typeof body.guestToken === 'string' && body.guestToken.trim()
         ? body.guestToken.trim()
@@ -62,6 +63,7 @@ export async function POST(req: Request, context: RouteContext) {
       status: body.status ?? '',
       plusOnes: body.plusOnes,
       bringingNote: body.bringingNote,
+      editKey,
       guestToken,
       postToWall: body.postToWall,
     });
@@ -88,7 +90,6 @@ export async function POST(req: Request, context: RouteContext) {
       });
     }
 
-    const editKey = extractEditKey(req);
     const detail = await getEventDetail(id, {
       editKey,
       guestToken: result.guestToken,
