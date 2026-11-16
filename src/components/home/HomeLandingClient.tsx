@@ -547,7 +547,6 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
     <div
       style={{
         ...(themeVars as React.CSSProperties),
-        backgroundColor: 'var(--theme-page-bg)',
         color: 'var(--theme-text-primary)',
         fontFamily: 'var(--font-ui-body), var(--font-sans), sans-serif',
         ...(stage === 'prompt' && visualViewportHeight

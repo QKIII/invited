@@ -52,8 +52,11 @@ export function InviteIcon({
     case 'brand':
       return (
         <svg {...common}>
-          <rect x="3" y="5" width="18" height="14" rx="3.5" />
-          <path d="M4.5 7.5 12 13l7.5-5.5" />
+          {/* Invite card emerging from open envelope */}
+          <path d="M6.5 11.5V5.25A2.25 2.25 0 0 1 8.75 3h6.5a2.25 2.25 0 0 1 2.25 2.25v6.25" />
+          <path d="M9.5 6.75h5" />
+          <path d="M9.5 9.5h3.25" opacity="0.7" />
+          <path d="M3 10.75a1.5 1.5 0 0 1 1.5-1.5h2v2.25L12 15l5.5-3.5V9.25h2a1.5 1.5 0 0 1 1.5 1.5v7.5A2.75 2.75 0 0 1 18.25 21H5.75A2.75 2.75 0 0 1 3 18.25v-7.5Z" />
         </svg>
       );
 
