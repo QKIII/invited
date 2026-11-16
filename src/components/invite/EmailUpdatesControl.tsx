@@ -34,22 +34,26 @@ export const EMAIL_NOTIFY_LEVEL_META: Record<
   {
     value: 1 | 2 | 3;
     label: string;
+    shortLabel: string;
     description: string;
   }
 > = {
   changes: {
     value: 1,
-    label: 'Event updates',
+    label: 'Event changes',
+    shortLabel: 'Event changes',
     description: 'Only time, location, or event detail changes',
   },
   host_posts: {
     value: 2,
-    label: 'Host posts',
+    label: 'Event changes + Host posts',
+    shortLabel: '+ Host posts',
     description: 'Event detail changes + host announcements',
   },
   all_posts: {
     value: 3,
-    label: 'All posts',
+    label: 'Event changes + Host posts + All posts',
+    shortLabel: '+ All posts',
     description: 'Event changes, host posts & every wall comment',
   },
 };
@@ -190,7 +194,6 @@ export function NotifyLevelSlider({
   revealPulse = 0,
 }: NotifyLevelSliderProps) {
   const sliderId = useId();
-  const [dragValue, setDragValue] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [lingerVisible, setLingerVisible] = useState(false);
@@ -235,7 +238,6 @@ export function NotifyLevelSlider({
     if (!isDragging) return;
     const endDrag = () => {
       setIsDragging(false);
-      setDragValue(null);
       triggerLinger(750);
     };
     window.addEventListener('pointerup', endDrag);
@@ -251,8 +253,7 @@ export function NotifyLevelSlider({
   }, [isDragging, triggerLinger]);
 
   const stopVal = levelToValue(notifyLevel);
-  const currentVal = dragValue ?? stopVal;
-  const clampedRatio = Math.max(0, Math.min(1, (currentVal - 1) / 2));
+  const clampedRatio = Math.max(0, Math.min(1, (stopVal - 1) / 2));
   const activeMeta = EMAIL_NOTIFY_LEVEL_META[notifyLevel];
   const bubbleVisible = !disabled && (isDragging || isFocused || lingerVisible);
 
@@ -263,13 +264,18 @@ export function NotifyLevelSlider({
     setBellPulse((p) => p + 1);
   }
 
+  function selectLevel(nextLevel: ActiveEmailNotifyLevel) {
+    if (disabled) return;
+    setBellPulse((p) => p + 1);
+    triggerLinger(750);
+    if (nextLevel !== notifyLevel) {
+      onNotifyLevelChange(nextLevel);
+    }
+  }
+
   function handleSliderChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const raw = Number(e.target.value);
-    const nextLevel = valueToLevel(raw);
-    if (isDragging) {
-      setDragValue(raw);
-    } else {
-      setDragValue(null);
+    const nextLevel = valueToLevel(Number(e.target.value));
+    if (!isDragging) {
       triggerLinger(750);
     }
     if (nextLevel !== notifyLevel) {
@@ -280,50 +286,22 @@ export function NotifyLevelSlider({
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (disabled) return;
-    let nextStop: number | null = null;
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
-      nextStop = Math.max(1, stopVal - 1);
-    } else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
-      nextStop = Math.min(3, stopVal + 1);
-    } else if (e.key === 'Home') {
-      nextStop = 1;
-    } else if (e.key === 'End') {
-      nextStop = 3;
-    }
-
-    if (nextStop !== null) {
-      e.preventDefault();
-      setDragValue(null);
-      const nextLevel = valueToLevel(nextStop);
-      setBellPulse((p) => p + 1);
-      triggerLinger(750);
-      if (nextLevel !== notifyLevel) {
-        onNotifyLevelChange(nextLevel);
-      }
-    }
-  }
-
   return (
-    <div className="flex items-center gap-3 pt-1">
-      <label htmlFor={sliderId} className="sr-only">
-        Email notification frequency
-      </label>
-
-      <span
-        className="text-xs font-medium shrink-0 select-none"
+    <div className="space-y-1 pt-1">
+      <label
+        htmlFor={sliderId}
+        className="block text-xs font-medium mb-5"
         style={{ color: 'var(--theme-text-muted)' }}
       >
-        Less
-      </span>
+        Adjust what you get notified about
+      </label>
 
-      <div className="relative flex-1 flex items-center">
+      <div className="relative flex items-center">
         <div
           data-testid="slider-floating-bell"
           data-visible={bubbleVisible ? 'true' : 'false'}
           aria-hidden="true"
-          className="slider-bell-callout z-10 absolute bottom-full mb-1.5 rounded-full border px-2 py-1 shadow-lg backdrop-blur-md"
+          className="slider-bell-callout z-10 absolute bottom-[32px] rounded-full border px-2 py-1 shadow-lg backdrop-blur-md"
           style={{
             left: `calc(10px + ${clampedRatio} * (100% - 20px))`,
             backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
@@ -345,33 +323,58 @@ export function NotifyLevelSlider({
           data-testid={sliderTestId}
           min={1}
           max={3}
-          step={0.01}
+          step={1}
           disabled={disabled}
-          value={currentVal}
+          value={stopVal}
           aria-valuetext={`${activeMeta.label}: ${activeMeta.description}`}
           onPointerDown={handlePointerDown}
           onTouchStart={handlePointerDown}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
-          onKeyDown={handleKeyDown}
           onChange={handleSliderChange}
           style={
             {
               '--attr-min': 1,
               '--attr-max': 3,
-              '--control-value': currentVal,
+              '--control-value': stopVal,
             } as React.CSSProperties
           }
           className="invite-notify-slider w-full"
         />
       </div>
 
-      <span
-        className="text-xs font-medium shrink-0 select-none"
-        style={{ color: 'var(--theme-text-muted)' }}
-      >
-        More
-      </span>
+      <div className="grid grid-cols-3 gap-1">
+        {ACTIVE_EMAIL_NOTIFY_LEVELS.map((levelKey, idx) => {
+          const meta = EMAIL_NOTIFY_LEVEL_META[levelKey];
+          const isIncluded = stopVal >= meta.value;
+          const alignClass =
+            idx === 0
+              ? 'text-left justify-start'
+              : idx === 1
+                ? 'text-center justify-center'
+                : 'text-right justify-end';
+          return (
+            <button
+              key={levelKey}
+              type="button"
+              disabled={disabled}
+              data-testid={`notify-step-${levelKey}`}
+              aria-pressed={notifyLevel === levelKey}
+              onClick={() => selectLevel(levelKey)}
+              className={`min-h-[28px] inline-flex items-center text-[11px] sm:text-xs transition-colors cursor-pointer disabled:opacity-50 ${alignClass} ${
+                isIncluded ? 'font-semibold' : 'font-normal opacity-75 hover:opacity-100'
+              }`}
+              style={{
+                color: isIncluded
+                  ? 'var(--theme-text-primary)'
+                  : 'var(--theme-text-muted)',
+              }}
+            >
+              {meta.shortLabel}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

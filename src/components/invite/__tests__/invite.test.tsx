@@ -401,7 +401,7 @@ describe('RsvpPanel', () => {
     unmount();
   });
 
-  it('reveals email input + minimal Less/More slider with floating animated bell on drag/focus/step and submits emailUpdates', async () => {
+  it('reveals email input + 3-step notification slider with floating animated bell and submits emailUpdates', async () => {
     const event = createSampleEvent();
     const onRsvpSuccess = vi.fn();
 
@@ -457,43 +457,42 @@ describe('RsvpPanel', () => {
 
     expect(emailInput).not.toBeNull();
     expect(slider).not.toBeNull();
+    expect(slider.step).toBe('1');
     expect(slider.value).toBe('2');
     expect(floatingBell).not.toBeNull();
-    // No bottom tap buttons or top tags
-    expect(container.querySelector('[data-testid^="notify-stop-"]')).toBeNull();
-    expect(container.textContent).toContain('Less');
-    expect(container.textContent).toContain('More');
+    expect(container.textContent).toContain('Adjust what you get notified about');
+    expect(container.textContent).toContain('Event changes');
+    expect(container.textContent).toContain('+ Host posts');
+    expect(container.textContent).toContain('+ All posts');
     expect(container.querySelector('.bell-swing-host')).not.toBeNull();
     expect(floatingBell.style.left).toContain('0.5');
 
-    // Step left via keyboard ArrowLeft -> 'changes' (stop 1)
+    // Click step 1 ('Event changes') -> stop 1
     await act(async () => {
-      slider.focus();
-      slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+      container.querySelector<HTMLButtonElement>('[data-testid="notify-step-changes"]')!.click();
     });
     expect(slider.value).toBe('1');
     expect(floatingBell.getAttribute('data-visible')).toBe('true');
     expect(floatingBell.style.left).toContain('0');
     expect(container.querySelector('.bell-swing-changes')).not.toBeNull();
 
-    // Drag across to 'host_posts' (stop 2) then 'all_posts' (stop 3)
+    // Drag/step across to 'host_posts' (2) then 'all_posts' (3)
     const sliderSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
     await act(async () => {
       slider.dispatchEvent(new Event('pointerdown', { bubbles: true }));
-      sliderSetter.call(slider, '2.05');
+      sliderSetter.call(slider, '2');
       slider.dispatchEvent(new Event('input', { bubbles: true }));
     });
     expect(container.querySelector('.bell-swing-host')).not.toBeNull();
 
     await act(async () => {
-      sliderSetter.call(slider, '2.85');
+      sliderSetter.call(slider, '3');
       slider.dispatchEvent(new Event('input', { bubbles: true }));
     });
     expect(container.querySelector('.bell-swing-all')).not.toBeNull();
     expect(container.querySelector('.bell-clapper-all')).not.toBeNull();
     expect(container.querySelectorAll('.bell-waves-pop path')).toHaveLength(4);
 
-    // Release snaps cleanly to stop 3 ('all_posts')
     await act(async () => {
       window.dispatchEvent(new Event('pointerup'));
     });
