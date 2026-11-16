@@ -1,18 +1,8 @@
 'use client';
 
 import { useState, useSyncExternalStore } from 'react';
-import {
-  Bell,
-  Check,
-  Copy,
-  Download,
-  KeyRound,
-  MessageSquare,
-  Trash2,
-  UserCheck,
-  UserX,
-  Users,
-} from 'lucide-react';
+import { Bell, Check, Copy, Download, KeyRound, MessageSquare, Trash2, UserCheck, UserX, Users } from 'lucide-react';
+import { GuestAvatar } from '@/components/invite/GuestAvatar';
 import { downloadLinksBackupTxt } from '@/components/studio/PublishSuccessDialog';
 import type { EventDetailResponse } from '@/types/invite';
 
@@ -314,6 +304,7 @@ export function HostManagementPanel({
               >
                 <div className="min-w-0 space-y-0.5">
                   <div className="flex flex-wrap items-center gap-2">
+                    <GuestAvatar name={rsvp.guestName} size="xs" />
                     <span className="font-semibold text-sm">{rsvp.guestName}</span>
                     {rsvp.plusOnes > 0 ? (
                       <span
@@ -373,7 +364,10 @@ export function HostManagementPanel({
                   style={{ borderColor: 'var(--theme-hairline)' }}
                 >
                   <div className="min-w-0">
-                    <p className="text-sm font-medium">{rsvp.guestName}</p>
+                    <div className="flex items-center gap-2">
+                      <GuestAvatar name={rsvp.guestName} size="xs" />
+                      <p className="text-sm font-medium">{rsvp.guestName}</p>
+                    </div>
                     {rsvp.bringingNote ? (
                       <p className="text-xs mt-0.5" style={{ color: 'var(--theme-text-muted)' }}>
                         {rsvp.bringingNote}
@@ -448,6 +442,7 @@ export function HostManagementPanel({
               >
                 <div className="min-w-0 space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
+                    <GuestAvatar name={comment.authorName} size="xs" />
                     <span className="text-sm font-semibold">{comment.authorName}</span>
                     {comment.isHost ? (
                       <span

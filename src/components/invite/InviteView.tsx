@@ -358,12 +358,13 @@ export function InviteView({
         fixedViewport
         effectId={event.style.effectId}
         accentColor={themeVars['--theme-accent']}
+        secondaryColor={themeVars['--theme-cta-end']}
         colorMode={backdropMode}
         className="z-0"
       />
 
-      {/* Compact PWA-friendly top bar */}
-      <header className="relative z-10 app-top-bar h-13 max-w-[580px] mx-auto flex items-center justify-between gap-2">
+      {/* Compact single-row top bar */}
+      <header className="relative z-10 app-top-bar h-12 max-w-[580px] mx-auto flex items-center justify-between gap-2">
         <Link
           href="/"
           className="inline-flex items-center gap-1.5 text-sm font-semibold tracking-tight hover:opacity-80 transition shrink-0"
@@ -467,10 +468,9 @@ export function InviteView({
                 >
                   <div
                     aria-hidden="true"
-                    className="h-9 w-9 rounded-xl border flex items-center justify-center shrink-0"
+                    className="h-9 w-9 rounded-full flex items-center justify-center shrink-0"
                     style={{
                       backgroundColor: 'var(--theme-surface-bg)',
-                      borderColor: 'var(--theme-hairline)',
                       color: 'var(--theme-text-muted)',
                     }}
                   >
@@ -563,10 +563,9 @@ export function InviteView({
                     >
                       <div
                         aria-hidden="true"
-                        className="h-9 w-9 rounded-xl border flex items-center justify-center shrink-0"
+                        className="h-9 w-9 rounded-full flex items-center justify-center shrink-0"
                         style={{
                           backgroundColor: 'var(--theme-surface-bg)',
-                          borderColor: 'var(--theme-hairline)',
                           color: 'var(--theme-text-muted)',
                         }}
                       >
@@ -593,10 +592,9 @@ export function InviteView({
                     <div className="flex items-center gap-3">
                       <div
                         aria-hidden="true"
-                        className="h-9 w-9 rounded-xl border flex items-center justify-center shrink-0"
+                        className="h-9 w-9 rounded-full flex items-center justify-center shrink-0"
                         style={{
                           backgroundColor: 'var(--theme-surface-bg)',
-                          borderColor: 'var(--theme-hairline)',
                           color: 'var(--theme-text-muted)',
                         }}
                       >
@@ -655,10 +653,9 @@ export function InviteView({
                 >
                   <div
                     aria-hidden="true"
-                    className="h-9 w-9 rounded-xl border flex items-center justify-center shrink-0"
+                    className="h-9 w-9 rounded-full flex items-center justify-center shrink-0"
                     style={{
                       backgroundColor: 'var(--theme-surface-bg)',
-                      borderColor: 'var(--theme-hairline)',
                       color: 'var(--theme-text-muted)',
                     }}
                   >

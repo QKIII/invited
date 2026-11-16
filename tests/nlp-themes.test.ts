@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -90,10 +92,24 @@ describe('curated themes, fonts, effects, and covers', () => {
 
       const onAccent = pickAccessibleForeground(preset.accent);
       expect(contrastRatio(onAccent, preset.accent)).toBeGreaterThanOrEqual(4.5);
+
+      const vars = resolveThemeCssVars({
+        themeId: preset.id,
+        fontId: preset.defaultFontId,
+        effectId: preset.defaultEffectId,
+        coverPresetId: preset.defaultCoverPresetId,
+        coverLayout: 'banner',
+      });
+      for (let slot = 1; slot <= 6; slot += 1) {
+        const bg = vars[`--theme-avatar-${slot}-bg`];
+        const fg = vars[`--theme-avatar-${slot}-fg`];
+        expect(bg).toMatch(/^#[0-9a-f]{6}$/i);
+        expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(4.5);
+      }
     }
   });
 
-  it('covers all 6 font pairings, 14 ambient effects, and 36 stylized cover presets (Illustrated, Painted, Graphic)', () => {
+  it('covers all 6 font pairings, 16 ambient effects, and 40 curated covers across 5 mediums', () => {
     const expectedFonts: FontPairingId[] = [
       'editorial-serif',
       'modern-sans',
@@ -105,30 +121,42 @@ describe('curated themes, fonts, effects, and covers', () => {
     expect(FONT_PAIRINGS.map((f) => f.id)).toEqual(expectedFonts);
 
     const expectedEffects: AmbientEffectId[] = [
+      'prism-gradient',
       'aurora',
       'snowfall',
+      'rain-glass',
       'christmas-lights',
       'starlight-radiance',
-      'halloween-bats',
-      'autumn-leaves',
+      'warm-bokeh',
+      'lullaby-stars',
       'fireworks',
       'confetti',
       'botanical-petals',
-      'lullaby-stars',
+      'autumn-leaves',
       'floating-hearts',
       'champagne-sparkle',
-      'warm-bokeh',
+      'halloween-bats',
       'none',
     ];
     expect(EFFECT_OPTIONS.map((e) => e.id)).toEqual(expectedEffects);
 
-    expect(COVER_PRESETS.length).toBeGreaterThanOrEqual(36);
-    expect(COVER_PRESETS.filter((c) => c.styleGroup === 'illustrated')).toHaveLength(12);
-    expect(COVER_PRESETS.filter((c) => c.styleGroup === 'painted')).toHaveLength(12);
-    expect(COVER_PRESETS.filter((c) => c.styleGroup === 'graphic')).toHaveLength(12);
+    expect(COVER_PRESETS).toHaveLength(40);
+    expect(COVER_PRESETS.filter((c) => c.styleGroup === 'hand-drawn')).toHaveLength(8);
+    expect(COVER_PRESETS.filter((c) => c.styleGroup === 'vector')).toHaveLength(8);
+    expect(COVER_PRESETS.filter((c) => c.styleGroup === 'pencil')).toHaveLength(8);
+    expect(COVER_PRESETS.filter((c) => c.styleGroup === 'oil-paint')).toHaveLength(8);
+    expect(COVER_PRESETS.filter((c) => c.styleGroup === 'pattern')).toHaveLength(8);
+
     const coverIds = new Set(COVER_PRESETS.map((c) => c.id));
     for (const preset of THEME_PRESETS) {
       expect(coverIds.has(preset.defaultCoverPresetId)).toBe(true);
+    }
+
+    for (const cover of COVER_PRESETS) {
+      if (cover.imageUrl) {
+        const diskPath = path.join(process.cwd(), 'public', cover.imageUrl);
+        expect(fs.existsSync(diskPath)).toBe(true);
+      }
     }
   });
 
@@ -458,9 +486,14 @@ describe('AmbientBackdrop and CoverArt components', () => {
       arc: vi.fn(),
       ellipse: vi.fn(),
       fill: vi.fn(),
+      stroke: vi.fn(),
       fillRect: vi.fn(),
       createRadialGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
+      createLinearGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
       fillStyle: '',
+      strokeStyle: '',
+      lineWidth: 1,
+      lineCap: 'round',
       globalAlpha: 1,
     } as unknown as CanvasRenderingContext2D;
 
@@ -563,6 +596,17 @@ describe('AmbientBackdrop and CoverArt components', () => {
       }
       expect(markup).toContain(`data-cover-preset="${preset.id}"`);
     }
+
+    for (const legacyId of ['snowy-pines', 'aurora-ridge', 'painted-citrus-table', 'gallery-monolith']) {
+      const legacyMarkup = renderToStaticMarkup(
+        React.createElement(CoverArt, {
+          coverPresetId: legacyId,
+          layout: 'banner',
+          title: 'Legacy Invite',
+        }),
+      );
+      expect(legacyMarkup.includes('<img') || legacyMarkup.includes('<svg')).toBe(true);
+    }
   });
 
   it('ignores minor mobile browser chrome height jitter in AmbientBackdrop without wiping the canvas', () => {
@@ -602,9 +646,14 @@ describe('AmbientBackdrop and CoverArt components', () => {
       arc: vi.fn(),
       ellipse: vi.fn(),
       fill: vi.fn(),
+      stroke: vi.fn(),
       fillRect: vi.fn(),
       createRadialGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
+      createLinearGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
       fillStyle: '',
+      strokeStyle: '',
+      lineWidth: 1,
+      lineCap: 'round',
       globalAlpha: 1,
     } as unknown as CanvasRenderingContext2D;
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(fakeCtx);

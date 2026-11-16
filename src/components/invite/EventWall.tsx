@@ -51,6 +51,7 @@ export function EventWall({
   const [customAuthorName, setCustomAuthorName] = useState<string | null>(null);
   const authorName = customAuthorName ?? knownDefaultName;
   const [editingAuthorName, setEditingAuthorName] = useState<boolean>(false);
+  const [composerFocused, setComposerFocused] = useState<boolean>(false);
   const [body, setBody] = useState<string>('');
   const [posting, setPosting] = useState<boolean>(false);
   const [reactingId, setReactingId] = useState<string | null>(null);
@@ -237,7 +238,7 @@ export function EventWall({
       </div>
 
       <form onSubmit={handleFormSubmit} className="space-y-2">
-        {showNameInput ? (
+        {showNameInput && (composerFocused || body.trim() || editingAuthorName || errorMsg) ? (
           <input
             id="wall-author-name"
             type="text"
@@ -246,7 +247,7 @@ export function EventWall({
             value={authorName}
             onChange={(e) => setCustomAuthorName(e.target.value)}
             placeholder="Your name"
-            className="w-full rounded-xl border px-3.5 py-2 text-sm outline-none focus:ring-2"
+            className="w-full rounded-xl border px-3.5 py-2 text-base sm:text-sm outline-none focus:ring-2"
             style={{
               backgroundColor: 'var(--theme-surface-bg)',
               borderColor: 'var(--theme-border)',
@@ -255,21 +256,22 @@ export function EventWall({
           />
         ) : null}
 
-        <div className="flex items-start gap-2.5">
+        <div className="flex items-center gap-2">
           {effectiveAuthorName ? (
-            <GuestAvatar name={effectiveAuthorName} size="sm" className="mt-1.5" />
+            <GuestAvatar name={effectiveAuthorName} size="sm" className="shrink-0" />
           ) : null}
           <div className="flex-1 min-w-0 flex items-end gap-2">
             <textarea
               id="wall-comment-body"
-              rows={2}
+              rows={composerFocused || body.trim() ? 2 : 1}
               maxLength={600}
               value={body}
+              onFocus={() => setComposerFocused(true)}
               onChange={(e) => setBody(e.target.value)}
               onKeyDown={handleBodyKeyDown}
-              placeholder="Add a comment or what you're bringing..."
+              placeholder={composerFocused ? "Add a note or what you're bringing..." : 'Add a note...'}
               aria-label="Comment message"
-              className="w-full min-w-0 rounded-xl border px-3.5 py-2 text-sm outline-none focus:ring-2 resize-y"
+              className="w-full min-w-0 rounded-xl border px-3.5 py-2 text-base sm:text-sm outline-none focus:ring-2 resize-y"
               style={{
                 backgroundColor: 'var(--theme-surface-bg)',
                 borderColor: 'var(--theme-border)',
@@ -288,7 +290,7 @@ export function EventWall({
           </div>
         </div>
 
-        {!showNameInput && effectiveAuthorName ? (
+        {!showNameInput && effectiveAuthorName && (composerFocused || body.trim()) ? (
           <p className="text-xs pl-9" style={{ color: 'var(--theme-text-muted)' }}>
             Posting as <span className="font-medium">{effectiveAuthorName}</span> ·{' '}
             <button

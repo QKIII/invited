@@ -56,7 +56,9 @@ const VALID_FONT_IDS = new Set<FontPairingId>([
 
 const VALID_EFFECT_IDS = new Set<AmbientEffectId>([
   'aurora',
+  'prism-gradient',
   'snowfall',
+  'rain-glass',
   'christmas-lights',
   'starlight-radiance',
   'halloween-bats',

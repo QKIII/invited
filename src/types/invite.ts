@@ -2,7 +2,9 @@ export type RsvpStatus = 'yes' | 'no'; // STRICTLY binary — never 'maybe'
 
 export type AmbientEffectId =
   | 'aurora'
+  | 'prism-gradient'
   | 'snowfall'
+  | 'rain-glass'
   | 'christmas-lights'
   | 'starlight-radiance'
   | 'halloween-bats'

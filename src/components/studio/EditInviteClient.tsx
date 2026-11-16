@@ -238,7 +238,7 @@ export function EditInviteClient({
                 setAuthError(null);
               }}
               placeholder="Paste your edit link or key"
-              className="w-full rounded-xl border border-white/15 bg-slate-950/60 px-3.5 py-2.5 text-sm text-white placeholder:text-slate-400 outline-none focus:ring-2"
+              className="w-full rounded-xl border border-white/15 bg-slate-950/60 px-3.5 py-2.5 text-base sm:text-sm text-white placeholder:text-slate-400 outline-none focus:ring-2"
             />
 
             {authError ? (
@@ -285,6 +285,7 @@ export function EditInviteClient({
         fixedViewport
         effectId={effectiveStyle.effectId}
         accentColor={themeVars['--theme-accent']}
+        secondaryColor={themeVars['--theme-cta-end']}
         colorMode={backdropMode}
         className="z-0"
       />

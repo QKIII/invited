@@ -119,6 +119,78 @@
   }
 }
 
+.prismOrbA {
+  animation: prismDriftA 18s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+
+.prismOrbB {
+  animation: prismDriftB 24s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+
+.prismOrbC {
+  animation: prismDriftC 28s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+
+.prismOrbD {
+  animation: prismDriftD 21s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+
+@keyframes prismDriftA {
+  0% {
+    transform: translate3d(-10%, -8%, 0) scale(1);
+    opacity: 0.68;
+  }
+  50% {
+    transform: translate3d(12%, 4%, 0) scale(1.14);
+    opacity: 0.88;
+  }
+  100% {
+    transform: translate3d(-4%, 10%, 0) scale(0.98);
+    opacity: 0.72;
+  }
+}
+
+@keyframes prismDriftB {
+  0% {
+    transform: translate3d(10%, -4%, 0) scale(1.06);
+    opacity: 0.56;
+  }
+  50% {
+    transform: translate3d(-12%, 8%, 0) scale(0.96);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate3d(6%, -10%, 0) scale(1.12);
+    opacity: 0.64;
+  }
+}
+
+@keyframes prismDriftC {
+  0% {
+    transform: translate3d(-6%, 8%, 0) scale(0.95);
+    opacity: 0.45;
+  }
+  100% {
+    transform: translate3d(10%, -8%, 0) scale(1.18);
+    opacity: 0.72;
+  }
+}
+
+@keyframes prismDriftD {
+  0% {
+    transform: translate3d(8%, 6%, 0) scale(1.05);
+    opacity: 0.42;
+  }
+  100% {
+    transform: translate3d(-10%, -6%, 0) scale(0.94);
+    opacity: 0.68;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .auroraRibbonA,
   .auroraRibbonB,

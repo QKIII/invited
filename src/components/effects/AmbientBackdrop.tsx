@@ -15,7 +15,17 @@ interface Particle {
   rotation: number;
   vRot: number;
   color: string;
-  shape: 'circle' | 'star' | 'leaf' | 'petal' | 'heart' | 'confetti' | 'bat' | 'bokeh';
+  shape:
+    | 'circle'
+    | 'star'
+    | 'crystal'
+    | 'leaf'
+    | 'petal'
+    | 'heart'
+    | 'confetti'
+    | 'bat'
+    | 'bokeh'
+    | 'raindrop';
 }
 
 interface FireworkSpark {
@@ -29,6 +39,16 @@ interface FireworkSpark {
   size: number;
 }
 
+interface ShootingStar {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  color: string;
+}
+
 const POSITION_RE = /\b(?:fixed|absolute|relative|sticky|static)\b/;
 
 function getPalette(effectId: AmbientEffectId, accentColor?: string, isLight?: boolean): string[] {
@@ -36,6 +56,14 @@ function getPalette(effectId: AmbientEffectId, accentColor?: string, isLight?: b
   switch (effectId) {
     case 'snowfall':
       return isLight ? ['#93c5fd', '#bae6fd', '#60a5fa'] : ['#ffffff', '#e0f2fe', '#bae6fd'];
+    case 'rain-glass':
+      return isLight
+        ? ['#64748b', '#94a3b8', '#38bdf8', accent]
+        : ['#bae6fd', '#7dd3fc', '#94a3b8', accent];
+    case 'prism-gradient':
+      return isLight
+        ? ['#ffffff', accent, '#38bdf8', '#f472b6']
+        : ['#ffffff', '#e0f2fe', accent, '#fde68a'];
     case 'christmas-lights':
       return ['#fde68a', '#fb7185', '#6ee7b7', '#ffffff'];
     case 'starlight-radiance':
@@ -74,7 +102,7 @@ function drawFourPointStar(ctx: CanvasRenderingContext2D, r: number) {
   ctx.beginPath();
   for (let i = 0; i < 8; i++) {
     const angle = (i * Math.PI) / 4;
-    const rad = i % 2 === 0 ? r : r * 0.34;
+    const rad = i % 2 === 0 ? r : r * 0.32;
     const px = Math.cos(angle) * rad;
     const py = Math.sin(angle) * rad;
     if (i === 0) ctx.moveTo(px, py);
@@ -82,6 +110,28 @@ function drawFourPointStar(ctx: CanvasRenderingContext2D, r: number) {
   }
   ctx.closePath();
   ctx.fill();
+}
+
+function drawSnowflakeCrystal(ctx: CanvasRenderingContext2D, r: number, color: string) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(0.9, r * 0.18);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const angle = (i * Math.PI) / 3;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    ctx.moveTo(0, 0);
+    ctx.lineTo(cos * r, sin * r);
+    const bx = cos * r * 0.62;
+    const by = sin * r * 0.62;
+    const twig = r * 0.28;
+    ctx.moveTo(bx, by);
+    ctx.lineTo(bx + Math.cos(angle - 0.6) * twig, by + Math.sin(angle - 0.6) * twig);
+    ctx.moveTo(bx, by);
+    ctx.lineTo(bx + Math.cos(angle + 0.6) * twig, by + Math.sin(angle + 0.6) * twig);
+  }
+  ctx.stroke();
 }
 
 function drawHeart(ctx: CanvasRenderingContext2D, r: number) {
@@ -127,25 +177,57 @@ function createParticles(
   const pick = () => palette[Math.floor(Math.random() * palette.length)];
 
   const countByEffect: Partial<Record<AmbientEffectId, number>> = {
-    snowfall: 54,
-    'christmas-lights': 28,
-    'starlight-radiance': 36,
+    snowfall: 68,
+    'rain-glass': 64,
+    'prism-gradient': 24,
+    'christmas-lights': 42,
+    'starlight-radiance': 46,
     'halloween-bats': 16,
-    'autumn-leaves': 26,
-    confetti: 44,
-    'botanical-petals': 32,
-    'lullaby-stars': 36,
-    'floating-hearts': 26,
-    'champagne-sparkle': 48,
-    'warm-bokeh': 18,
-    aurora: 28,
+    'autumn-leaves': 28,
+    confetti: 48,
+    'botanical-petals': 36,
+    'lullaby-stars': 44,
+    'floating-hearts': 28,
+    'champagne-sparkle': 54,
+    'warm-bokeh': 28,
+    aurora: 34,
   };
 
   const count = countByEffect[effectId] ?? 0;
   const particles: Particle[] = [];
 
   for (let i = 0; i < count; i++) {
-    if (effectId === 'halloween-bats') {
+    if (effectId === 'rain-glass') {
+      const isDropletOrb = i % 6 === 0;
+      particles.push({
+        x: rand(0, width),
+        y: rand(0, height),
+        vx: isDropletOrb ? rand(-0.08, 0.08) : rand(-0.35, -0.15),
+        vy: isDropletOrb ? rand(0.15, 0.45) : rand(3.6, 6.4),
+        size: isDropletOrb ? rand(10, 26) : rand(10, 20),
+        alpha: isDropletOrb ? rand(0.08, 0.18) : rand(0.16, 0.38),
+        phase: rand(0, Math.PI * 2),
+        rotation: 0.14,
+        vRot: 0,
+        color: pick(),
+        shape: isDropletOrb ? 'bokeh' : 'raindrop',
+      });
+    } else if (effectId === 'prism-gradient') {
+      const isSoftOrb = i % 3 === 0;
+      particles.push({
+        x: rand(0, width),
+        y: rand(0, height),
+        vx: rand(-0.14, 0.14),
+        vy: rand(-0.22, -0.05),
+        size: isSoftOrb ? rand(18, 42) : rand(1.8, 3.8),
+        alpha: isSoftOrb ? rand(0.06, 0.14) : rand(0.28, 0.62),
+        phase: rand(0, Math.PI * 2),
+        rotation: 0,
+        vRot: 0,
+        color: pick(),
+        shape: isSoftOrb ? 'bokeh' : 'star',
+      });
+    } else if (effectId === 'halloween-bats') {
       particles.push({
         x: rand(0, width),
         y: rand(height * 0.06, height * 0.55),
@@ -160,18 +242,19 @@ function createParticles(
         shape: 'bat',
       });
     } else if (effectId === 'warm-bokeh') {
+      const isFineMote = i % 3 === 0;
       particles.push({
         x: rand(0, width),
         y: rand(0, height),
         vx: rand(-0.18, 0.18),
-        vy: rand(-0.22, -0.05),
-        size: rand(18, 46),
-        alpha: rand(0.08, 0.22),
+        vy: isFineMote ? rand(-0.42, -0.15) : rand(-0.2, -0.04),
+        size: isFineMote ? rand(1.8, 3.6) : rand(20, 62),
+        alpha: isFineMote ? rand(0.35, 0.72) : rand(0.08, 0.22),
         phase: rand(0, Math.PI * 2),
         rotation: 0,
         vRot: 0,
         color: pick(),
-        shape: 'bokeh',
+        shape: isFineMote ? 'star' : 'bokeh',
       });
     } else if (
       effectId === 'floating-hearts' ||
@@ -182,14 +265,14 @@ function createParticles(
         x: rand(0, width),
         y: rand(0, height),
         vx: rand(-0.22, 0.22),
-        vy: effectId === 'champagne-sparkle' ? rand(-1.0, -0.35) : rand(-0.55, -0.18),
+        vy: effectId === 'champagne-sparkle' ? rand(-1.05, -0.35) : rand(-0.5, -0.16),
         size:
           effectId === 'floating-hearts'
             ? rand(5, 10)
             : effectId === 'starlight-radiance'
-              ? rand(2.5, 6)
+              ? rand(2.5, 6.2)
               : rand(1.8, 4.5),
-        alpha: rand(0.3, 0.78),
+        alpha: rand(0.32, 0.82),
         phase: rand(0, Math.PI * 2),
         rotation: rand(-0.3, 0.3),
         vRot: rand(-0.01, 0.01),
@@ -201,18 +284,33 @@ function createParticles(
               ? i % 3 === 0
                 ? 'star'
                 : 'circle'
-              : i % 5 === 0
+              : i % 4 === 0
                 ? 'star'
                 : 'circle',
       });
-    } else if (effectId === 'lullaby-stars' || effectId === 'aurora' || effectId === 'christmas-lights') {
+    } else if (effectId === 'christmas-lights') {
+      const isBokehGlow = i % 4 === 0;
+      particles.push({
+        x: rand(0, width),
+        y: rand(0, height),
+        vx: rand(-0.1, 0.1),
+        vy: rand(-0.16, 0.08),
+        size: isBokehGlow ? rand(16, 36) : rand(2, 4.5),
+        alpha: isBokehGlow ? rand(0.08, 0.18) : rand(0.28, 0.78),
+        phase: rand(0, Math.PI * 2),
+        rotation: 0,
+        vRot: 0,
+        color: pick(),
+        shape: isBokehGlow ? 'bokeh' : i % 2 === 0 ? 'star' : 'circle',
+      });
+    } else if (effectId === 'lullaby-stars' || effectId === 'aurora') {
       particles.push({
         x: rand(0, width),
         y: rand(0, height),
         vx: rand(-0.06, 0.06),
         vy: rand(-0.08, 0.04),
-        size: rand(2, 5.2),
-        alpha: rand(0.25, 0.8),
+        size: rand(2, 5.4),
+        alpha: rand(0.28, 0.82),
         phase: rand(0, Math.PI * 2),
         rotation: 0,
         vRot: 0,
@@ -248,20 +346,37 @@ function createParticles(
         shape: 'confetti',
       });
     } else {
-      // snowfall: 30% dreamy out-of-focus bokeh snow orbs + 70% crisp drifting flakes
-      const isBokehOrb = i % 3 === 0;
+      // snowfall: bokeh snow orbs + delicate crystalline snowflakes + soft drifting powder
+      const mod = i % 7;
+      const shape: Particle['shape'] =
+        mod === 0 ? 'bokeh' : mod === 3 ? 'crystal' : 'circle';
       particles.push({
         x: rand(0, width),
         y: rand(0, height),
         vx: rand(-0.18, 0.22),
-        vy: isBokehOrb ? rand(0.18, 0.55) : rand(0.35, 1.1),
-        size: isBokehOrb ? rand(10, 26) : rand(1.6, 4.2),
-        alpha: isBokehOrb ? rand(0.08, 0.19) : rand(0.28, 0.68),
+        vy:
+          shape === 'bokeh'
+            ? rand(0.18, 0.48)
+            : shape === 'crystal'
+              ? rand(0.38, 0.85)
+              : rand(0.42, 1.15),
+        size:
+          shape === 'bokeh'
+            ? rand(12, 28)
+            : shape === 'crystal'
+              ? rand(4.5, 7.5)
+              : rand(1.5, 4.0),
+        alpha:
+          shape === 'bokeh'
+            ? rand(0.08, 0.2)
+            : shape === 'crystal'
+              ? rand(0.42, 0.78)
+              : rand(0.3, 0.72),
         phase: rand(0, Math.PI * 2),
-        rotation: 0,
-        vRot: 0,
+        rotation: rand(0, Math.PI),
+        vRot: shape === 'crystal' ? rand(-0.012, 0.012) : 0,
         color: pick(),
-        shape: isBokehOrb ? 'bokeh' : 'circle',
+        shape,
       });
     }
   }
@@ -280,12 +395,14 @@ const STRING_LIGHT_BULBS = Array.from({ length: 14 }, (_, idx) => {
 export function AmbientBackdrop({
   effectId,
   accentColor,
+  secondaryColor,
   colorMode = 'dark',
   fixedViewport = false,
   className = '',
 }: {
   effectId: AmbientEffectId;
   accentColor?: string;
+  secondaryColor?: string;
   colorMode?: 'dark' | 'light';
   fixedViewport?: boolean;
   className?: string;
@@ -293,6 +410,7 @@ export function AmbientBackdrop({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isLight = colorMode === 'light';
   const accent = accentColor || (isLight ? '#2c6b4a' : '#34d399');
+  const secondary = secondaryColor || accent;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -310,6 +428,7 @@ export function AmbientBackdrop({
         : null;
 
     let reducedMotion = mediaQuery?.matches ?? false;
+    let isDocumentHidden = typeof document !== 'undefined' ? document.hidden : false;
     let initialized = false;
     let width = canvas.clientWidth || 960;
     let height = canvas.clientHeight || 640;
@@ -317,26 +436,28 @@ export function AmbientBackdrop({
     const palette = getPalette(effectId, accent, isLight);
     let particles: Particle[] = [];
     let sparks: FireworkSpark[] = [];
+    let shootingStar: ShootingStar | null = null;
     let rafId = 0;
     let tick = 0;
     let lastBurst = 0;
+    let lastShootingStar = 0;
 
     const spawnFireworkBurst = (cx: number, cy: number) => {
       const burstColor = palette[Math.floor(Math.random() * palette.length)];
-      const secondary = palette[Math.floor(Math.random() * palette.length)];
-      const count = 26;
+      const secondaryBurst = palette[Math.floor(Math.random() * palette.length)];
+      const count = 28;
       for (let i = 0; i < count; i++) {
         const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.2;
-        const speed = 1.1 + Math.random() * 2.1;
+        const speed = 1.1 + Math.random() * 2.2;
         sparks.push({
           x: cx,
           y: cy,
           vx: Math.cos(angle) * speed,
           vy: Math.sin(angle) * speed,
           life: 0,
-          maxLife: 46 + Math.random() * 24,
-          color: i % 3 === 0 ? secondary : burstColor,
-          size: 1.6 + Math.random() * 1.6,
+          maxLife: 48 + Math.random() * 24,
+          color: i % 3 === 0 ? secondaryBurst : burstColor,
+          size: 1.6 + Math.random() * 1.7,
         });
       }
     };
@@ -385,10 +506,13 @@ export function AmbientBackdrop({
     const drawParticle = (p: Particle, timeTick: number) => {
       ctx.save();
       const twinkle =
-        p.shape === 'star' || effectId === 'lullaby-stars' || effectId === 'aurora'
+        p.shape === 'star' ||
+        effectId === 'lullaby-stars' ||
+        effectId === 'aurora' ||
+        effectId === 'christmas-lights'
           ? 0.55 + 0.45 * Math.sin(timeTick * 0.04 + p.phase)
           : 1;
-      ctx.globalAlpha = Math.max(0.05, Math.min(1, p.alpha * twinkle));
+      ctx.globalAlpha = Math.max(0.04, Math.min(1, p.alpha * twinkle));
       ctx.fillStyle = p.color;
       ctx.translate(p.x, p.y);
       ctx.rotate(p.rotation);
@@ -396,6 +520,18 @@ export function AmbientBackdrop({
       switch (p.shape) {
         case 'star':
           drawFourPointStar(ctx, p.size);
+          break;
+        case 'crystal':
+          drawSnowflakeCrystal(ctx, p.size, p.color);
+          break;
+        case 'raindrop':
+          ctx.strokeStyle = p.color;
+          ctx.lineWidth = 1.25;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(0, -p.size * 0.5);
+          ctx.lineTo(0, p.size * 0.5);
+          ctx.stroke();
           break;
         case 'heart':
           drawHeart(ctx, p.size);
@@ -418,6 +554,7 @@ export function AmbientBackdrop({
         case 'bokeh': {
           const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, p.size);
           grad.addColorStop(0, p.color);
+          grad.addColorStop(0.65, p.color);
           grad.addColorStop(1, 'transparent');
           ctx.fillStyle = grad;
           ctx.beginPath();
@@ -437,8 +574,61 @@ export function AmbientBackdrop({
     };
 
     const renderFrame = (animate: boolean) => {
+      if (animate && isDocumentHidden) {
+        rafId = 0;
+        return;
+      }
+
       ctx.clearRect(0, 0, width, height);
       tick += 1;
+
+      if (effectId === 'starlight-radiance' || effectId === 'lullaby-stars') {
+        if (animate && !shootingStar && tick - lastShootingStar > 220) {
+          lastShootingStar = tick;
+          shootingStar = {
+            x: width * (0.2 + Math.random() * 0.6),
+            y: height * (0.08 + Math.random() * 0.22),
+            vx: 6.5,
+            vy: 2.6,
+            life: 0,
+            maxLife: 34,
+            color: effectId === 'starlight-radiance' ? '#fef3c7' : '#e0f2fe',
+          };
+        }
+        if (shootingStar) {
+          if (animate) {
+            shootingStar.x += shootingStar.vx;
+            shootingStar.y += shootingStar.vy;
+            shootingStar.life += 1;
+          }
+          const progress = shootingStar.life / shootingStar.maxLife;
+          if (progress >= 1) {
+            shootingStar = null;
+          } else {
+            const alpha = Math.sin(progress * Math.PI) * 0.72;
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, alpha);
+            const tailGrad = ctx.createLinearGradient(
+              shootingStar.x - shootingStar.vx * 7,
+              shootingStar.y - shootingStar.vy * 7,
+              shootingStar.x,
+              shootingStar.y,
+            );
+            tailGrad.addColorStop(0, 'transparent');
+            tailGrad.addColorStop(1, shootingStar.color);
+            ctx.strokeStyle = tailGrad;
+            ctx.lineWidth = 1.8;
+            ctx.beginPath();
+            ctx.moveTo(
+              shootingStar.x - shootingStar.vx * 7,
+              shootingStar.y - shootingStar.vy * 7,
+            );
+            ctx.lineTo(shootingStar.x, shootingStar.y);
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
+      }
 
       if (effectId === 'fireworks') {
         if (animate && tick - lastBurst > 58) {
@@ -485,33 +675,38 @@ export function AmbientBackdrop({
           p.y += p.vy;
           p.rotation += p.vRot;
 
-          if (p.y > height + 24) {
-            p.y = -20;
+          if (p.y > height + 36) {
+            p.y = -28;
             p.x = Math.random() * width;
-          } else if (p.y < -24) {
-            p.y = height + 20;
+          } else if (p.y < -36) {
+            p.y = height + 28;
             p.x = Math.random() * width;
           }
-          if (p.x > width + 24) {
-            p.x = -20;
-          } else if (p.x < -24) {
-            p.x = width + 20;
+          if (p.x > width + 36) {
+            p.x = -28;
+          } else if (p.x < -36) {
+            p.x = width + 28;
           }
         }
         drawParticle(p, tick);
       }
 
-      if (animate) {
+      if (animate && !isDocumentHidden) {
+        rafId = window.requestAnimationFrame(() => renderFrame(true));
+      }
+    };
+
+    const startOrResume = () => {
+      window.cancelAnimationFrame(rafId);
+      if (reducedMotion) {
+        renderFrame(false);
+      } else if (!isDocumentHidden) {
         rafId = window.requestAnimationFrame(() => renderFrame(true));
       }
     };
 
     resize(true);
-    if (reducedMotion) {
-      renderFrame(false);
-    } else {
-      rafId = window.requestAnimationFrame(() => renderFrame(true));
-    }
+    startOrResume();
 
     const onResize = () => {
       resize(false);
@@ -528,14 +723,20 @@ export function AmbientBackdrop({
       window.addEventListener('resize', onResize);
     }
 
+    const onVisibilityChange = () => {
+      isDocumentHidden = document.hidden;
+      if (isDocumentHidden) {
+        window.cancelAnimationFrame(rafId);
+        rafId = 0;
+      } else {
+        startOrResume();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
     const onMotionChange = (e: MediaQueryListEvent) => {
       reducedMotion = e.matches;
-      window.cancelAnimationFrame(rafId);
-      if (reducedMotion) {
-        renderFrame(false);
-      } else {
-        rafId = window.requestAnimationFrame(() => renderFrame(true));
-      }
+      startOrResume();
     };
     mediaQuery?.addEventListener('change', onMotionChange);
 
@@ -543,6 +744,7 @@ export function AmbientBackdrop({
       window.cancelAnimationFrame(rafId);
       ro?.disconnect();
       window.removeEventListener('resize', onResize);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       mediaQuery?.removeEventListener('change', onMotionChange);
     };
   }, [effectId, accent, isLight]);
@@ -562,41 +764,93 @@ export function AmbientBackdrop({
       data-effect-id={effectId}
       style={fixedViewport ? { backgroundColor: 'var(--theme-page-bg)' } : undefined}
     >
-      {/* Ambient base radial wash */}
+      {/* Rich multi-layer atmospheric radial wash */}
       <div
         className="absolute inset-0"
         style={{
           background: isLight
-            ? `radial-gradient(ellipse 80% 55% at 50% 0%, ${accent}18, transparent 70%)`
-            : `radial-gradient(ellipse 85% 60% at 50% 0%, ${accent}26, transparent 72%)`,
+            ? `radial-gradient(ellipse 90% 60% at 50% 0%, ${accent}22, transparent 70%), radial-gradient(ellipse 75% 50% at 85% 95%, ${secondary}18, transparent 70%)`
+            : `radial-gradient(ellipse 95% 65% at 50% 0%, ${accent}34, transparent 72%), radial-gradient(ellipse 80% 55% at 85% 95%, ${secondary}28, transparent 75%)`,
         }}
       />
+
+      {/* Fluid Color Wave Mesh (prism-gradient) */}
+      {effectId === 'prism-gradient' && (
+        <div className="absolute inset-0">
+          <div
+            className={`${styles.prismOrbA} absolute -top-[18%] -left-[12%] h-[68%] w-[85%] rounded-full blur-3xl`}
+            style={{
+              background: isLight
+                ? `radial-gradient(circle, ${accent}36 0%, #38bdf826 55%, transparent 78%)`
+                : `radial-gradient(circle, ${accent}66 0%, #38bdf838 55%, transparent 78%)`,
+            }}
+          />
+          <div
+            className={`${styles.prismOrbB} absolute top-[18%] -right-[16%] h-[72%] w-[88%] rounded-full blur-3xl`}
+            style={{
+              background: isLight
+                ? `radial-gradient(circle, ${secondary}32 0%, #f472b624 55%, transparent 78%)`
+                : `radial-gradient(circle, ${secondary}5c 0%, #ec48993a 55%, transparent 78%)`,
+            }}
+          />
+          <div
+            className={`${styles.prismOrbC} absolute -bottom-[22%] left-[8%] h-[64%] w-[78%] rounded-full blur-3xl`}
+            style={{
+              background: isLight
+                ? `radial-gradient(circle, #fde68a28 0%, ${accent}22 50%, transparent 75%)`
+                : `radial-gradient(circle, #6366f14a 0%, ${accent}34 55%, transparent 76%)`,
+            }}
+          />
+          <div
+            className={`${styles.prismOrbD} absolute top-[40%] left-[20%] h-[46%] w-[60%] rounded-full blur-3xl`}
+            style={{
+              background: isLight
+                ? `radial-gradient(circle, #38bdf820 0%, transparent 70%)`
+                : `radial-gradient(circle, #fbbf2424 0%, transparent 72%)`,
+            }}
+          />
+        </div>
+      )}
+
+      {/* Rain on glass atmospheric mist */}
+      {effectId === 'rain-glass' && (
+        <div className="absolute inset-0">
+          <div
+            className={`${styles.mistLayer} absolute -top-[10%] left-[-10%] h-[55%] w-[120%] rounded-full blur-3xl`}
+            style={{
+              background: isLight
+                ? `linear-gradient(180deg, ${accent}20 0%, #bae6fd24 55%, transparent 100%)`
+                : `linear-gradient(180deg, ${accent}32 0%, #0284c728 55%, transparent 100%)`,
+            }}
+          />
+        </div>
+      )}
 
       {/* Aurora Borealis ribbons */}
       {effectId === 'aurora' && (
         <div className="absolute inset-0">
           <div
-            className={`${styles.auroraRibbonA} absolute -top-1/4 -left-1/4 h-[70%] w-[125%] rounded-full blur-3xl`}
+            className={`${styles.auroraRibbonA} absolute -top-1/4 -left-1/4 h-[72%] w-[125%] rounded-full blur-3xl`}
             style={{
               background: isLight
-                ? `linear-gradient(125deg, ${accent}26 0%, #38bdf822 48%, #a855f71c 100%)`
-                : `linear-gradient(125deg, ${accent}52 0%, #22d3ee40 48%, #a855f73d 100%)`,
+                ? `linear-gradient(125deg, ${accent}28 0%, #38bdf824 48%, #a855f71c 100%)`
+                : `linear-gradient(125deg, ${accent}58 0%, #22d3ee48 48%, #a855f742 100%)`,
             }}
           />
           <div
-            className={`${styles.auroraRibbonB} absolute top-[10%] -right-1/4 h-[60%] w-[115%] rounded-full blur-3xl`}
+            className={`${styles.auroraRibbonB} absolute top-[10%] -right-1/4 h-[62%] w-[115%] rounded-full blur-3xl`}
             style={{
               background: isLight
-                ? `linear-gradient(235deg, #a855f71c 0%, ${accent}20 55%, #38bdf818 100%)`
-                : `linear-gradient(235deg, #c084fc42 0%, ${accent}38 55%, #06b6d436 100%)`,
+                ? `linear-gradient(235deg, #a855f71c 0%, ${accent}22 55%, #38bdf818 100%)`
+                : `linear-gradient(235deg, #c084fc4a 0%, ${accent}3d 55%, #06b6d438 100%)`,
             }}
           />
           <div
-            className={`${styles.auroraRibbonC} absolute bottom-[-20%] left-[10%] h-[50%] w-[85%] rounded-full blur-3xl`}
+            className={`${styles.auroraRibbonC} absolute bottom-[-20%] left-[10%] h-[54%] w-[85%] rounded-full blur-3xl`}
             style={{
               background: isLight
-                ? `radial-gradient(circle, ${accent}14 0%, transparent 70%)`
-                : `radial-gradient(circle, ${accent}2b 0%, #3b82f61a 45%, transparent 75%)`,
+                ? `radial-gradient(circle, ${accent}18 0%, transparent 70%)`
+                : `radial-gradient(circle, ${accent}32 0%, #3b82f624 45%, transparent 75%)`,
             }}
           />
         </div>
@@ -606,11 +860,11 @@ export function AmbientBackdrop({
       {effectId === 'starlight-radiance' && (
         <div className="absolute inset-0">
           <div
-            className={`${styles.starlightBeam} absolute -top-24 left-1/2 h-[460px] w-[460px] -translate-x-1/2 rounded-full blur-3xl`}
+            className={`${styles.starlightBeam} absolute -top-24 left-1/2 h-[520px] w-[520px] -translate-x-1/2 rounded-full blur-3xl`}
             style={{
               background: isLight
-                ? 'radial-gradient(circle, rgba(245, 196, 81, 0.25) 0%, transparent 70%)'
-                : 'radial-gradient(circle, rgba(245, 196, 81, 0.34) 0%, rgba(251, 191, 36, 0.1) 42%, transparent 72%)',
+                ? 'radial-gradient(circle, rgba(245, 196, 81, 0.28) 0%, transparent 70%)'
+                : 'radial-gradient(circle, rgba(245, 196, 81, 0.38) 0%, rgba(251, 191, 36, 0.14) 44%, transparent 74%)',
             }}
           />
         </div>
@@ -623,8 +877,8 @@ export function AmbientBackdrop({
             className={`${styles.mistLayer} absolute bottom-0 -left-1/4 h-1/2 w-[150%] blur-3xl`}
             style={{
               background: isLight
-                ? 'radial-gradient(ellipse at 50% 100%, rgba(126, 34, 206, 0.12), transparent 70%)'
-                : 'radial-gradient(ellipse at 50% 100%, rgba(168, 85, 247, 0.2), rgba(251, 146, 60, 0.08) 45%, transparent 72%)',
+                ? 'radial-gradient(ellipse at 50% 100%, rgba(126, 34, 206, 0.14), transparent 70%)'
+                : 'radial-gradient(ellipse at 50% 100%, rgba(168, 85, 247, 0.24), rgba(251, 146, 60, 0.12) 45%, transparent 74%)',
             }}
           />
         </div>
@@ -633,7 +887,7 @@ export function AmbientBackdrop({
       {/* Festive Christmas string lights along top edge */}
       {effectId === 'christmas-lights' && (
         <svg
-          className="absolute top-0 left-0 h-14 w-full opacity-75"
+          className="absolute top-0 left-0 h-16 w-full opacity-85"
           viewBox="0 0 1000 80"
           preserveAspectRatio="none"
         >
@@ -645,7 +899,7 @@ export function AmbientBackdrop({
           />
           {STRING_LIGHT_BULBS.map((bulb, i) => (
             <g key={i} className={bulb.even ? styles.bulbEven : styles.bulbOdd}>
-              <circle cx={bulb.x} cy={bulb.y} r="13" fill={bulb.color} opacity="0.24" />
+              <circle cx={bulb.x} cy={bulb.y} r="18" fill={bulb.color} opacity="0.24" />
               <circle cx={bulb.x} cy={bulb.y} r="4.5" fill={bulb.color} />
             </g>
           ))}

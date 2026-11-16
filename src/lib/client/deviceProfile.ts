@@ -28,6 +28,17 @@ function notifyProfileListeners(): void {
   }
 }
 
+export const PROFILE_AVATAR_ICONS = 16;
+
+function fnv1aHash(input: string, seed: number): number {
+  let hash = seed >>> 0;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619) >>> 0;
+  }
+  return hash >>> 0;
+}
+
 /**
  * Deterministic 0..359 hue hash from a display name so each guest keeps a consistent avatar color.
  */
@@ -64,6 +75,26 @@ export function getAvatarAppearance(name: string): {
   return {
     background: `linear-gradient(135deg, hsl(${hue} 78% 72%), hsl(${altHue} 72% 58%))`,
     color: '#0f172a',
+    initials: getInitials(name),
+  };
+}
+
+/**
+ * Deterministically assigns one of 16 profile icon designs and 1 of 6 theme color slots per name.
+ */
+export function getProfileAvatarSpec(name: string): {
+  slot: 1 | 2 | 3 | 4 | 5 | 6;
+  iconIndex: number;
+  initials: string;
+} {
+  const clean = name.trim().toLowerCase() || 'guest';
+  const slotHash = fnv1aHash(clean, 0x811c9dc5);
+  const iconHash = fnv1aHash(`${clean}:icon`, 0x9e3779b1);
+  const slot = ((slotHash % 6) + 1) as 1 | 2 | 3 | 4 | 5 | 6;
+  const iconIndex = iconHash % PROFILE_AVATAR_ICONS;
+  return {
+    slot,
+    iconIndex,
     initials: getInitials(name),
   };
 }

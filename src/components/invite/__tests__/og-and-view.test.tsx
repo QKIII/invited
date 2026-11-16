@@ -208,7 +208,8 @@ describe('InviteView (post-merge integration)', () => {
 
     const heroLoc = container.querySelector('[data-testid="hero-location"]');
     expect(heroLoc?.textContent?.match(/42 Maple St/g) ?? []).toHaveLength(1);
-    expect(COVER_PRESETS.some((c) => c.id === 'snowy-pines')).toBe(true);
+    expect(COVER_PRESETS.some((c) => c.id === 'handdrawn-pelican-holiday')).toBe(true);
+    expect(COVER_PRESETS.some((c) => c.id === 'handdrawn-snowy-cabin')).toBe(true);
     expect(getThemePreset('winter-snowfall').pageBg).toBe('#082556');
     expect(getThemePreset('winter-snowfall').cardBg).toBe('#ffffff');
 

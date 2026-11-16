@@ -6,7 +6,9 @@ import {
   getAvatarAppearance,
   getCachedGuestRsvp,
   getDeviceProfile,
+  getProfileAvatarSpec,
   getSavedGuestToken,
+  PROFILE_AVATAR_ICONS,
   saveCachedGuestRsvp,
   saveDeviceProfile,
   saveGuestToken,
@@ -63,12 +65,24 @@ describe('deviceProfile.ts', () => {
     expect(getCachedGuestRsvp('evt_alpha')).toBeNull();
   });
 
-  it('computes deterministic avatar initials and gradient styling', () => {
+  it('computes deterministic avatar initials, random profile icons, and theme color slots', () => {
     const a = getAvatarAppearance('Ivan Witteborg');
     const b = getAvatarAppearance('Ivan Witteborg');
     expect(a.initials).toBe('IW');
     expect(a.background).toBe(b.background);
     expect(getAvatarAppearance('Clara').initials).toBe('CL');
+
+    const names = ['Ivan', 'Clara', 'Alex', 'Sam', 'Jordan', 'Maya', 'Elena', 'Theo', 'Nora', 'Leo'];
+    const specs = names.map((n) => getProfileAvatarSpec(n));
+    for (const s of specs) {
+      expect(s.slot).toBeGreaterThanOrEqual(1);
+      expect(s.slot).toBeLessThanOrEqual(6);
+      expect(s.iconIndex).toBeGreaterThanOrEqual(0);
+      expect(s.iconIndex).toBeLessThan(PROFILE_AVATAR_ICONS);
+    }
+    expect(getProfileAvatarSpec('Alex')).toEqual(getProfileAvatarSpec('Alex'));
+    expect(new Set(specs.map((s) => s.slot)).size).toBeGreaterThan(2);
+    expect(new Set(specs.map((s) => s.iconIndex)).size).toBeGreaterThan(3);
   });
 
   it('formats relative future countdowns and active states accurately', () => {

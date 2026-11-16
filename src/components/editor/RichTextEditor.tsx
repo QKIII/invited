@@ -105,6 +105,8 @@ export function RichTextEditor({
   const savedRangeRef = useRef<Range | null>(null);
 
   const [isEmpty, setIsEmpty] = useState(!value.trim());
+  const [isFocused, setIsFocused] = useState(false);
+  const [toolbarPinned, setToolbarPinned] = useState(false);
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [linkUrl, setLinkUrl] = useState('https://');
   const [linkText, setLinkText] = useState('');
@@ -443,42 +445,45 @@ export function RichTextEditor({
           borderColor: 'var(--theme-hairline, rgba(255, 255, 255, 0.14))',
         }}
       >
-        <div
-          role="toolbar"
-          aria-label="Description formatting"
-          className="flex flex-wrap items-center gap-0.5 border-b px-2 py-1.5"
-          style={{ borderColor: 'var(--theme-hairline, rgba(255, 255, 255, 0.1))' }}
-        >
-          {toolbarButtons.map((btn) => {
-            const Icon = btn.icon;
-            return (
-              <button
-                key={btn.action}
-                type="button"
-                aria-label={btn.label}
-                aria-pressed={btn.active}
-                title={btn.label}
-                onClick={() => handleToolbarAction(btn.action)}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-medium transition cursor-pointer"
-                style={
-                  btn.active
-                    ? {
-                        backgroundColor: 'var(--theme-accent, #34d399)',
-                        borderColor: 'var(--theme-accent, #34d399)',
-                        color: 'var(--theme-on-accent, #0f172a)',
-                      }
-                    : {
-                        backgroundColor: 'transparent',
-                        borderColor: 'transparent',
-                        color: 'var(--theme-text-muted, #cbd5e1)',
-                      }
-                }
-              >
-                <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-            );
-          })}
-        </div>
+        {isFocused || toolbarPinned || showLinkInput ? (
+          <div
+            role="toolbar"
+            aria-label="Description formatting"
+            className="flex flex-wrap items-center gap-0.5 border-b px-2 py-1.5"
+            style={{ borderColor: 'var(--theme-hairline, rgba(255, 255, 255, 0.1))' }}
+          >
+            {toolbarButtons.map((btn) => {
+              const Icon = btn.icon;
+              return (
+                <button
+                  key={btn.action}
+                  type="button"
+                  aria-label={btn.label}
+                  aria-pressed={btn.active}
+                  title={btn.label}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => handleToolbarAction(btn.action)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-medium transition cursor-pointer"
+                  style={
+                    btn.active
+                      ? {
+                          backgroundColor: 'var(--theme-accent, #34d399)',
+                          borderColor: 'var(--theme-accent, #34d399)',
+                          color: 'var(--theme-on-accent, #0f172a)',
+                        }
+                      : {
+                          backgroundColor: 'transparent',
+                          borderColor: 'transparent',
+                          color: 'var(--theme-text-muted, #cbd5e1)',
+                        }
+                  }
+                >
+                  <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
 
         {showLinkInput ? (
           <div
@@ -504,7 +509,7 @@ export function RichTextEditor({
                   onChange={(e) => setLinkText(e.target.value)}
                   onKeyDown={handleLinkInputKeyDown}
                   placeholder="Registry or parking link"
-                  className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
+                  className="w-full rounded-lg border px-2.5 py-1.5 text-base sm:text-sm outline-none"
                   style={{
                     backgroundColor: 'var(--theme-surface-bg, #0f172a)',
                     borderColor: 'var(--theme-border, rgba(255,255,255,0.16))',
@@ -530,7 +535,7 @@ export function RichTextEditor({
                   }}
                   onKeyDown={handleLinkInputKeyDown}
                   placeholder="https://example.com"
-                  className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
+                  className="w-full rounded-lg border px-2.5 py-1.5 text-base sm:text-sm outline-none"
                   style={{
                     backgroundColor: 'var(--theme-surface-bg, #0f172a)',
                     borderColor: 'var(--theme-border, rgba(255,255,255,0.16))',
@@ -578,12 +583,28 @@ export function RichTextEditor({
           {isEmpty ? (
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-x-3.5 top-2.5 text-sm opacity-55 select-none"
+              className="pointer-events-none absolute inset-x-3.5 top-2.5 pr-9 text-base sm:text-sm opacity-55 select-none"
               style={{ color: 'var(--theme-text-muted, #94a3b8)' }}
             >
               {placeholder}
             </div>
           ) : null}
+          <button
+            type="button"
+            aria-label="Toggle formatting options"
+            aria-pressed={isFocused || toolbarPinned}
+            title="Formatting options"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setToolbarPinned((prev) => !prev)}
+            className="absolute right-2 top-2 z-10 h-6 px-1.5 rounded-md border text-[11px] font-semibold opacity-65 hover:opacity-100 transition cursor-pointer"
+            style={{
+              backgroundColor: 'var(--theme-card-bg, rgba(15, 23, 42, 0.45))',
+              borderColor: 'var(--theme-hairline, rgba(255,255,255,0.14))',
+              color: 'var(--theme-text-muted, #cbd5e1)',
+            }}
+          >
+            Aa
+          </button>
           <div
             id={editorId}
             ref={editorRef}
@@ -592,12 +613,16 @@ export function RichTextEditor({
             role="textbox"
             aria-multiline="true"
             aria-labelledby={labelId}
+            onFocus={() => setIsFocused(true)}
             onInput={emitCurrentHtml}
-            onBlur={emitCurrentHtml}
+            onBlur={() => {
+              emitCurrentHtml();
+              setIsFocused(false);
+            }}
             onKeyUp={refreshActiveFormats}
             onMouseUp={refreshActiveFormats}
             onPaste={handlePaste}
-            className="invite-prose min-h-[108px] max-h-[340px] overflow-y-auto resize-y px-3.5 py-2.5 text-sm leading-relaxed outline-none"
+            className="invite-prose min-h-[88px] max-h-[340px] overflow-y-auto resize-y px-3.5 py-2.5 pr-11 text-base sm:text-sm leading-relaxed outline-none"
             style={{ color: 'var(--theme-text-primary, #f8fafc)' }}
           />
         </div>

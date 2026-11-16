@@ -15,13 +15,6 @@
     :root {
       --target-size: 44px;
     }
-
-    input:not([type="checkbox"], [type="radio"], [type="color"]),
-    textarea,
-    select,
-    [contenteditable="true"] {
-      font-size: max(16px, 1rem);
-    }
   }
 
   html {
@@ -127,6 +120,17 @@
 @supports (color: contrast-color(#000000)) {
   .invite-cta-btn {
     color: contrast-color(var(--theme-cta-mid, #0284c7));
+  }
+}
+
+.invite-avatar {
+  background-color: var(--theme-avatar-bg, #bae6fd);
+  color: var(--theme-avatar-fg, #0f172a);
+}
+
+@supports (color: contrast-color(#000000)) {
+  .invite-avatar {
+    color: contrast-color(var(--theme-avatar-bg, #bae6fd));
   }
 }
 
@@ -245,4 +249,23 @@
     outline: 2px solid Highlight;
     outline-offset: 2px;
   }
+}
+
+/* Unlayered so it overrides Tailwind v4 @layer utilities (e.g. text-sm) and prevents iOS Safari focus zoom */
+@media (pointer: coarse), (max-width: 639px) {
+  input:not([type="checkbox"], [type="radio"], [type="color"], [type="range"]),
+  textarea:not([data-title-input]),
+  select,
+  [contenteditable="true"] {
+    font-size: max(16px, 1rem) !important;
+  }
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }

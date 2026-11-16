@@ -1,6 +1,8 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
+import { RichTextEditor } from '@/components/editor/RichTextEditor';
+import { GuestAvatar } from '@/components/invite/GuestAvatar';
 import { HostManagementPanel } from '@/components/studio/HostManagementPanel';
 import { InviteStudio } from '@/components/studio/InviteStudio';
 import { PublishSuccessDialog } from '@/components/studio/PublishSuccessDialog';
@@ -49,6 +51,7 @@ describe('v4 Studio Prompt-First UX, Cover Filters, Modals & Zero-Emoji UI', () 
     const promptBox = container.querySelector<HTMLTextAreaElement>(
       '[data-testid="event-prompt-input"]',
     )!;
+    expect(promptBox.hasAttribute('autofocus')).toBe(false);
     const continueBtn = container.querySelector<HTMLButtonElement>(
       '[data-testid="prompt-continue-button"]',
     )!;
@@ -64,7 +67,9 @@ describe('v4 Studio Prompt-First UX, Cover Filters, Modals & Zero-Emoji UI', () 
     });
 
     expect(container.querySelector('[data-testid="prompt-entry-card"]')).toBeNull();
+    expect(container.textContent).not.toContain('Write prompt again');
     expect(container.querySelector('[data-testid="edit-theme-button"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="start-over-prompt-button"]')).not.toBeNull();
     expect(container.querySelector('#event-start-date')).not.toBeNull();
     expect(container.textContent).not.toMatch(EMOJI_RE);
 
@@ -82,35 +87,53 @@ describe('v4 Studio Prompt-First UX, Cover Filters, Modals & Zero-Emoji UI', () 
 
     const dialog = container.querySelector<HTMLDialogElement>('[data-testid="theme-studio-dialog"]')!;
     expect(dialog).not.toBeNull();
-    expect(dialog.querySelectorAll('[data-cover-style-group]')).toHaveLength(36);
+    expect(dialog.querySelectorAll('[data-cover-style-group]')).toHaveLength(40);
 
-    const illustratedFilter = dialog.querySelector<HTMLButtonElement>(
-      '[data-testid="cover-style-filter-illustrated"]',
+    for (const group of ['hand-drawn', 'vector', 'pencil', 'oil-paint', 'pattern'] as const) {
+      const filterBtn = dialog.querySelector<HTMLButtonElement>(
+        `[data-testid="cover-style-filter-${group}"]`,
+      )!;
+      await act(async () => {
+        filterBtn.click();
+      });
+      expect(dialog.querySelectorAll(`[data-cover-style-group="${group}"]`)).toHaveLength(8);
+    }
+
+    const backdropTab = dialog.querySelector<HTMLButtonElement>(
+      '[data-testid="studio-tab-backdrop"]',
     )!;
     await act(async () => {
-      illustratedFilter.click();
+      backdropTab.click();
     });
-    expect(dialog.querySelectorAll('[data-cover-style-group="illustrated"]')).toHaveLength(12);
-    expect(dialog.querySelectorAll('[data-cover-style-group="painted"]')).toHaveLength(0);
-
-    const paintedFilter = dialog.querySelector<HTMLButtonElement>(
-      '[data-testid="cover-style-filter-painted"]',
-    )!;
-    await act(async () => {
-      paintedFilter.click();
-    });
-    expect(dialog.querySelectorAll('[data-cover-style-group="painted"]')).toHaveLength(12);
-
-    const graphicFilter = dialog.querySelector<HTMLButtonElement>(
-      '[data-testid="cover-style-filter-graphic"]',
-    )!;
-    await act(async () => {
-      graphicFilter.click();
-    });
-    expect(dialog.querySelectorAll('[data-cover-style-group="graphic"]')).toHaveLength(12);
+    expect(dialog.querySelectorAll('[data-effect-option]')).toHaveLength(16);
+    expect(dialog.querySelector('[data-effect-option="prism-gradient"]')).not.toBeNull();
+    expect(dialog.querySelector('[data-effect-option="rain-glass"]')).not.toBeNull();
     expect(dialog.textContent).not.toMatch(EMOJI_RE);
 
     unmount();
+  });
+
+  it('renders theme-colored icon GuestAvatars and progressive RichTextEditor formatting bar', async () => {
+    const avatarRender = renderIntoDom(<GuestAvatar name="Clara" size="md" />);
+    const avatarEl = avatarRender.container.querySelector('.invite-avatar');
+    expect(avatarEl).not.toBeNull();
+    expect(avatarEl?.querySelector('svg')).not.toBeNull();
+    expect(avatarEl?.textContent).toBe('');
+    expect(avatarEl?.getAttribute('data-avatar-slot')).toMatch(/^[1-6]$/);
+    avatarRender.unmount();
+
+    const rte = renderIntoDom(
+      <RichTextEditor label="" value="" onChange={() => {}} placeholder="Write notes" />,
+    );
+    expect(rte.container.querySelector('[aria-label="Description formatting"]')).toBeNull();
+    const toggleBtn = rte.container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Toggle formatting options"]',
+    )!;
+    await act(async () => {
+      toggleBtn.click();
+    });
+    expect(rte.container.querySelector('[aria-label="Description formatting"]')).not.toBeNull();
+    rte.unmount();
   });
 
   it('renders RecentEventsDialog, PublishSuccessDialog, and HostManagementPanel with human copy and zero emojis', () => {

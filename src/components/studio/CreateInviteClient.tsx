@@ -1,16 +1,10 @@
 'use client';
 
-import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Calendar } from 'lucide-react';
 import { AmbientBackdrop } from '@/components/effects/AmbientBackdrop';
 import { InviteIcon } from '@/components/icons/InviteIcons';
-import { GuestAvatar } from '@/components/invite/GuestAvatar';
-import {
-  getDeviceProfile,
-  getDeviceProfileServerSnapshot,
-  subscribeDeviceProfile,
-} from '@/lib/client/deviceProfile';
 import { consumeStudioDraft } from '@/lib/client/recentEvents';
 import { useThemeViewportSync } from '@/lib/client/useThemeViewportSync';
 import { parseEventPrompt, type ParsedEventDraft } from '@/lib/nlp/parseEventPrompt';
@@ -40,12 +34,6 @@ export function CreateInviteClient({ initialPrompt }: CreateInviteClientProps) {
   const [recentOpen, setRecentOpen] = useState(false);
   const [sessionDraft, setSessionDraft] = useState<ParsedEventDraft | null>(null);
   const [userStyle, setUserStyle] = useState<InviteStyleConfig | null>(null);
-
-  const deviceProfile = useSyncExternalStore(
-    subscribeDeviceProfile,
-    getDeviceProfile,
-    getDeviceProfileServerSnapshot,
-  );
 
   useEffect(() => {
     let active = true;
@@ -102,12 +90,13 @@ export function CreateInviteClient({ initialPrompt }: CreateInviteClientProps) {
         fixedViewport
         effectId={liveStyle.effectId}
         accentColor={themeVars['--theme-accent']}
+        secondaryColor={themeVars['--theme-cta-end']}
         colorMode={backdropMode}
         className="z-0"
       />
 
-      {/* Compact single-row app header */}
-      <header className="relative z-10 app-top-bar h-13 max-w-[580px] mx-auto flex items-center justify-between gap-2">
+      {/* Single quiet top bar */}
+      <header className="relative z-10 app-top-bar h-12 max-w-[580px] mx-auto flex items-center justify-between gap-2">
         <Link
           href="/"
           className="inline-flex items-center gap-2 text-sm font-semibold tracking-tight hover:opacity-80 transition shrink-0"
@@ -117,25 +106,19 @@ export function CreateInviteClient({ initialPrompt }: CreateInviteClientProps) {
           <span>invited</span>
         </Link>
 
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={() => setRecentOpen(true)}
-            className="h-9 inline-flex items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium backdrop-blur-md transition hover:opacity-90 cursor-pointer"
-            style={{
-              backgroundColor: 'var(--theme-outer-pill-bg)',
-              borderColor: 'var(--theme-outer-pill-border)',
-              color: 'var(--theme-outer-text)',
-            }}
-          >
-            <Calendar className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            <span>My Invites</span>
-          </button>
-
-          {deviceProfile?.name ? (
-            <GuestAvatar name={deviceProfile.name} size="sm" className="shrink-0" />
-          ) : null}
-        </div>
+        <button
+          type="button"
+          onClick={() => setRecentOpen(true)}
+          className="h-8 inline-flex items-center gap-1.5 rounded-full border px-3 text-xs font-medium backdrop-blur-md transition hover:opacity-90 cursor-pointer shrink-0"
+          style={{
+            backgroundColor: 'var(--theme-outer-pill-bg)',
+            borderColor: 'var(--theme-outer-pill-border)',
+            color: 'var(--theme-outer-text)',
+          }}
+        >
+          <Calendar className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span>My Invites</span>
+        </button>
       </header>
 
       <main className="relative z-10 max-w-[580px] mx-auto px-3.5 sm:px-6 pt-2 pb-16">

@@ -23,9 +23,12 @@ export type InviteIconName =
   | 'confetti'
   | 'heart'
   | 'still'
+  | 'rain'
   | 'illustrated'
   | 'painted'
-  | 'graphic';
+  | 'graphic'
+  | 'pencil'
+  | 'pattern';
 
 export function InviteIcon({
   name,
@@ -231,6 +234,32 @@ export function InviteIcon({
       return (
         <svg {...common}>
           <rect x="5" y="5" width="14" height="14" rx="4" />
+        </svg>
+      );
+
+    case 'rain':
+      return (
+        <svg {...common}>
+          <path d="M7.5 14h9a3.5 3.5 0 0 0 .4-7A4.8 4.8 0 0 0 7.6 6a3.4 3.4 0 0 0-.1 8Z" />
+          <path d="m9 17-1 3M13 17l-1 3M17 17l-1 3" />
+        </svg>
+      );
+
+    case 'pencil':
+      return (
+        <svg {...common}>
+          <path d="M16.5 4.5a2.1 2.1 0 0 1 3 3L8 19l-4 1 1-4Z" />
+          <path d="m14.5 6.5 3 3" />
+        </svg>
+      );
+
+    case 'pattern':
+      return (
+        <svg {...common}>
+          <rect x="4" y="4" width="6.5" height="6.5" rx="1.5" />
+          <circle cx="16.8" cy="7.2" r="3.2" />
+          <circle cx="7.2" cy="16.8" r="3.2" />
+          <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5" />
         </svg>
       );
 

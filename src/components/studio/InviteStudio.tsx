@@ -2,20 +2,7 @@
 
 import React, { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
-import {
-  ArrowUpRight,
-  Calendar,
-  Check,
-  ChevronDown,
-  Clock,
-  Globe,
-  Image as ImageIcon,
-  Lock,
-  MapPin,
-  Palette,
-  RotateCcw,
-  User,
-} from 'lucide-react';
+import { ArrowUpRight, Calendar, Check, ChevronDown, Clock, Globe, Image as ImageIcon, Lock, MapPin, Palette, User } from 'lucide-react';
 import { CoverArt } from '@/components/covers/CoverArt';
 import { RichTextEditor } from '@/components/editor/RichTextEditor';
 import {
@@ -100,9 +87,6 @@ export function InviteStudio({
     mode === 'edit' || Boolean(initialDraft || initialEvent),
   );
   const [quickPrompt, setQuickPrompt] = useState<string>('');
-  const [filledNote, setFilledNote] = useState<string | null>(
-    initialDraft ? `Started with ${initialDraft.detectedOccasionLabel}` : null,
-  );
 
   const [title, setTitle] = useState<string>(initialSource?.title ?? '');
   const [startDate, setStartDate] = useState<string>(() => {
@@ -278,7 +262,6 @@ export function InviteStudio({
     }
 
     setHasStartedCard(true);
-    setFilledNote(`Filled from your note · ${parsed.detectedOccasionLabel}`);
     setErrorMsg(null);
   }
 
@@ -501,7 +484,6 @@ export function InviteStudio({
                 id={promptInputId}
                 data-testid="event-prompt-input"
                 rows={3}
-                autoFocus
                 value={quickPrompt}
                 onChange={(e) => setQuickPrompt(e.target.value)}
                 onKeyDown={(e) => {
@@ -511,7 +493,7 @@ export function InviteStudio({
                     handleAutofillPrompt();
                   }
                 }}
-                placeholder="Christmas dinner Saturday Dec 19 at 6pm at 42 Maple St"
+                placeholder="Christmas breakfast Dec 19 at 9:30am at 42 Maple St"
                 className="w-full rounded-2xl border px-4 py-3 text-base leading-relaxed outline-none focus:ring-2 resize-none"
                 style={{
                   backgroundColor: 'var(--theme-surface-bg)',
@@ -520,13 +502,13 @@ export function InviteStudio({
                 }}
               />
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="space-y-2">
                 <button
                   type="button"
                   data-testid="prompt-continue-button"
                   disabled={!quickPrompt.trim()}
                   onClick={() => handleAutofillPrompt()}
-                  className="invite-cta-btn flex-1 min-h-[48px] rounded-full px-5 text-sm sm:text-base font-semibold shadow-lg transition active:scale-[0.99] disabled:opacity-45 cursor-pointer"
+                  className="invite-cta-btn w-full min-h-[48px] rounded-full px-5 text-base font-semibold shadow-lg transition active:scale-[0.99] disabled:opacity-45 cursor-pointer"
                 >
                   Continue
                 </button>
@@ -535,101 +517,44 @@ export function InviteStudio({
                   type="button"
                   data-testid="skip-prompt-button"
                   onClick={() => {
-                    setFilledNote(null);
                     setHasStartedCard(true);
                   }}
-                  className="min-h-[48px] rounded-full border px-4 text-xs sm:text-sm font-medium transition hover:opacity-85 cursor-pointer"
-                  style={{
-                    backgroundColor: 'var(--theme-surface-bg)',
-                    borderColor: 'var(--theme-border)',
-                    color: 'var(--theme-text-primary)',
-                  }}
+                  className="w-full py-2 text-xs sm:text-sm font-medium opacity-75 hover:opacity-100 transition cursor-pointer"
+                  style={{ color: 'var(--theme-text-muted)' }}
                 >
-                  Fill in details yourself
+                  Or fill in details yourself
                 </button>
               </div>
             </div>
 
             <div
-              className="pt-3 border-t space-y-2"
+              className="pt-3 border-t flex flex-wrap gap-1.5"
               style={{ borderColor: 'var(--theme-hairline)' }}
             >
-              <p className="text-xs font-medium" style={{ color: 'var(--theme-text-muted)' }}>
-                Try an example
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {EXAMPLE_EVENT_PROMPTS.slice(0, 4).map((sample) => (
-                  <button
-                    key={sample.label}
-                    type="button"
-                    onClick={() => {
-                      setQuickPrompt(sample.prompt);
-                      handleAutofillPrompt(sample.prompt);
-                    }}
-                    className="rounded-full border px-3 py-1.5 text-xs font-medium transition hover:opacity-90 cursor-pointer"
-                    style={{
-                      backgroundColor: 'var(--theme-surface-bg)',
-                      borderColor: 'var(--theme-hairline)',
-                      color: 'var(--theme-text-primary)',
-                    }}
-                  >
-                    {sample.label}
-                  </button>
-                ))}
-              </div>
+              {EXAMPLE_EVENT_PROMPTS.slice(0, 4).map((sample) => (
+                <button
+                  key={sample.label}
+                  type="button"
+                  onClick={() => {
+                    setQuickPrompt(sample.prompt);
+                    handleAutofillPrompt(sample.prompt);
+                  }}
+                  className="rounded-full border px-3 py-1.5 text-xs font-medium transition hover:opacity-90 cursor-pointer"
+                  style={{
+                    backgroundColor: 'var(--theme-surface-bg)',
+                    borderColor: 'var(--theme-hairline)',
+                    color: 'var(--theme-text-primary)',
+                  }}
+                >
+                  {sample.label}
+                </button>
+              ))}
             </div>
           </div>
         </section>
       ) : (
-        <form onSubmit={handleSubmit} className="space-y-3.5">
-          {/* Clean Top Toolbar: Prompt Backtrack + Edit Theme */}
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              {mode === 'create' ? (
-                <button
-                  type="button"
-                  onClick={() => setHasStartedCard(false)}
-                  className="h-9 inline-flex items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium backdrop-blur-md transition hover:opacity-90 cursor-pointer shrink-0"
-                  style={{
-                    backgroundColor: 'var(--theme-outer-pill-bg)',
-                    borderColor: 'var(--theme-outer-pill-border)',
-                    color: 'var(--theme-outer-text)',
-                  }}
-                >
-                  <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span>Write prompt again</span>
-                </button>
-              ) : null}
-
-              {filledNote ? (
-                <span
-                  className="hidden sm:inline-flex items-center gap-1 text-xs font-medium truncate"
-                  style={{ color: 'var(--theme-outer-text)' }}
-                >
-                  <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                  <span className="truncate">{filledNote}</span>
-                </span>
-              ) : null}
-            </div>
-
-            <button
-              type="button"
-              data-testid="edit-theme-button"
-              onClick={() => openThemeDrawer('theme')}
-              className="h-9 inline-flex items-center gap-1.5 rounded-full border px-3.5 text-xs font-semibold backdrop-blur-md transition hover:opacity-90 cursor-pointer shrink-0 ml-auto"
-              style={{
-                backgroundColor: 'var(--theme-outer-pill-bg)',
-                borderColor: 'var(--theme-outer-pill-border)',
-                color: 'var(--theme-outer-text)',
-              }}
-            >
-              <Palette className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>Edit theme</span>
-              <span className="opacity-70 hidden xs:inline">· {activePreset.name}</span>
-            </button>
-          </div>
-
-          {/* Live Invitation Card */}
+        <form onSubmit={handleSubmit} className="space-y-3.5 pt-1">
+          {/* Live Invitation Card — header stays uncluttered; Theme & Cover sit on the card */}
           <div
             className="rounded-3xl border shadow-2xl overflow-hidden"
             style={{
@@ -647,18 +572,43 @@ export function InviteStudio({
                 accentColor={activePreset.accent}
                 className="w-full"
               >
-                <button
-                  type="button"
-                  data-testid="change-cover-button"
-                  onClick={() => openThemeDrawer('cover')}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-slate-950/80 backdrop-blur-md border border-white/25 px-3.5 py-1.5 text-xs font-medium text-white shadow-lg hover:bg-slate-950 transition cursor-pointer"
-                >
-                  <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span>Change cover</span>
-                </button>
+                <div className="inline-flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    data-testid="edit-theme-button"
+                    onClick={() => openThemeDrawer('theme')}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-slate-950/75 backdrop-blur-md border border-white/20 px-3 py-1.5 text-xs font-medium text-white shadow-lg hover:bg-slate-950 transition cursor-pointer"
+                  >
+                    <Palette className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span>Theme</span>
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="change-cover-button"
+                    onClick={() => openThemeDrawer('cover')}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-slate-950/75 backdrop-blur-md border border-white/20 px-3 py-1.5 text-xs font-medium text-white shadow-lg hover:bg-slate-950 transition cursor-pointer"
+                  >
+                    <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span>Cover</span>
+                  </button>
+                </div>
               </CoverArt>
             ) : (
-              <div className="p-4 pb-0">
+              <div className="px-5 pt-4 flex flex-wrap items-center justify-between gap-2">
+                <button
+                  type="button"
+                  data-testid="edit-theme-button"
+                  onClick={() => openThemeDrawer('theme')}
+                  className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition hover:opacity-85 cursor-pointer"
+                  style={{
+                    backgroundColor: 'var(--theme-surface-bg)',
+                    borderColor: 'var(--theme-border)',
+                    color: 'var(--theme-text-primary)',
+                  }}
+                >
+                  <Palette className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Theme · {activePreset.name}</span>
+                </button>
                 <button
                   type="button"
                   data-testid="change-cover-button"
@@ -666,14 +616,14 @@ export function InviteStudio({
                     setStyle((prev) => ({ ...prev, coverLayout: 'banner' }));
                     openThemeDrawer('cover');
                   }}
-                  className="w-full rounded-2xl border border-dashed py-3.5 px-4 text-xs font-medium flex items-center justify-center gap-2 transition hover:opacity-85 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-dashed px-3 py-1.5 text-xs font-medium transition hover:opacity-85 cursor-pointer"
                   style={{
                     borderColor: 'var(--theme-border)',
                     color: 'var(--theme-text-muted)',
                   }}
                 >
-                  <ImageIcon className="h-4 w-4" aria-hidden="true" />
-                  <span>Add cover photo or artwork</span>
+                  <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Add cover</span>
                 </button>
               </div>
             )}
@@ -687,6 +637,7 @@ export function InviteStudio({
                 <textarea
                   ref={titleTextareaRef}
                   id={titleId}
+                  data-title-input="true"
                   rows={1}
                   required
                   maxLength={140}
@@ -727,7 +678,7 @@ export function InviteStudio({
                       setStartDisambiguation(undefined);
                       if (!hasEndTime) setEndDate(next);
                     }}
-                    className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-sm outline-none focus:ring-2"
+                    className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-base sm:text-sm outline-none focus:ring-2"
                     style={{
                       backgroundColor: 'var(--theme-surface-bg)',
                       borderColor: 'var(--theme-border)',
@@ -745,7 +696,7 @@ export function InviteStudio({
                       setStartDstConflict(null);
                       setStartDisambiguation(undefined);
                     }}
-                    className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-sm outline-none focus:ring-2"
+                    className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-base sm:text-sm outline-none focus:ring-2"
                     style={{
                       backgroundColor: 'var(--theme-surface-bg)',
                       borderColor: 'var(--theme-border)',
@@ -818,7 +769,7 @@ export function InviteStudio({
                           setEndDstConflict(null);
                           setEndDisambiguation(undefined);
                         }}
-                        className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-sm outline-none focus:ring-2"
+                        className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-base sm:text-sm outline-none focus:ring-2"
                         style={{
                           backgroundColor: 'var(--theme-surface-bg)',
                           borderColor: 'var(--theme-border)',
@@ -835,7 +786,7 @@ export function InviteStudio({
                           setEndDstConflict(null);
                           setEndDisambiguation(undefined);
                         }}
-                        className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-sm outline-none focus:ring-2"
+                        className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-base sm:text-sm outline-none focus:ring-2"
                         style={{
                           backgroundColor: 'var(--theme-surface-bg)',
                           borderColor: 'var(--theme-border)',
@@ -907,7 +858,7 @@ export function InviteStudio({
                         onChange={(e) => handleSingleLocationChange(e.target.value)}
                         placeholder="Add a place, address, or link"
                         aria-label="Event location or link"
-                        className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                        className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-base sm:text-sm outline-none focus:ring-2"
                         style={{
                           backgroundColor: 'var(--theme-surface-bg)',
                           borderColor: 'var(--theme-border)',
@@ -950,7 +901,7 @@ export function InviteStudio({
                       value={locationName}
                       onChange={(e) => setLocationName(e.target.value)}
                       placeholder="Place name"
-                      className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                      className="w-full rounded-xl border px-3 py-2 text-base sm:text-sm outline-none focus:ring-2"
                       style={{
                         backgroundColor: 'var(--theme-surface-bg)',
                         borderColor: 'var(--theme-border)',
@@ -964,7 +915,7 @@ export function InviteStudio({
                       value={locationAddress}
                       onChange={(e) => setLocationAddress(e.target.value)}
                       placeholder="Street address, city, state"
-                      className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                      className="w-full rounded-xl border px-3 py-2 text-base sm:text-sm outline-none focus:ring-2"
                       style={{
                         backgroundColor: 'var(--theme-surface-bg)',
                         borderColor: 'var(--theme-border)',
@@ -978,7 +929,7 @@ export function InviteStudio({
                       value={virtualUrl}
                       onChange={(e) => setVirtualUrl(e.target.value)}
                       placeholder="Video call link https://... (optional)"
-                      className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                      className="w-full rounded-xl border px-3 py-2 text-base sm:text-sm outline-none focus:ring-2"
                       style={{
                         backgroundColor: 'var(--theme-surface-bg)',
                         borderColor: 'var(--theme-border)',
@@ -1005,7 +956,7 @@ export function InviteStudio({
                       setHostName(e.target.value);
                     }}
                     placeholder="Hosted by (your name)"
-                    className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                    className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-base sm:text-sm outline-none focus:ring-2"
                     style={{
                       backgroundColor: 'var(--theme-surface-bg)',
                       borderColor: 'var(--theme-border)',
@@ -1060,7 +1011,7 @@ export function InviteStudio({
                   value={rsvpNotePrompt}
                   onChange={(e) => setRsvpNotePrompt(e.target.value)}
                   placeholder="Bringing food, a dish, or a note?"
-                  className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                  className="w-full rounded-xl border px-3 py-2 text-base sm:text-sm outline-none focus:ring-2"
                   style={{
                     backgroundColor: 'var(--theme-surface-bg)',
                     borderColor: 'var(--theme-border)',
@@ -1084,7 +1035,7 @@ export function InviteStudio({
                   value={invitedNamesRaw}
                   onChange={(e) => setInvitedNamesRaw(e.target.value)}
                   placeholder="Alex, Jordan, Sam"
-                  className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                  className="w-full rounded-xl border px-3 py-2 text-base sm:text-sm outline-none focus:ring-2"
                   style={{
                     backgroundColor: 'var(--theme-surface-bg)',
                     borderColor: 'var(--theme-border)',
@@ -1113,7 +1064,7 @@ export function InviteStudio({
                     setEndDstConflict(null);
                     setEndDisambiguation(undefined);
                   }}
-                  className="w-full rounded-xl border px-3 py-2 text-sm outline-none cursor-pointer"
+                  className="w-full rounded-xl border px-3 py-2 text-base sm:text-sm outline-none cursor-pointer"
                   style={{
                     backgroundColor: 'var(--theme-surface-bg)',
                     borderColor: 'var(--theme-border)',
@@ -1174,7 +1125,7 @@ export function InviteStudio({
           <button
             type="submit"
             disabled={submitting}
-            className="invite-cta-btn w-full min-h-[50px] rounded-full py-3.5 px-5 text-sm sm:text-base font-semibold transition active:scale-[0.99] disabled:opacity-60 cursor-pointer shadow-xl"
+            className="invite-cta-btn w-full min-h-[50px] rounded-full py-3.5 px-5 text-base font-semibold transition active:scale-[0.99] disabled:opacity-60 cursor-pointer shadow-xl"
           >
             {submitting
               ? mode === 'create'
@@ -1184,6 +1135,20 @@ export function InviteStudio({
                 ? 'Create invite'
                 : 'Save changes'}
           </button>
+
+          {mode === 'create' ? (
+            <div className="text-center pt-0.5">
+              <button
+                type="button"
+                data-testid="start-over-prompt-button"
+                onClick={() => setHasStartedCard(false)}
+                className="text-xs font-medium opacity-75 hover:opacity-100 underline underline-offset-4 transition cursor-pointer"
+                style={{ color: 'var(--theme-outer-text)' }}
+              >
+                Start over from a short note
+              </button>
+            </div>
+          ) : null}
         </form>
       )}
 

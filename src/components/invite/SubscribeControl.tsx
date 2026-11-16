@@ -333,7 +333,7 @@ export function SubscribeControl({
                   if (emailDone) setEmailDone(false);
                 }}
                 placeholder="you@example.com"
-                className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-base sm:text-sm outline-none focus:ring-2"
                 style={{
                   backgroundColor: 'var(--theme-card-bg)',
                   borderColor: 'var(--theme-border)',

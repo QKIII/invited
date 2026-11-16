@@ -542,7 +542,7 @@ export function RsvpPanel({
                 value={guestName}
                 onChange={(e) => onGuestNameChange(e.target.value)}
                 placeholder="First & last name"
-                className="w-full rounded-xl border px-3.5 py-2.5 text-sm outline-none focus:ring-2"
+                className="w-full rounded-xl border px-3.5 py-2.5 text-base sm:text-sm outline-none focus:ring-2"
                 style={{
                   backgroundColor: 'var(--theme-surface-bg)',
                   borderColor: 'var(--theme-border)',
@@ -635,7 +635,7 @@ export function RsvpPanel({
                   ? 'e.g., Bringing warm sourdough & cider!'
                   : 'e.g., Sorry to miss it — have fun!'
               }
-              className="w-full rounded-xl border px-3.5 py-2 text-sm outline-none focus:ring-2 resize-y"
+              className="w-full rounded-xl border px-3.5 py-2 text-base sm:text-sm outline-none focus:ring-2 resize-y"
               style={{
                 backgroundColor: 'var(--theme-surface-bg)',
                 borderColor: 'var(--theme-border)',
