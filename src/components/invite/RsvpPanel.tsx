@@ -26,6 +26,12 @@ import type {
   RsvpRecord,
   RsvpStatus,
 } from '@/types/invite';
+import {
+  EmailUpdatesControl,
+  validateEmailAddress,
+  type ActiveEmailNotifyLevel,
+  type ViewerSubscriptionData,
+} from './EmailUpdatesControl';
 import { GuestAvatar } from './GuestAvatar';
 
 export { getGuestTokenStorageKey } from '@/lib/client/deviceProfile';
@@ -34,6 +40,7 @@ interface RsvpPanelProps {
   event: EventMeta;
   awaitingNames: string[];
   viewerRsvp?: RsvpRecord;
+  viewerSubscription?: ViewerSubscriptionData;
   editKey?: string | null;
   guestToken: string | null;
   guestName: string;
@@ -65,6 +72,7 @@ export function RsvpPanel({
   event,
   awaitingNames,
   viewerRsvp,
+  viewerSubscription,
   editKey,
   guestToken,
   guestName,
@@ -77,6 +85,9 @@ export function RsvpPanel({
 }: RsvpPanelProps) {
   const formHeadingId = useId();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const localNameInputRef = useRef<HTMLInputElement>(null);
+  const emailInputRef = useRef<HTMLInputElement>(null);
+  const effectiveNameInputRef = nameInputRef ?? localNameInputRef;
   const deviceProfile = useSyncExternalStore(
     subscribeDeviceProfile,
     getDeviceProfile,
@@ -88,10 +99,22 @@ export function RsvpPanel({
   const [plusOnes, setPlusOnes] = useState<number>(viewerRsvp?.plusOnes ?? 0);
   const [bringingNote, setBringingNote] = useState<string>(viewerRsvp?.bringingNote ?? '');
   const [manualIdentityEdit, setManualIdentityEdit] = useState<boolean>(false);
+  const [emailEnabledOverride, setEmailEnabledOverride] = useState<boolean | null>(null);
+  const [guestEmailOverride, setGuestEmailOverride] = useState<string | null>(null);
+  const [notifyLevelOverride, setNotifyLevelOverride] =
+    useState<ActiveEmailNotifyLevel | null>(null);
+  const [emailTouched, setEmailTouched] = useState<boolean>(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [withdrawing, setWithdrawing] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const draftHydratedRef = useRef<boolean>(false);
+
+  const emailEnabled = emailEnabledOverride ?? Boolean(viewerSubscription);
+  const guestEmail =
+    guestEmailOverride ?? viewerSubscription?.email ?? deviceProfile?.email ?? '';
+  const notifyLevel: ActiveEmailNotifyLevel =
+    notifyLevelOverride ?? viewerSubscription?.notifyLevel ?? 'host_posts';
 
   const recognizedName = deviceProfile?.name?.trim() || '';
   const firstName = recognizedName.split(/\s+/)[0] || recognizedName;
@@ -102,6 +125,14 @@ export function RsvpPanel({
   const hasUnsentNoteDraft = Boolean(
     bringingNote.trim() && bringingNote.trim() !== savedNote,
   );
+
+  function resetEmailDraftOverrides() {
+    setEmailEnabledOverride(null);
+    setGuestEmailOverride(null);
+    setNotifyLevelOverride(null);
+    setEmailTouched(false);
+    setEmailError(null);
+  }
 
   // Hydrate saved RSVP note draft once per event
   useEffect(() => {
@@ -160,6 +191,7 @@ export function RsvpPanel({
 
     const cleanupDismiss = setupDialogLightDismiss(dialog);
     const handleNativeClose = () => {
+      resetEmailDraftOverrides();
       onEditingChange(false);
     };
     dialog.addEventListener('close', handleNativeClose);
@@ -172,6 +204,7 @@ export function RsvpPanel({
 
   function openSheetForStatus(targetStatus: RsvpStatus) {
     setErrorMsg(null);
+    resetEmailDraftOverrides();
     if (viewerRsvp) {
       setStatus(viewerRsvp.status);
       setPlusOnes(viewerRsvp.plusOnes);
@@ -189,7 +222,29 @@ export function RsvpPanel({
 
   function closeSheet() {
     setErrorMsg(null);
+    resetEmailDraftOverrides();
     onEditingChange(false);
+  }
+
+  function handleEmailToggle(nextEnabled: boolean) {
+    setEmailEnabledOverride(nextEnabled);
+    if (!nextEnabled) {
+      setEmailError(null);
+      setEmailTouched(false);
+    }
+  }
+
+  function handleEmailChange(nextValue: string) {
+    setGuestEmailOverride(nextValue);
+    setEmailTouched(true);
+    if (emailError && validateEmailAddress(nextValue) === null) {
+      setEmailError(null);
+    }
+  }
+
+  function handleEmailBlur() {
+    if (!emailEnabled || !emailTouched) return;
+    setEmailError(validateEmailAddress(guestEmail));
   }
 
   async function submitRsvp(params: {
@@ -201,12 +256,24 @@ export function RsvpPanel({
     const trimmedName = params.targetName.trim();
     if (!trimmedName) {
       setErrorMsg('Please enter your name.');
-      nameInputRef?.current?.focus();
+      effectiveNameInputRef.current?.focus();
       return;
+    }
+
+    const trimmedEmail = guestEmail.trim();
+    if (emailEnabled) {
+      const validationErr = validateEmailAddress(trimmedEmail);
+      if (validationErr) {
+        setEmailTouched(true);
+        setEmailError(validationErr);
+        emailInputRef.current?.focus();
+        return;
+      }
     }
 
     setSubmitting(true);
     setErrorMsg(null);
+    setEmailError(null);
 
     try {
       const headers: Record<string, string> = {
@@ -217,6 +284,7 @@ export function RsvpPanel({
       }
 
       const trimmedNote = params.targetNote.trim();
+      const shouldIncludeEmailUpdates = emailEnabled || Boolean(viewerSubscription);
       const res = await fetch(`/api/events/${event.id}/rsvps`, {
         method: 'POST',
         headers,
@@ -227,6 +295,20 @@ export function RsvpPanel({
           bringingNote: trimmedNote || undefined,
           postToWall: Boolean(trimmedNote),
           guestToken: guestToken ?? undefined,
+          ...(shouldIncludeEmailUpdates
+            ? {
+                emailUpdates: emailEnabled
+                  ? {
+                      enabled: true,
+                      email: trimmedEmail,
+                      notifyLevel,
+                    }
+                  : {
+                      enabled: false,
+                      email: viewerSubscription?.email || trimmedEmail || undefined,
+                    },
+              }
+            : {}),
         }),
       });
 
@@ -246,9 +328,13 @@ export function RsvpPanel({
         saveGuestToken(event.id, nextToken);
       }
       saveCachedGuestRsvp(event.id, data.rsvp);
-      saveDeviceProfile({ name: trimmedName });
+      saveDeviceProfile({
+        name: trimmedName,
+        ...(emailEnabled && trimmedEmail ? { email: trimmedEmail } : {}),
+      });
       onGuestNameChange(trimmedName);
       setManualIdentityEdit(false);
+      resetEmailDraftOverrides();
       onEditingChange(false);
 
       onRsvpSuccess({
@@ -309,6 +395,7 @@ export function RsvpPanel({
       setBringingNote('');
       setPlusOnes(0);
       setStatus('yes');
+      resetEmailDraftOverrides();
       onEditingChange(false);
       onWithdrawRsvp?.(data.detail);
     } catch {
@@ -453,15 +540,16 @@ export function RsvpPanel({
         ref={dialogRef}
         closedby="any"
         aria-labelledby={formHeadingId}
-        className="sheet-from-bottom w-full sm:w-[calc(100%-2rem)] max-w-[480px] mx-auto mt-auto mb-0 sm:my-auto rounded-t-3xl sm:rounded-3xl border shadow-2xl p-0 overflow-hidden backdrop-blur-2xl"
+        className="sheet-from-bottom w-full sm:w-[calc(100%-2rem)] max-w-[480px] max-h-[90dvh] mx-auto mt-auto mb-0 sm:my-auto rounded-t-3xl sm:rounded-3xl border shadow-2xl p-0 overflow-hidden backdrop-blur-2xl"
         style={{
           backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
           borderColor: 'var(--theme-border)',
           color: 'var(--theme-text-primary)',
         }}
       >
+        <div className="flex flex-col max-h-[90dvh]">
         <div
-          className="px-5 py-4 border-b flex items-center justify-between gap-3"
+          className="shrink-0 px-5 py-4 border-b flex items-center justify-between gap-3"
           style={{ borderColor: 'var(--theme-hairline)' }}
         >
           <div className="min-w-0">
@@ -508,7 +596,11 @@ export function RsvpPanel({
           </button>
         </div>
 
-        <form onSubmit={handleFormSubmit} className="p-5 space-y-4">
+        <form
+          onSubmit={handleFormSubmit}
+          noValidate
+          className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-5 space-y-4"
+        >
           {/* Binary-only RSVP selection — strictly Yes or No */}
           <div
             role="radiogroup"
@@ -619,7 +711,7 @@ export function RsvpPanel({
                 Your name
               </label>
               <input
-                ref={nameInputRef}
+                ref={effectiveNameInputRef}
                 id="rsvp-guest-name"
                 type="text"
                 required
@@ -730,6 +822,19 @@ export function RsvpPanel({
             />
           </div>
 
+          <EmailUpdatesControl
+            enabled={emailEnabled}
+            onEnabledChange={handleEmailToggle}
+            email={guestEmail}
+            onEmailChange={handleEmailChange}
+            onEmailBlur={handleEmailBlur}
+            emailError={emailError}
+            notifyLevel={notifyLevel}
+            onNotifyLevelChange={setNotifyLevelOverride}
+            emailInputId="rsvp-email-input"
+            emailInputRef={emailInputRef}
+          />
+
           {errorMsg ? (
             <p role="alert" className="text-xs font-medium text-rose-500">
               {errorMsg}
@@ -766,6 +871,7 @@ export function RsvpPanel({
             </div>
           ) : null}
         </form>
+        </div>
       </dialog>
     </>
   );

@@ -20,6 +20,8 @@ import {
   getBrowserTimeZone,
   getSupportedTimeZones,
   isoToLocalFields,
+  normalizeDateInput,
+  normalizeTimeInput,
   validateAndBuildZonedIso,
   type DstConflictInfo,
 } from './dateTimeUtils';
@@ -91,6 +93,7 @@ export function InviteStudio({
   onStyleChange,
 }: InviteStudioProps) {
   const titleId = useId();
+  const notifyGuestsId = useId();
   const deviceProfile = useSyncExternalStore(
     subscribeDeviceProfile,
     getDeviceProfile,
@@ -175,6 +178,18 @@ export function InviteStudio({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [savedNotice, setSavedNotice] = useState<boolean>(false);
   const [publishedResult, setPublishedResult] = useState<PublishedEventResult | null>(null);
+  const [notifyGuestsOverride, setNotifyGuestsOverride] = useState<boolean | null>(null);
+  const [initialDateBaseline, setInitialDateBaseline] = useState<{
+    startDate: string;
+    startTime: string;
+    endDate: string;
+    endTime: string;
+  }>(() => ({
+    startDate: initialEvent?.startIso?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] || getDefaultDateString(),
+    startTime: initialEvent?.startIso?.match(/T(\d{2}:\d{2})/)?.[1] || '18:00',
+    endDate: initialEvent?.endIso?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] || getDefaultDateString(),
+    endTime: initialEvent?.endIso?.match(/T(\d{2}:\d{2})/)?.[1] || '21:00',
+  }));
 
   const titleTextareaRef = useRef<HTMLTextAreaElement>(null);
   const draftHydratedRef = useRef<boolean>(false);
@@ -323,6 +338,13 @@ export function InviteStudio({
       void isoToLocalFields(initialSource.startIso, tz).then(({ date, time }) => {
         if (active && date) setStartDate(date);
         if (active && time) setStartTime(time);
+        if (active && initialEvent) {
+          setInitialDateBaseline((prev) => ({
+            ...prev,
+            startDate: date || prev.startDate,
+            startTime: time || prev.startTime,
+          }));
+        }
       });
     }
     if (initialSource?.endIso) {
@@ -330,12 +352,19 @@ export function InviteStudio({
       void isoToLocalFields(initialSource.endIso, tz).then(({ date, time }) => {
         if (active && date) setEndDate(date);
         if (active && time) setEndTime(time);
+        if (active && initialEvent) {
+          setInitialDateBaseline((prev) => ({
+            ...prev,
+            endDate: date || prev.endDate,
+            endTime: time || prev.endTime,
+          }));
+        }
       });
     }
     return () => {
       active = false;
     };
-  }, [initialSource?.endIso, initialSource?.startIso, initialSource?.timeZone]);
+  }, [initialEvent, initialSource?.endIso, initialSource?.startIso, initialSource?.timeZone]);
 
   useEffect(() => {
     const el = titleTextareaRef.current;
@@ -346,6 +375,47 @@ export function InviteStudio({
 
   const timeZones = useMemo(() => getSupportedTimeZones(timeZone), [timeZone]);
   const activePreset = getThemePreset(style.themeId);
+
+  const hasMaterialDetailChanges = useMemo(() => {
+    if (mode !== 'edit' || !initialEvent) return false;
+    const normalizedDesc = stripHtmlToText(descriptionHtml).replace(/\s+/g, ' ').trim();
+    const initialDesc = stripHtmlToText(initialEvent.descriptionHtml ?? '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const initialHasEnd = Boolean(initialEvent.endIso);
+
+    return (
+      title.trim() !== initialEvent.title.trim() ||
+      normalizeDateInput(startDate) !== normalizeDateInput(initialDateBaseline.startDate) ||
+      normalizeTimeInput(startTime) !== normalizeTimeInput(initialDateBaseline.startTime) ||
+      hasEndTime !== initialHasEnd ||
+      (hasEndTime &&
+        (normalizeDateInput(endDate) !== normalizeDateInput(initialDateBaseline.endDate) ||
+          normalizeTimeInput(endTime) !== normalizeTimeInput(initialDateBaseline.endTime))) ||
+      timeZone !== initialEvent.timeZone ||
+      locationName.trim() !== (initialEvent.locationName ?? '').trim() ||
+      locationAddress.trim() !== (initialEvent.locationAddress ?? '').trim() ||
+      virtualUrl.trim() !== (initialEvent.virtualUrl ?? '').trim() ||
+      normalizedDesc !== initialDesc
+    );
+  }, [
+    mode,
+    initialEvent,
+    title,
+    startDate,
+    startTime,
+    hasEndTime,
+    endDate,
+    endTime,
+    timeZone,
+    locationName,
+    locationAddress,
+    virtualUrl,
+    descriptionHtml,
+    initialDateBaseline,
+  ]);
+
+  const effectiveNotifyGuests = notifyGuestsOverride ?? hasMaterialDetailChanges;
 
   function openThemeDrawer(tab: StudioDrawerTab) {
     setThemeDrawerTab(tab);
@@ -503,6 +573,7 @@ export function InviteStudio({
             virtualUrl: virtualUrl.trim() || null,
             hostName: effectiveHostName.trim() || null,
             rsvpNotePrompt: rsvpNotePrompt.trim() || null,
+            notifyGuests: effectiveNotifyGuests,
           }),
         });
         const updated = (await res.json().catch(() => ({}))) as EventMeta & {
@@ -527,6 +598,13 @@ export function InviteStudio({
           editKey,
         });
 
+        setInitialDateBaseline({
+          startDate,
+          startTime,
+          endDate,
+          endTime,
+        });
+        setNotifyGuestsOverride(null);
         setSavedNotice(true);
         onSaved?.(updated);
       }
@@ -1112,6 +1190,46 @@ export function InviteStudio({
                 <span>View invite</span>
                 <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
               </Link>
+            </div>
+          ) : null}
+
+          {mode === 'edit' && initialEvent ? (
+            <div
+              className="rounded-2xl border px-4 py-3 space-y-1"
+              style={{
+                backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
+                borderColor: effectiveNotifyGuests
+                  ? 'var(--theme-accent)'
+                  : 'var(--theme-hairline)',
+              }}
+            >
+              <div className="flex items-center gap-2.5 min-h-[36px]">
+                <input
+                  id={notifyGuestsId}
+                  type="checkbox"
+                  name="notifyGuests"
+                  data-testid="edit-notify-guests-checkbox"
+                  checked={effectiveNotifyGuests}
+                  onChange={(e) => setNotifyGuestsOverride(e.target.checked)}
+                  className="invite-checkbox h-4 w-4 shrink-0 rounded"
+                  style={{ accentColor: 'var(--theme-accent)' }}
+                />
+                <label
+                  htmlFor={notifyGuestsId}
+                  className="invite-checkbox-label text-xs sm:text-sm font-medium cursor-pointer"
+                  style={{ color: 'var(--theme-text-primary)' }}
+                >
+                  Email subscribed guests about these changes
+                </label>
+              </div>
+              <p
+                className="text-xs pl-6"
+                style={{ color: 'var(--theme-text-muted)' }}
+              >
+                {hasMaterialDetailChanges
+                  ? 'Time, location, or details changed'
+                  : "Style tweak only — guests won't be emailed unless checked"}
+              </p>
             </div>
           ) : null}
 
