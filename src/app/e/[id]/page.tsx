@@ -1,6 +1,8 @@
 import { cache } from 'react';
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
+import { resolveCoverImageUrl } from '@/components/covers/CoverArt';
 import { InviteView } from '@/components/invite/InviteView';
 import { formatEventDateTime } from '@/lib/polyfills/temporal';
 import { stripHtmlToText } from '@/lib/sanitize';
@@ -9,6 +11,32 @@ import { getEventDetail } from '@/lib/storage/events';
 export const dynamic = 'force-dynamic';
 
 const getCachedPublicEventDetail = cache((id: string) => getEventDetail(id));
+
+async function resolveRequestOrigin(): Promise<string> {
+  try {
+    const reqHeaders = await headers();
+    const host =
+      reqHeaders.get('x-forwarded-host')?.split(',')[0]?.trim() ||
+      reqHeaders.get('host')?.trim();
+    if (host) {
+      const proto =
+        reqHeaders.get('x-forwarded-proto')?.split(',')[0]?.trim() ||
+        (host.startsWith('localhost') || host.startsWith('127.0.0.1')
+          ? 'http'
+          : 'https');
+      return `${proto}://${host}`;
+    }
+  } catch {
+    // Outside Next.js request context (e.g. unit tests)
+  }
+  if (process.env.NEXT_PUBLIC_SITE_URL?.trim()) {
+    return process.env.NEXT_PUBLIC_SITE_URL.trim().replace(/\/+$/, '');
+  }
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim()) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL.trim()}`;
+  }
+  return 'https://invited-lyart.vercel.app';
+}
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -46,18 +74,40 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     .filter(Boolean)
     .join(' — ');
 
+  const shareTitle = `You're invited to ${event.title}`;
+  const origin = await resolveRequestOrigin();
+  const rawCoverUrl = resolveCoverImageUrl(event.style);
+  const absoluteCoverUrl = /^https?:\/\//i.test(rawCoverUrl)
+    ? rawCoverUrl
+    : new URL(
+        rawCoverUrl.startsWith('/') ? rawCoverUrl : `/${rawCoverUrl}`,
+        origin,
+      ).toString();
+  const isStaticPresetJpg =
+    rawCoverUrl.startsWith('/covers/') && rawCoverUrl.endsWith('.jpg');
+
   return {
-    title: `${event.title} — invited`,
+    title: shareTitle,
     description,
     openGraph: {
-      title: event.title,
+      title: shareTitle,
       description,
       type: 'website',
+      images: [
+        {
+          url: absoluteCoverUrl,
+          ...(isStaticPresetJpg
+            ? { width: 960, height: 540, type: 'image/jpeg' }
+            : {}),
+          alt: shareTitle,
+        },
+      ],
     },
     twitter: {
       card: 'summary_large_image',
-      title: event.title,
+      title: shareTitle,
       description,
+      images: [absoluteCoverUrl],
     },
   };
 }

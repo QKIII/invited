@@ -1,11 +1,13 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { ImageResponse } from 'next/og';
-import { formatEventDateTime } from '@/lib/polyfills/temporal';
-import { getEventDetail } from '@/lib/storage/events';
+import { resolveCoverImageUrl } from '@/components/covers/CoverArt';
+import { getEventCover, getEventDetail } from '@/lib/storage/events';
 import { getThemePreset } from '@/lib/themes/presets';
 
 export const runtime = 'nodejs';
 export const revalidate = 300;
-export const alt = 'Event invitation card';
+export const alt = 'Event cover preview';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
@@ -16,19 +18,36 @@ function safeHex(candidate: string | undefined, fallback: string): string {
   return fallback;
 }
 
-function getOnAccentColor(hex: string): string {
-  const clean = safeHex(hex, '#6366f1').slice(1);
-  const r = parseInt(clean.slice(0, 2), 16);
-  const g = parseInt(clean.slice(2, 4), 16);
-  const b = parseInt(clean.slice(4, 6), 16);
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance > 0.62 ? '#0b0f19' : '#ffffff';
-}
+async function loadCoverDataUri(
+  eventId: string,
+  rawCoverUrl: string,
+): Promise<string | null> {
+  try {
+    if (rawCoverUrl.startsWith('/covers/')) {
+      const publicCoversRoot = path.resolve(process.cwd(), 'public', 'covers');
+      const rel = rawCoverUrl.replace(/^\/covers\//, '');
+      const fullPath = path.resolve(publicCoversRoot, rel);
+      if (fullPath !== publicCoversRoot && !fullPath.startsWith(publicCoversRoot + path.sep)) {
+        return null;
+      }
+      const buf = await fs.readFile(fullPath);
+      return `data:image/jpeg;base64,${buf.toString('base64')}`;
+    }
 
-function truncateText(text: string, maxLen: number): string {
-  const normalized = text.trim();
-  if (normalized.length <= maxLen) return normalized;
-  return `${normalized.slice(0, maxLen - 1).trimEnd()}…`;
+    if (rawCoverUrl.startsWith('/api/events/')) {
+      const file = new URL(rawCoverUrl, 'http://localhost').searchParams.get('file');
+      const media = await getEventCover(eventId, file);
+      if (!media) return null;
+      return `data:${media.contentType};base64,${media.data.toString('base64')}`;
+    }
+
+    if (/^https?:\/\//i.test(rawCoverUrl)) {
+      return rawCoverUrl;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 export default async function OpenGraphImage({
@@ -83,16 +102,17 @@ export default async function OpenGraphImage({
     );
   }
 
-  const { event, rsvps } = detail;
+  const { event } = detail;
   const preset = getThemePreset(event.style.themeId);
   const isLight = (event.style.colorMode ?? preset.colorMode) === 'light';
   const accent = safeHex(event.style.customAccentHex, safeHex(preset.accent, '#6366f1'));
-  const onAccent = getOnAccentColor(accent);
   const bgBase = safeHex(
     event.style.customSurfaceHex,
     safeHex(preset.pageBg, isLight ? '#faf7f2' : '#0b0f19'),
   );
-  const usePresetPalette = !event.style.customSurfaceHex && (event.style.colorMode ?? preset.colorMode) === preset.colorMode;
+  const usePresetPalette =
+    !event.style.customSurfaceHex &&
+    (event.style.colorMode ?? preset.colorMode) === preset.colorMode;
   const cardBg = usePresetPalette
     ? safeHex(preset.cardBg, isLight ? '#ffffff' : '#0f172a')
     : isLight
@@ -108,23 +128,39 @@ export default async function OpenGraphImage({
     : isLight
       ? '#0f172a'
       : '#f8fafc';
-  const textMuted = usePresetPalette
-    ? safeHex(preset.textMuted, isLight ? '#475569' : '#cbd5e1')
-    : isLight
-      ? '#475569'
-      : '#cbd5e1';
 
-  const formatted = await formatEventDateTime(
-    event.startIso,
-    event.endIso,
-    event.timeZone,
+  const coverSrc = await loadCoverDataUri(
+    event.id,
+    resolveCoverImageUrl(event.style),
   );
 
-  const locationLine = event.locationName
-    ? [event.locationName, event.locationAddress].filter(Boolean).join(' · ')
-    : event.virtualUrl
-      ? 'Virtual Event (Link inside)'
-      : 'Location details inside';
+  if (coverSrc) {
+    return new ImageResponse(
+      (
+        <div
+          style={{
+            width: '100%',
+            height: '100%',
+            display: 'flex',
+            backgroundColor: bgBase,
+          }}
+        >
+          <img
+            src={coverSrc}
+            alt={`You're invited to ${event.title}`}
+            width={1200}
+            height={630}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+            }}
+          />
+        </div>
+      ),
+      { ...size },
+    );
+  }
 
   return new ImageResponse(
     (
@@ -135,7 +171,7 @@ export default async function OpenGraphImage({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '44px',
+          padding: '48px',
           backgroundColor: bgBase,
           backgroundImage: `linear-gradient(135deg, ${accent}38 0%, ${bgBase} 52%, ${accent}26 100%)`,
           color: textPrimary,
@@ -147,116 +183,19 @@ export default async function OpenGraphImage({
             height: '100%',
             display: 'flex',
             flexDirection: 'column',
-            justifyContent: 'space-between',
-            padding: '46px 52px',
+            justifyContent: 'center',
+            gap: '16px',
+            padding: '52px',
             borderRadius: '32px',
             backgroundColor: cardBg,
             border: `2px solid ${borderCol}`,
           }}
         >
-          {/* Top badge row */}
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              width: '100%',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                padding: '10px 20px',
-                borderRadius: '999px',
-                border: `1.5px solid ${borderCol}`,
-                fontSize: 22,
-                fontWeight: 600,
-              }}
-            >
-              <span
-                style={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: 999,
-                  backgroundColor: accent,
-                }}
-              />
-              <span>{preset.name}</span>
-            </div>
-
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                fontSize: 24,
-                fontWeight: 700,
-                color: accent,
-              }}
-            >
-              invited
-            </div>
+          <div style={{ display: 'flex', fontSize: 28, fontWeight: 700, color: accent }}>
+            invited
           </div>
-
-          {/* Title & Host */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div
-              style={{
-                display: 'flex',
-                fontSize: event.title.length > 42 ? 48 : 58,
-                fontWeight: 700,
-                lineHeight: 1.12,
-                letterSpacing: '-0.02em',
-              }}
-            >
-              {truncateText(event.title, 76)}
-            </div>
-
-            {event.hostName && (
-              <div style={{ display: 'flex', fontSize: 26, color: textMuted }}>
-                Hosted by {truncateText(event.hostName, 44)}
-              </div>
-            )}
-          </div>
-
-          {/* Logistics & CTA row */}
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'flex-end',
-              width: '100%',
-              gap: '24px',
-            }}
-          >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '72%' }}>
-              <div style={{ display: 'flex', fontSize: 26, fontWeight: 600 }}>
-                {truncateText(formatted.fullLabel, 64)}
-              </div>
-              <div style={{ display: 'flex', fontSize: 22, color: textMuted }}>
-                {truncateText(locationLine, 68)}
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                padding: '14px 26px',
-                borderRadius: '999px',
-                backgroundColor: accent,
-                color: onAccent,
-                fontSize: 22,
-                fontWeight: 700,
-              }}
-            >
-              {rsvps.totalHeadcount > 0
-                ? `${rsvps.totalHeadcount} Going · RSVP`
-                : 'Open & RSVP'}
-            </div>
+          <div style={{ display: 'flex', fontSize: 54, fontWeight: 700, lineHeight: 1.12 }}>
+            You&apos;re invited to {event.title}
           </div>
         </div>
       </div>

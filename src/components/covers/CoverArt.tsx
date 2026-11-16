@@ -1,6 +1,6 @@
 import React, { useId } from 'react';
-import { getCoverPreset } from '@/lib/themes/presets';
-import type { CoverLayout } from '@/types/invite';
+import { getCoverPreset, getThemePreset } from '@/lib/themes/presets';
+import type { CoverLayout, InviteStyleConfig } from '@/types/invite';
 
 const LEGACY_COVER_FALLBACK_IMAGES: Record<string, string> = {
   'snowy-pines': '/covers/handdrawn-snowy-cabin.jpg',
@@ -23,6 +23,25 @@ const LEGACY_COVER_FALLBACK_IMAGES: Record<string, string> = {
   'painted-spring-blossoms': '/covers/pencil-wildflower-meadow.jpg',
   'painted-terracotta-dusk': '/covers/oil-coastal-sunset.jpg',
 };
+
+export function resolveCoverImageUrl(
+  style: Pick<InviteStyleConfig, 'coverPresetId' | 'customCoverUrl' | 'themeId'>,
+): string {
+  if (style.customCoverUrl && style.customCoverUrl.trim().length > 0) {
+    return style.customCoverUrl.trim();
+  }
+  const direct =
+    getCoverPreset(style.coverPresetId)?.imageUrl ??
+    LEGACY_COVER_FALLBACK_IMAGES[style.coverPresetId];
+  if (direct) {
+    return direct;
+  }
+  const themeDefaultId = getThemePreset(style.themeId).defaultCoverPresetId;
+  return (
+    getCoverPreset(themeDefaultId)?.imageUrl ??
+    '/covers/handdrawn-pelican-holiday.jpg'
+  );
+}
 
 export function CoverArt({
   coverPresetId,

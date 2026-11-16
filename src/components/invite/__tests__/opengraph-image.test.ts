@@ -3,11 +3,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EventDetailResponse, EventMeta } from '@/types/invite';
 
 const mockGetEventDetail = vi.fn();
+const mockGetEventCover = vi.fn().mockResolvedValue(null);
 vi.mock('@/lib/storage/events', () => ({
   getEventDetail: (...args: unknown[]) => mockGetEventDetail(...args),
+  getEventCover: (...args: unknown[]) => mockGetEventCover(...args),
 }));
 
+import { resolveCoverImageUrl } from '@/components/covers/CoverArt';
 import OpenGraphImage from '@/app/e/[id]/opengraph-image';
+import { generateMetadata } from '@/app/e/[id]/page';
 
 function buildDetail(overrides: Partial<EventDetailResponse> = {}): EventDetailResponse {
   const event: EventMeta = {
@@ -56,7 +60,21 @@ describe('OpenGraphImage (Node runtime integration)', () => {
   });
 
   it('generates PNG ImageResponse for both valid and missing events', async () => {
-    mockGetEventDetail.mockResolvedValueOnce(buildDetail());
+    mockGetEventDetail.mockResolvedValueOnce(
+      buildDetail({
+        event: {
+          ...buildDetail().event,
+          style: {
+            themeId: 'winter-snowfall',
+            fontId: 'modern-sans',
+            effectId: 'snowfall',
+            coverPresetId: 'handdrawn-pelican-holiday',
+            coverLayout: 'banner',
+            colorMode: 'light',
+          },
+        },
+      }),
+    );
     const validRes = await OpenGraphImage({
       params: Promise.resolve({ id: 'evt_xmas1' }),
     });
@@ -73,5 +91,96 @@ describe('OpenGraphImage (Node runtime integration)', () => {
     expect(missingRes.headers.get('content-type')).toContain('image/png');
     const missingBytes = await missingRes.arrayBuffer();
     expect(missingBytes.byteLength).toBeGreaterThan(1000);
+  });
+
+  it('emits cover image and "You\'re invited to <title>" in rich link metadata across presets, custom covers, and hidden-cover layouts', async () => {
+    const pelicanDetail = buildDetail({
+      event: {
+        ...buildDetail().event,
+        title: 'Christmas Breakfast with Spicy Pelicans and Sweet Penguins',
+        style: {
+          themeId: 'winter-snowfall',
+          fontId: 'modern-sans',
+          effectId: 'snowfall',
+          coverPresetId: 'handdrawn-pelican-holiday',
+          coverLayout: 'banner',
+          colorMode: 'light',
+        },
+      },
+    });
+    mockGetEventDetail.mockResolvedValueOnce(pelicanDetail);
+
+    const meta = await generateMetadata({
+      params: Promise.resolve({ id: 'evt_xmas1' }),
+      searchParams: Promise.resolve({}),
+    });
+
+    const expectedTitle =
+      "You're invited to Christmas Breakfast with Spicy Pelicans and Sweet Penguins";
+    expect(meta.title).toBe(expectedTitle);
+    expect(meta.openGraph?.title).toBe(expectedTitle);
+    expect(meta.twitter?.title).toBe(expectedTitle);
+    expect(meta.openGraph?.images).toEqual([
+      {
+        url: 'https://invited-lyart.vercel.app/covers/handdrawn-pelican-holiday.jpg',
+        width: 960,
+        height: 540,
+        type: 'image/jpeg',
+        alt: expectedTitle,
+      },
+    ]);
+    expect(meta.twitter?.images).toEqual([
+      'https://invited-lyart.vercel.app/covers/handdrawn-pelican-holiday.jpg',
+    ]);
+
+    const customDetail = buildDetail({
+      event: {
+        ...buildDetail().event,
+        style: {
+          ...buildDetail().event.style,
+          customCoverUrl: '/api/events/evt_xmas1/cover?file=cover-123.png',
+        },
+      },
+    });
+    mockGetEventDetail.mockResolvedValueOnce(customDetail);
+
+    const customMeta = await generateMetadata({
+      params: Promise.resolve({ id: 'evt_xmas1' }),
+      searchParams: Promise.resolve({}),
+    });
+    expect(customMeta.openGraph?.images).toEqual([
+      {
+        url: 'https://invited-lyart.vercel.app/api/events/evt_xmas1/cover?file=cover-123.png',
+        alt: "You're invited to Christmas Eve Candlelight & Cocoa",
+      },
+    ]);
+    expect(customMeta.twitter?.images).toEqual([
+      'https://invited-lyart.vercel.app/api/events/evt_xmas1/cover?file=cover-123.png',
+    ]);
+
+    const noneLayoutDetail = buildDetail({
+      event: {
+        ...buildDetail().event,
+        style: {
+          themeId: 'winter-snowfall',
+          fontId: 'modern-sans',
+          effectId: 'snowfall',
+          coverPresetId: 'handdrawn-pelican-holiday',
+          coverLayout: 'none',
+          colorMode: 'light',
+        },
+      },
+    });
+    mockGetEventDetail.mockResolvedValueOnce(noneLayoutDetail);
+    expect(resolveCoverImageUrl(noneLayoutDetail.event.style)).toBe(
+      '/covers/handdrawn-pelican-holiday.jpg',
+    );
+    const noneLayoutMeta = await generateMetadata({
+      params: Promise.resolve({ id: 'evt_xmas1' }),
+      searchParams: Promise.resolve({}),
+    });
+    expect(noneLayoutMeta.twitter?.images).toEqual([
+      'https://invited-lyart.vercel.app/covers/handdrawn-pelican-holiday.jpg',
+    ]);
   });
 });
