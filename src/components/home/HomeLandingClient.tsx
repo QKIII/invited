@@ -242,25 +242,26 @@ export const HERO_SHOWCASE_CYCLE: InviteStyleConfig[] = (() => {
   return result;
 })();
 
-const DEFAULT_PROMPT_STYLE: InviteStyleConfig = {
-  ...HERO_SHOWCASE_CYCLE[0],
-  themeId: 'aurora-midnight',
-  effectId: 'aurora',
-  coverPresetId: getThemePreset('aurora-midnight').defaultCoverPresetId,
-  colorMode: getThemePreset('aurora-midnight').colorMode,
-};
-
-const STARTER_SUGGESTIONS = [
-  EXAMPLE_EVENT_PROMPTS[0],
-  {
-    label: 'Patio taco night',
-    prompt: 'Patio taco night this Friday at 7pm at 42 Maple St hosted by Ivan',
-  },
-  {
-    label: 'Pancake brunch',
-    prompt: 'Sunday pancake brunch at 11am at Sunny Kitchen hosted by Clara',
-  },
+const PROMPT_CYCLE_TEXTS: string[] = [
+  'Patio taco night this Friday at 7pm at 42 Maple St hosted by Ivan',
+  EXAMPLE_EVENT_PROMPTS[0].prompt,
+  'Y2K rooftop disco afterparty Saturday at 9pm',
+  'Candlelit dinner party Friday at 7:30pm at Nora’s Loft',
+  'Sunday pancake brunch at 11am at Sunny Kitchen hosted by Clara',
+  'Lakeside campfire & s’mores Saturday at 8pm',
 ];
+
+const CYCLING_PROMPT_EXAMPLES: Array<{ prompt: string; style: InviteStyleConfig }> =
+  PROMPT_CYCLE_TEXTS.map((prompt) => {
+    const parsed = parseEventPrompt(prompt, new Date('2026-11-16T12:00:00Z'), 'UTC');
+    return {
+      prompt,
+      style: {
+        ...parsed.style,
+        cardStyle: 'glass',
+      },
+    };
+  });
 
 function formatLiveWhen(draft: ParsedEventDraft): string {
   const showDate = Boolean(draft.hasExplicitDate);
@@ -320,6 +321,7 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
 
   const [showcasePaused, setShowcasePaused] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const [promptExampleIndex, setPromptExampleIndex] = useState(0);
   const [showcase, setShowcase] = useState<ShowcaseState>({
     index: 0,
     prevFontId: HERO_SHOWCASE_CYCLE[0].fontId,
@@ -453,6 +455,20 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
     el.style.height = `${Math.min(Math.max(el.scrollHeight, 60), 108)}px`;
   }, [promptText, stage]);
 
+  // Cycle prefilled prompt examples and animate the theme to match while input is empty
+  useEffect(() => {
+    if (stage !== 'prompt' || promptText.trim().length > 0 || prefersReducedMotion) return;
+    const id = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      setPromptExampleIndex((i) => (i + 1) % CYCLING_PROMPT_EXAMPLES.length);
+    }, 4800);
+    return () => {
+      window.clearInterval(id);
+    };
+  }, [stage, promptText, prefersReducedMotion]);
+
+  const activeCyclingExample = CYCLING_PROMPT_EXAMPLES[promptExampleIndex];
+
   const parsedDraft = useMemo(() => {
     const trimmed = promptText.trim();
     if (!trimmed) return null;
@@ -466,8 +482,8 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
     if (parsedDraft) {
       return parsedDraft.style;
     }
-    return DEFAULT_PROMPT_STYLE;
-  }, [stage, showcase.index, parsedDraft]);
+    return activeCyclingExample.style;
+  }, [stage, showcase.index, parsedDraft, activeCyclingExample]);
 
   const activePreset = useMemo(
     () => getThemePreset(activeStyle.themeId),
@@ -812,19 +828,16 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
           ) : (
             <section
               data-testid="prompt-starter-card"
+              data-prompt-theme={activePreset.id}
               aria-labelledby="prompt-starter-heading"
               className="stage-card-enter invite-glass-card rounded-3xl border p-4 sm:p-6 space-y-3"
             >
               <div className="flex items-center justify-start gap-2">
                 <button
                   type="button"
+                  data-testid="prompt-back-btn"
                   onClick={() => transitionToStage('hero')}
-                  className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition hover:opacity-85 cursor-pointer"
-                  style={{
-                    backgroundColor: 'var(--theme-surface-bg)',
-                    borderColor: 'var(--theme-hairline)',
-                    color: 'var(--theme-text-muted)',
-                  }}
+                  className="theme-surface-pill inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium hover:opacity-90 active:scale-[0.98] cursor-pointer"
                 >
                   <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>Back</span>
@@ -937,61 +950,49 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
                 <label htmlFor="nlp-prompt-textarea" className="sr-only">
                   Describe your event
                 </label>
-                <textarea
-                  ref={promptInputRef}
-                  id="nlp-prompt-textarea"
-                  data-testid="nlp-prompt-input"
-                  rows={2}
-                  enterKeyHint="go"
-                  value={promptText}
-                  onCompositionEnd={(e) => {
-                    lastCompositionEndAtRef.current = e.timeStamp;
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      if (
-                        e.nativeEvent.isComposing ||
-                        e.nativeEvent.keyCode === 229 ||
-                        (lastCompositionEndAtRef.current !== null &&
-                          Math.abs(e.timeStamp - lastCompositionEndAtRef.current) < 50)
-                      ) {
-                        return;
+                <div className="relative">
+                  <textarea
+                    ref={promptInputRef}
+                    id="nlp-prompt-textarea"
+                    data-testid="nlp-prompt-input"
+                    rows={2}
+                    enterKeyHint="go"
+                    value={promptText}
+                    onCompositionEnd={(e) => {
+                      lastCompositionEndAtRef.current = e.timeStamp;
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        if (
+                          e.nativeEvent.isComposing ||
+                          e.nativeEvent.keyCode === 229 ||
+                          (lastCompositionEndAtRef.current !== null &&
+                            Math.abs(e.timeStamp - lastCompositionEndAtRef.current) < 50)
+                        ) {
+                          return;
+                        }
+                        if (parsedDraft) {
+                          e.currentTarget.form?.requestSubmit();
+                        }
                       }
-                      if (parsedDraft) {
-                        e.currentTarget.form?.requestSubmit();
-                      }
-                    }
-                  }}
-                  onChange={(e) => handlePromptChange(e.target.value)}
-                  placeholder="Example: Patio taco night this Friday at 7pm at 42 Maple St hosted by Ivan"
-                  className="w-full min-h-[60px] max-h-[108px] rounded-2xl border px-3.5 py-2.5 text-base leading-snug outline-none focus:ring-2 resize-none transition-colors duration-200"
-                  style={{
-                    backgroundColor: 'var(--theme-surface-bg)',
-                    borderColor: 'var(--theme-border)',
-                    color: 'var(--theme-text-primary)',
-                  }}
-                />
-
-                {!promptText.trim() ? (
-                  <div className="starter-chip-list flex flex-wrap gap-1.5">
-                    {STARTER_SUGGESTIONS.map((item) => (
-                      <button
-                        key={item.label}
-                        type="button"
-                        onClick={() => handlePromptChange(item.prompt)}
-                        className="starter-chip rounded-full border px-3 py-1.5 text-xs font-medium transition hover:opacity-90 cursor-pointer"
-                        style={{
-                          backgroundColor: 'var(--theme-surface-bg)',
-                          borderColor: 'var(--theme-hairline)',
-                          color: 'var(--theme-text-muted)',
-                        }}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
+                    }}
+                    onChange={(e) => handlePromptChange(e.target.value)}
+                    placeholder={activeCyclingExample.prompt}
+                    className="theme-prompt-input w-full min-h-[60px] max-h-[108px] rounded-2xl border px-3.5 py-2.5 text-base leading-snug resize-none"
+                  />
+                  {!promptText ? (
+                    <span
+                      key={promptExampleIndex}
+                      data-testid="cycling-prompt-placeholder"
+                      aria-hidden="true"
+                      className="prompt-placeholder-fade pointer-events-none absolute inset-0 px-3.5 py-2.5 text-base leading-snug overflow-hidden opacity-75"
+                      style={{ color: 'var(--theme-text-muted)' }}
+                    >
+                      {activeCyclingExample.prompt}
+                    </span>
+                  ) : null}
+                </div>
 
                 {/* 3. Single-row action bar */}
                 <div className="flex items-center gap-2 pt-0.5">
@@ -999,7 +1000,7 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
                     type="submit"
                     data-testid="start-invite-btn"
                     disabled={!parsedDraft}
-                    className="invite-cta-btn flex-1 min-h-[44px] inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm sm:text-base font-semibold shadow-xl transition hover:opacity-95 active:scale-[0.98] disabled:opacity-45 cursor-pointer"
+                    className="invite-cta-btn flex-1 min-h-[44px] inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm sm:text-base font-semibold shadow-xl hover:opacity-95 active:scale-[0.98] disabled:opacity-60 cursor-pointer"
                   >
                     <span>Start invite</span>
                     <ArrowRight className="h-4 w-4" aria-hidden="true" />
@@ -1008,11 +1009,7 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
                   <Link
                     href="/create?blank=1"
                     data-testid="skip-to-blank-btn"
-                    className="shrink-0 min-h-[44px] inline-flex items-center justify-center rounded-full border px-3.5 py-2.5 text-xs sm:text-sm font-medium transition hover:opacity-90"
-                    style={{
-                      borderColor: 'var(--theme-hairline)',
-                      color: 'var(--theme-text-muted)',
-                    }}
+                    className="theme-surface-pill shrink-0 min-h-[44px] inline-flex items-center justify-center rounded-full border px-3.5 py-2.5 text-xs sm:text-sm font-medium hover:opacity-95 active:scale-[0.98]"
                   >
                     Start blank
                   </Link>

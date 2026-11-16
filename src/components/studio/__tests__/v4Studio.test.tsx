@@ -430,8 +430,6 @@ describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & 
       });
       expect(pauseBtn.getAttribute('aria-label')).toBe('Play theme showcase');
 
-      vi.useRealTimers();
-
       const createBtn = container.querySelector<HTMLButtonElement>(
         '[data-testid="home-create-invite-btn"]',
       )!;
@@ -442,10 +440,36 @@ describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & 
       const promptCard = container.querySelector('[data-testid="prompt-starter-card"]')!;
       expect(promptCard.textContent).not.toContain('\u2014');
       expect(container.querySelector('[data-testid="live-detected-theme-pill"]')).toBeNull();
+      expect(container.querySelectorAll('.starter-chip')).toHaveLength(0);
+      expect(container.querySelector('[data-testid="prompt-back-btn"]')?.className).toContain(
+        'theme-surface-pill',
+      );
+      expect(container.querySelector('[data-testid="skip-to-blank-btn"]')?.className).toContain(
+        'theme-surface-pill',
+      );
+
       const input = container.querySelector<HTMLTextAreaElement>(
         '[data-testid="nlp-prompt-input"]',
       )!;
       expect(input).not.toBeNull();
+      expect(input.className).toContain('theme-prompt-input');
+
+      const initialPromptTheme = promptCard.getAttribute('data-prompt-theme');
+      const initialPlaceholder = container.querySelector(
+        '[data-testid="cycling-prompt-placeholder"]',
+      )?.textContent;
+      expect(initialPlaceholder).toContain('Patio taco night');
+
+      // Empty prompt cycles placeholder example & theme automatically
+      await act(async () => {
+        vi.advanceTimersByTime(4800);
+      });
+      expect(
+        container.querySelector('[data-testid="cycling-prompt-placeholder"]')?.textContent,
+      ).not.toBe(initialPlaceholder);
+      expect(promptCard.getAttribute('data-prompt-theme')).not.toBe(initialPromptTheme);
+
+      vi.useRealTimers();
 
       // Dateless prompt must omit fabricated date/time & occasion/sparkle tags
       await act(async () => {
@@ -453,6 +477,7 @@ describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & 
         setter.call(input, 'Taco party');
         input.dispatchEvent(new Event('input', { bubbles: true }));
       });
+      expect(container.querySelector('[data-testid="cycling-prompt-placeholder"]')).toBeNull();
       const datelessPreview = container.querySelector('[data-testid="live-nlp-preview"]')!;
       expect(datelessPreview.textContent).toBe('Taco Party');
       expect(datelessPreview.textContent).not.toContain('Taco Night');
