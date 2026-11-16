@@ -291,7 +291,7 @@ export function EditInviteClient({
         className="z-0"
       />
 
-      <header className="relative z-10 app-top-bar h-13 max-w-[580px] mx-auto flex items-center justify-between gap-2">
+      <header className="relative z-10 app-top-bar min-h-13 max-w-[580px] mx-auto flex items-center justify-between gap-2">
         <Link
           href={`/e/${eventId}`}
           className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-medium hover:opacity-80 transition shrink-0"

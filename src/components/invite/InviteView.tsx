@@ -365,7 +365,7 @@ export function InviteView({
       />
 
       {/* Compact single-row top bar */}
-      <header className="relative z-10 app-top-bar h-12 max-w-[580px] mx-auto flex items-center justify-between gap-2">
+      <header className="relative z-10 app-top-bar min-h-12 max-w-[580px] mx-auto flex items-center justify-between gap-2">
         <Link
           href="/"
           className="inline-flex items-center gap-1.5 text-sm font-semibold tracking-tight hover:opacity-80 transition shrink-0"

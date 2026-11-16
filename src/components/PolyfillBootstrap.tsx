@@ -7,6 +7,19 @@ export function PolyfillBootstrap() {
   useEffect(() => {
     void initModernUiPolyfills();
 
+    const preventPinch = (e: Event) => {
+      e.preventDefault();
+    };
+    const preventMultiTouch = (e: TouchEvent) => {
+      if (e.touches.length > 1) {
+        e.preventDefault();
+      }
+    };
+
+    document.addEventListener('gesturestart', preventPinch, { passive: false });
+    document.addEventListener('gesturechange', preventPinch, { passive: false });
+    document.addEventListener('touchmove', preventMultiTouch, { passive: false });
+
     if (
       typeof window !== 'undefined' &&
       'serviceWorker' in navigator &&
@@ -21,6 +34,12 @@ export function PolyfillBootstrap() {
         window.addEventListener('load', registerSw, { once: true });
       }
     }
+
+    return () => {
+      document.removeEventListener('gesturestart', preventPinch);
+      document.removeEventListener('gesturechange', preventPinch);
+      document.removeEventListener('touchmove', preventMultiTouch);
+    };
   }, []);
 
   return null;

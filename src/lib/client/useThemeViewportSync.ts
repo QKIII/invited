@@ -3,9 +3,9 @@
 import { useEffect } from 'react';
 
 /**
- * Keeps root html/body background colors, color-scheme, and <meta name="theme-color">
- * aligned with the active invite theme so mobile pull-down rubber-banding and
- * installed PWA chrome never reveal mismatched background colors.
+ * Keeps root html/body background colors and color-scheme aligned with the active invite
+ * theme so mobile pull-down rubber-banding and Safari's full-bleed Liquid Glass edge bars
+ * extend seamlessly over the live backdrop without a solid theme-color cap.
  */
 export function useThemeViewportSync(
   pageBg: string | undefined,
@@ -20,12 +20,7 @@ export function useThemeViewportSync(
     root.style.colorScheme = backdropMode;
     document.body.style.backgroundColor = pageBg;
 
-    let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-    if (!meta) {
-      meta = document.createElement('meta');
-      meta.name = 'theme-color';
-      document.head.appendChild(meta);
-    }
-    meta.content = pageBg;
+    // Remove static theme-color meta so Safari extends the live canvas behind top & bottom bars
+    document.querySelector('meta[name="theme-color"]')?.remove();
   }, [pageBg, backdropMode]);
 }

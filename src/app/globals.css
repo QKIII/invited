@@ -139,6 +139,7 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overscroll-behavior-x: none;
+    touch-action: pan-y;
     -webkit-tap-highlight-color: transparent;
   }
 
@@ -148,6 +149,7 @@
     min-height: 100dvh;
     overflow-wrap: anywhere;
     overscroll-behavior-x: none;
+    touch-action: pan-y;
     -webkit-tap-highlight-color: transparent;
   }
 
@@ -476,7 +478,10 @@
 }
 
 .app-top-bar {
-  padding-top: max(0.5rem, env(safe-area-inset-top, 0px));
+  height: auto;
+  min-height: calc(3rem + env(safe-area-inset-top, 0px));
+  padding-top: calc(env(safe-area-inset-top, 0px) + 0.5rem);
+  padding-bottom: 0.25rem;
   padding-left: max(0.875rem, env(safe-area-inset-left, 0px));
   padding-right: max(0.875rem, env(safe-area-inset-right, 0px));
 }

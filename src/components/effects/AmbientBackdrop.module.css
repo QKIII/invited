@@ -1,11 +1,11 @@
 .fixedViewport {
   position: fixed;
   top: -12vh;
-  top: -12lvh;
+  top: calc(-1 * env(safe-area-inset-top, 0px) - 12lvh);
+  bottom: -12vh;
+  bottom: calc(-1 * env(safe-area-inset-bottom, 0px) - 12lvh);
   left: 0;
   right: 0;
-  height: 124vh;
-  height: 124lvh;
   transform: translateZ(0);
   backface-visibility: hidden;
   pointer-events: none;

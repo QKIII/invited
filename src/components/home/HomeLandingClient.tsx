@@ -587,7 +587,7 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
       </div>
 
       {/* Quiet Top Bar */}
-      <header className="relative z-10 app-top-bar h-12 w-full max-w-[600px] mx-auto flex items-center justify-between gap-2">
+      <header className="relative z-10 app-top-bar min-h-12 w-full max-w-[600px] mx-auto flex items-center justify-between gap-2">
         <Link
           href="/"
           className="theme-pill-btn inline-flex items-center gap-2 text-sm font-semibold tracking-tight hover:opacity-80 shrink-0"
