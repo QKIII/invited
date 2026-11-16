@@ -41,6 +41,8 @@ const CREATE_DRAFT_KEY = 'invited_create_draft_v1';
 
 const HERO_LINES = ['Invites', 'people want to open.'] as const;
 const HERO_HEADLINE = HERO_LINES.join(' ');
+const HERO_SUBTITLE =
+  'Describe your gathering, make the style yours, and share one link for instant RSVPs.';
 
 interface HeroCharToken {
   char: string;
@@ -72,6 +74,18 @@ const { HERO_LINE_TOKENS, HERO_CHAR_COUNT } = (() => {
   return { HERO_LINE_TOKENS: lines, HERO_CHAR_COUNT: cursor };
 })();
 
+const { SUBTITLE_WORDS, SUBTITLE_CHAR_COUNT } = (() => {
+  let cursor = 0;
+  const words: HeroWordToken[] = HERO_SUBTITLE.split(' ').map((word) => ({
+    word,
+    chars: Array.from(word).map((char) => ({
+      char,
+      globalIndex: cursor++,
+    })),
+  }));
+  return { SUBTITLE_WORDS: words, SUBTITLE_CHAR_COUNT: cursor };
+})();
+
 /**
  * Raised-cosine ease-in-out timing curve for the character wave:
  * starts deliberately slow (~72ms), speeds up through the middle (~16ms),
@@ -82,6 +96,24 @@ export function getHeroStepDelayMs(stepIndex: number, totalSteps: number): numbe
   const easeWeight = 0.5 * (1 + Math.cos(2 * Math.PI * progress));
   return Math.round(16 + 56 * easeWeight);
 }
+
+/**
+ * Faster ease-in-out sweep for the longer subtitle so it morphs one character at a time
+ * noticeably more quickly than the headline (~5ms..21ms per character).
+ */
+export function getSubtitleStepDelayMs(stepIndex: number, totalSteps: number): number {
+  const progress = totalSteps <= 1 ? 0.5 : stepIndex / (totalSteps - 1);
+  const easeWeight = 0.5 * (1 + Math.cos(2 * Math.PI * progress));
+  return Math.round(5 + 16 * easeWeight);
+}
+
+const BODY_FONT_VARS: Record<FontPairingId, string> = FONT_PAIRINGS.reduce(
+  (acc, item) => {
+    acc[item.id] = item.bodyVar;
+    return acc;
+  },
+  {} as Record<FontPairingId, string>,
+);
 
 const FONT_OPTICAL_TUNING: Record<
   FontPairingId,
@@ -297,6 +329,9 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
     waveGeneration: 0,
   });
   const [morphedCharCount, setMorphedCharCount] = useState<number>(HERO_CHAR_COUNT);
+  const [subtitleMorphedCount, setSubtitleMorphedCount] = useState<number>(
+    SUBTITLE_CHAR_COUNT,
+  );
 
   const heroHeadingRef = useRef<HTMLHeadingElement>(null);
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
@@ -335,6 +370,7 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
 
   const advanceShowcase = useCallback(() => {
     setMorphedCharCount(prefersReducedMotion ? HERO_CHAR_COUNT : 0);
+    setSubtitleMorphedCount(prefersReducedMotion ? SUBTITLE_CHAR_COUNT : 0);
     setShowcase((prev) => {
       const nextIndex = (prev.index + 1) % HERO_SHOWCASE_CYCLE.length;
       const nextStyle = HERO_SHOWCASE_CYCLE[nextIndex];
@@ -347,48 +383,68 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
     });
   }, [prefersReducedMotion]);
 
-  // Auto-cycle hero showcase across themes, animated backgrounds, and typography waves
+  // Auto-cycle hero showcase across themes, holding comfortably on each theme (~6.5s)
   useEffect(() => {
     if (stage !== 'hero' || showcasePaused || prefersReducedMotion) return;
     const id = window.setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
       advanceShowcase();
-    }, 4200);
+    }, 6500);
     return () => {
       window.clearInterval(id);
     };
   }, [stage, showcasePaused, prefersReducedMotion, advanceShowcase]);
 
-  // Sweep typography one character at a time on an ease-in-out curve (slow -> fast -> slow)
+  // Sweep headline & subtitle typography one character at a time on ease-in-out curves
   useEffect(() => {
     if (showcase.waveGeneration === 0) return;
     if (prefersReducedMotion) {
-      queueMicrotask(() => setMorphedCharCount(HERO_CHAR_COUNT));
+      queueMicrotask(() => {
+        setMorphedCharCount(HERO_CHAR_COUNT);
+        setSubtitleMorphedCount(SUBTITLE_CHAR_COUNT);
+      });
       return;
     }
 
-    let step = 0;
-    let timerId = 0;
+    let headStep = 0;
+    let headTimerId = 0;
+    let subStep = 0;
+    let subTimerId = 0;
     let cancelled = false;
 
-    const scheduleNext = () => {
-      if (cancelled || step >= HERO_CHAR_COUNT) return;
-      const delayMs = getHeroStepDelayMs(step, HERO_CHAR_COUNT);
-      timerId = window.setTimeout(() => {
+    const scheduleHeadline = () => {
+      if (cancelled || headStep >= HERO_CHAR_COUNT) return;
+      const delayMs = getHeroStepDelayMs(headStep, HERO_CHAR_COUNT);
+      headTimerId = window.setTimeout(() => {
         if (cancelled) return;
-        step += 1;
-        setMorphedCharCount(step);
-        if (step < HERO_CHAR_COUNT) {
-          scheduleNext();
+        headStep += 1;
+        setMorphedCharCount(headStep);
+        if (headStep < HERO_CHAR_COUNT) {
+          scheduleHeadline();
         }
       }, delayMs);
     };
 
-    scheduleNext();
+    const scheduleSubtitle = () => {
+      if (cancelled || subStep >= SUBTITLE_CHAR_COUNT) return;
+      const delayMs = getSubtitleStepDelayMs(subStep, SUBTITLE_CHAR_COUNT);
+      subTimerId = window.setTimeout(() => {
+        if (cancelled) return;
+        subStep += 1;
+        setSubtitleMorphedCount(subStep);
+        if (subStep < SUBTITLE_CHAR_COUNT) {
+          scheduleSubtitle();
+        }
+      }, delayMs);
+    };
+
+    scheduleHeadline();
+    scheduleSubtitle();
 
     return () => {
       cancelled = true;
-      window.clearTimeout(timerId);
+      window.clearTimeout(headTimerId);
+      window.clearTimeout(subTimerId);
     };
   }, [showcase.waveGeneration, prefersReducedMotion]);
 
@@ -675,33 +731,59 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
 
                 <p
                   data-testid="home-hero-subtitle"
+                  aria-label={HERO_SUBTITLE}
                   className="text-sm sm:text-base leading-relaxed max-w-[36ch] mx-auto"
                   style={{
                     color: 'var(--theme-text-muted)',
                     textWrap: 'pretty',
                   }}
                 >
-                  Describe your gathering, make the style yours, and share one link for
-                  instant RSVPs.
+                  {SUBTITLE_WORDS.map((wordToken, wordIdx) => (
+                    <React.Fragment key={wordIdx}>
+                      <span aria-hidden="true" className="inline-block whitespace-nowrap">
+                        {wordToken.chars.map((token, charIdx) => {
+                          const isMorphed = token.globalIndex < subtitleMorphedCount;
+                          const glyphFont = isMorphed
+                            ? showcase.activeFontId
+                            : showcase.prevFontId;
+                          return (
+                            <span
+                              key={`${wordIdx}-${charIdx}-${isMorphed ? showcase.waveGeneration : 0}`}
+                              data-sub-char-index={token.globalIndex}
+                              data-sub-char-font={glyphFont}
+                              data-wave-active={
+                                isMorphed && showcase.waveGeneration > 0 ? 'true' : undefined
+                              }
+                              className="hero-subtitle-glyph"
+                              style={{
+                                fontFamily: BODY_FONT_VARS[glyphFont],
+                              }}
+                            >
+                              {token.char}
+                            </span>
+                          );
+                        })}
+                      </span>
+                      {wordIdx < SUBTITLE_WORDS.length - 1 ? (
+                        <span aria-hidden="true"> </span>
+                      ) : null}
+                    </React.Fragment>
+                  ))}
                 </p>
               </div>
 
-              {/* Block 3: Standalone single-line trust note above the bottom CTA */}
-              <p
-                data-testid="home-hero-footnote"
-                className="pt-3.5 border-t text-[11px] sm:text-xs font-medium tracking-wide opacity-90 whitespace-nowrap"
-                style={{
-                  borderColor: 'var(--theme-hairline)',
-                  color: 'var(--theme-text-muted)',
-                  fontFamily:
-                    'var(--font-studio-mono), var(--font-ui-body), sans-serif',
-                }}
-              >
-                No sign-ups · No app downloads
-              </p>
+              {/* Primary CTA */}
+              <div className="space-y-2.5 pt-1">
+                <button
+                  type="button"
+                  data-testid="home-create-invite-btn"
+                  onClick={() => transitionToStage('prompt')}
+                  className="invite-cta-btn w-full sm:w-auto sm:min-w-[230px] min-h-[50px] inline-flex items-center justify-center gap-2 rounded-full px-7 py-3.5 text-base font-semibold shadow-xl transition hover:opacity-95 active:scale-[0.98] cursor-pointer"
+                >
+                  <span>Create an invite</span>
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </button>
 
-              {/* Primary CTA always anchored at the bottom */}
-              <div className="space-y-2.5 pt-0.5">
                 {hasSavedDraft ? (
                   <div>
                     <Link
@@ -714,17 +796,20 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
                     </Link>
                   </div>
                 ) : null}
-
-                <button
-                  type="button"
-                  data-testid="home-create-invite-btn"
-                  onClick={() => transitionToStage('prompt')}
-                  className="invite-cta-btn w-full sm:w-auto sm:min-w-[230px] min-h-[50px] inline-flex items-center justify-center gap-2 rounded-full px-7 py-3.5 text-base font-semibold shadow-xl transition hover:opacity-95 active:scale-[0.98] cursor-pointer"
-                >
-                  <span>Create an invite</span>
-                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                </button>
               </div>
+
+              {/* Block 3: Clean trust note below the CTA without a hairline */}
+              <p
+                data-testid="home-hero-footnote"
+                className="text-[11px] sm:text-xs font-medium tracking-wide opacity-85 whitespace-nowrap"
+                style={{
+                  color: 'var(--theme-text-muted)',
+                  fontFamily:
+                    'var(--font-studio-mono), var(--font-ui-body), sans-serif',
+                }}
+              >
+                No signup or downloads
+              </p>
             </section>
           ) : (
             <section

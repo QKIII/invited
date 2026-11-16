@@ -6,6 +6,7 @@ import {
   HERO_SHOWCASE_CYCLE,
   HomeLandingClient,
   getHeroStepDelayMs,
+  getSubtitleStepDelayMs,
 } from '@/components/home/HomeLandingClient';
 import { GuestAvatar } from '@/components/invite/GuestAvatar';
 import { HostManagementPanel } from '@/components/studio/HostManagementPanel';
@@ -340,6 +341,9 @@ describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & 
     expect(getHeroStepDelayMs(0, 24)).toBeGreaterThan(getHeroStepDelayMs(4, 24));
     expect(getHeroStepDelayMs(12, 24)).toBeLessThan(getHeroStepDelayMs(4, 24));
     expect(getHeroStepDelayMs(23, 24)).toBeGreaterThan(getHeroStepDelayMs(18, 24));
+    // Subtitle sweeps noticeably quicker per character than the headline
+    expect(getSubtitleStepDelayMs(0, 72)).toBeLessThan(getHeroStepDelayMs(0, 24));
+    expect(getSubtitleStepDelayMs(36, 72)).toBeLessThan(getHeroStepDelayMs(12, 24));
 
     window.localStorage.setItem('invited_create_draft_v1', '{"title":"Saved Night"}');
     vi.useFakeTimers();
@@ -367,20 +371,20 @@ describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & 
       expect(glyphs).toHaveLength(24);
 
       const subtitle = container.querySelector('[data-testid="home-hero-subtitle"]')!;
+      const subGlyphs = subtitle.querySelectorAll<HTMLSpanElement>('.hero-subtitle-glyph');
+      expect(subGlyphs).toHaveLength(71);
       const footnote = container.querySelector('[data-testid="home-hero-footnote"]')!;
       const draftLink = container.querySelector('[data-testid="home-saved-draft-link"]')!;
       const ctaButton = container.querySelector<HTMLButtonElement>(
         '[data-testid="home-create-invite-btn"]',
       )!;
       expect(subtitle.textContent).not.toContain('\u2014');
-      expect(footnote.textContent).toBe('No sign-ups · No app downloads');
+      expect(footnote.textContent).toBe('No signup or downloads');
+      expect(footnote.className).not.toContain('border-t');
       expect(draftLink).not.toBeNull();
-      // Trust line and optional saved draft link always sit above the bottom CTA
+      // CTA sits above the clean trust note (no hairline)
       expect(
-        Boolean(footnote.compareDocumentPosition(ctaButton) & Node.DOCUMENT_POSITION_FOLLOWING),
-      ).toBe(true);
-      expect(
-        Boolean(draftLink.compareDocumentPosition(ctaButton) & Node.DOCUMENT_POSITION_FOLLOWING),
+        Boolean(ctaButton.compareDocumentPosition(footnote) & Node.DOCUMENT_POSITION_FOLLOWING),
       ).toBe(true);
 
       // Pause button sits quietly in header and toggles aria-label without aria-pressed (WCAG 2.2.2)
@@ -389,28 +393,37 @@ describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & 
       expect(pauseBtn.getAttribute('aria-pressed')).toBeNull();
       expect(pauseBtn.getAttribute('aria-label')).toBe('Pause theme showcase');
 
-      // Auto-cycling advances theme & sweeps typography one character at a time
+      // Auto-cycling holds ~6.5s then sweeps both headline & subtitle one character at a time
       await act(async () => {
-        vi.advanceTimersByTime(4200);
+        vi.advanceTimersByTime(6500);
       });
       expect(heroCard.getAttribute('data-showcase-theme')).toBe('y2k-chrome');
 
       await act(async () => {
-        vi.advanceTimersByTime(350);
+        vi.advanceTimersByTime(220);
       });
       const midFonts = Array.from(
         container.querySelectorAll<HTMLSpanElement>('.hero-char-glyph'),
       ).map((el) => el.getAttribute('data-char-font'));
+      const midSubFonts = Array.from(
+        container.querySelectorAll<HTMLSpanElement>('.hero-subtitle-glyph'),
+      ).map((el) => el.getAttribute('data-sub-char-font'));
       expect(midFonts[0]).toBe('y2k-display');
       expect(midFonts[midFonts.length - 1]).toBe('editorial-serif');
+      expect(midSubFonts[0]).toBe('y2k-display');
+      expect(midSubFonts[midSubFonts.length - 1]).toBe('editorial-serif');
 
       await act(async () => {
-        vi.advanceTimersByTime(1200);
+        vi.advanceTimersByTime(1400);
       });
       const endFonts = Array.from(
         container.querySelectorAll<HTMLSpanElement>('.hero-char-glyph'),
       ).map((el) => el.getAttribute('data-char-font'));
+      const endSubFonts = Array.from(
+        container.querySelectorAll<HTMLSpanElement>('.hero-subtitle-glyph'),
+      ).map((el) => el.getAttribute('data-sub-char-font'));
       expect(endFonts.every((f) => f === 'y2k-display')).toBe(true);
+      expect(endSubFonts.every((f) => f === 'y2k-display')).toBe(true);
 
       await act(async () => {
         pauseBtn.click();

@@ -948,6 +948,14 @@
   transition: color 0.65s cubic-bezier(0.45, 0, 0.55, 1);
 }
 
+.hero-subtitle-glyph {
+  display: inline;
+  line-height: inherit;
+  vertical-align: baseline;
+  font-size-adjust: 0.51;
+  transition: color 0.65s cubic-bezier(0.45, 0, 0.55, 1);
+}
+
 @supports not (font-size-adjust: 0.48) {
   .hero-char-glyph {
     font-size: var(--glyph-fallback-size, 1em);
@@ -998,6 +1006,11 @@
   .hero-char-glyph[data-wave-active="true"] {
     will-change: opacity;
     animation: heroCharMorph 0.38s cubic-bezier(0.45, 0, 0.55, 1) both;
+  }
+
+  .hero-subtitle-glyph[data-wave-active="true"] {
+    will-change: opacity;
+    animation: heroCharMorph 0.24s cubic-bezier(0.45, 0, 0.55, 1) both;
   }
 
   .starter-chip-list > .starter-chip {
