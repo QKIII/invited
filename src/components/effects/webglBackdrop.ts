@@ -25,6 +25,8 @@ uniform vec3 u_accent;
 uniform vec3 u_secondary;
 uniform float u_isLight;
 uniform float u_mode;
+uniform float u_prevMode;
+uniform float u_modeMix;
 uniform float u_turbulence;
 
 float hash21(vec2 p) {
@@ -66,46 +68,42 @@ vec3 hslIridescent(float t) {
   return 0.5 + 0.5 * cos(6.28318 * (t + vec3(0.0, 0.33, 0.67)));
 }
 
-void main() {
-  vec2 uv = v_uv;
-  float aspect = max(0.5, u_resolution.x / max(1.0, u_resolution.y));
-  vec2 p = (uv - 0.5) * vec2(aspect, 1.0);
-  float t = u_time;
+vec3 evalEffectMode(
+  float mode,
+  vec2 uv,
+  vec2 p,
+  float aspect,
+  float t,
+  vec3 bg,
+  vec3 accent,
+  vec3 secondary,
+  float isLight,
+  float lightStrength
+) {
+  vec3 col = bg;
 
-  // Live liquid domain displacement while user types or swaps themes
-  if (u_turbulence > 0.005) {
-    vec2 warp = vec2(
-      fbm(p * 1.9 + vec2(t * 0.25, -t * 0.18)) - 0.5,
-      fbm(p * 1.9 + vec2(-t * 0.2, t * 0.22) + 4.7) - 0.5
-    );
-    p += warp * (0.28 * u_turbulence);
-  }
-
-  vec3 col = u_bg;
-  float lightStrength = mix(1.0, 0.42, u_isLight);
-
-  if (u_mode < 0.5) {
+  if (mode < 0.5) {
     // 0: Northern Lights (aurora)
     float wave1 = sin(p.x * 2.6 + t * 0.35 + fbm(vec2(p.x * 1.6, t * 0.14)) * 2.4);
     float band1 = exp(-abs(p.y - 0.12 - wave1 * 0.16) * 6.5);
     float wave2 = cos(p.x * 1.9 - t * 0.25 + fbm(vec2(p.x * 2.1 + 4.0, t * 0.1)) * 2.2);
     float band2 = exp(-abs(p.y + 0.04 - wave2 * 0.18) * 5.2);
     float shimmer = 0.65 + 0.35 * sin(uv.x * 18.0 + t * 0.9);
-    col = mix(col, u_accent, clamp(band1 * 0.72 * shimmer * lightStrength, 0.0, 0.88));
-    col = mix(col, u_secondary, clamp(band2 * 0.58 * lightStrength, 0.0, 0.82));
+    col = mix(col, accent, clamp(band1 * 0.72 * shimmer * lightStrength, 0.0, 0.88));
+    col = mix(col, secondary, clamp(band2 * 0.58 * lightStrength, 0.0, 0.82));
     float mist = fbm(p * 2.0 + vec2(t * 0.05, -t * 0.03));
-    col += mix(u_accent, u_secondary, 0.5) * mist * 0.12 * lightStrength;
-  } else if (u_mode < 1.5) {
+    col += mix(accent, secondary, 0.5) * mist * 0.12 * lightStrength;
+  } else if (mode < 1.5) {
     // 1: Color Waves fluid mesh gradient (prism-gradient)
     vec2 q = vec2(
       fbm(p * 1.4 + vec2(t * 0.09, t * 0.05)),
       fbm(p * 1.4 + vec2(-t * 0.07, t * 0.08) + 3.1)
     );
     float f = fbm(p * 1.6 + q * 1.9 + t * 0.04);
-    vec3 highlight = mix(u_accent, u_secondary, smoothstep(0.25, 0.8, q.x));
+    vec3 highlight = mix(accent, secondary, smoothstep(0.25, 0.8, q.x));
     vec3 prism = mix(highlight, hslIridescent(f * 0.5 + t * 0.025), 0.18 + 0.12 * u_turbulence);
-    col = mix(col, prism, smoothstep(0.18, 0.86, f) * mix(0.76, 0.36, u_isLight));
-  } else if (u_mode < 2.5) {
+    col = mix(col, prism, smoothstep(0.18, 0.86, f) * mix(0.76, 0.36, isLight));
+  } else if (mode < 2.5) {
     // 2: Y2K Liquid Chrome / Iridescent Ripple (liquid-chrome)
     vec2 z = p * 2.1;
     for (int i = 0; i < 3; i++) {
@@ -113,10 +111,10 @@ void main() {
     }
     float ripple = 0.5 + 0.5 * sin(length(z) * 3.4 - t * 0.85);
     float spec = pow(clamp(0.5 + 0.5 * cos(z.x * 2.4 - z.y * 2.1 + t * 0.5), 0.0, 1.0), 4.0);
-    vec3 foil = mix(hslIridescent(ripple * 0.45 + 0.12), mix(u_accent, u_secondary, ripple), 0.58);
-    col = mix(col, foil, mix(0.62, 0.32, u_isLight));
-    col += vec3(0.95, 0.97, 1.0) * spec * mix(0.32, 0.14, u_isLight);
-  } else if (u_mode < 3.5) {
+    vec3 foil = mix(hslIridescent(ripple * 0.45 + 0.12), mix(accent, secondary, ripple), 0.58);
+    col = mix(col, foil, mix(0.62, 0.32, isLight));
+    col += vec3(0.95, 0.97, 1.0) * spec * mix(0.32, 0.14, isLight);
+  } else if (mode < 3.5) {
     // 3: Neon Silk (replaces harsh perspective grid with silky glowing bioluminescent folds)
     vec2 sUv = p * vec2(1.3, 1.6);
     float foldA = sin(sUv.x * 2.4 + fbm(sUv * 1.4 + t * 0.12) * 3.2 - t * 0.28);
@@ -124,9 +122,9 @@ void main() {
     float ribbonA = exp(-abs(sUv.y - foldA * 0.24) * 5.8);
     float ribbonB = exp(-abs(sUv.y + 0.18 - foldB * 0.22) * 4.6);
     float sheen = smoothstep(0.15, 0.92, fbm(sUv * 2.2 + vec2(t * 0.08, -t * 0.06)));
-    col = mix(col, u_secondary, clamp((ribbonB * 0.52 + sheen * 0.22) * lightStrength, 0.0, 0.78));
-    col += u_accent * (ribbonA * 0.56 + sheen * 0.08) * lightStrength;
-  } else if (u_mode < 4.5) {
+    col = mix(col, secondary, clamp((ribbonB * 0.52 + sheen * 0.22) * lightStrength, 0.0, 0.78));
+    col += accent * (ribbonA * 0.56 + sheen * 0.08) * lightStrength;
+  } else if (mode < 4.5) {
     // 4: Dreamy Bokeh Glow (warm-bokeh / lights / starlight / sparkle)
     float accum = 0.0;
     vec3 orbMix = col;
@@ -139,20 +137,20 @@ void main() {
       float radius = 0.18 + 0.05 * sin(fi * 2.1 + t * 0.2);
       float d = length(p - center);
       float orb = smoothstep(radius, radius * 0.25, d) * (0.28 + 0.12 * sin(t * 0.5 + fi));
-      vec3 tint = mod(fi, 2.0) < 0.5 ? u_accent : u_secondary;
-      orbMix = mix(orbMix, tint, clamp(orb * mix(0.85, 0.36, u_isLight), 0.0, 0.65));
+      vec3 tint = mod(fi, 2.0) < 0.5 ? accent : secondary;
+      orbMix = mix(orbMix, tint, clamp(orb * mix(0.85, 0.36, isLight), 0.0, 0.65));
       accum += orb;
     }
     float crown = exp(-length(uv - vec2(0.5, 0.14)) * 2.2) * 0.32 * lightStrength;
-    col = orbMix + mix(u_accent, u_secondary, 0.35) * crown * (0.3 + accum * 0.2);
-  } else if (u_mode < 5.5) {
+    col = orbMix + mix(accent, secondary, 0.35) * crown * (0.3 + accum * 0.2);
+  } else if (mode < 5.5) {
     // 5: Atmospheric Twilight Wash behind particles
     float cloud = fbm(p * 1.45 + vec2(t * 0.035, t * 0.02));
     float topGlow = exp(-length(uv - vec2(0.5, 0.0)) * 1.85);
     float bottomGlow = exp(-length(uv - vec2(0.82, 0.96)) * 2.1);
-    col = mix(col, mix(u_bg, u_accent, 0.45), clamp((cloud * 0.28 + topGlow * 0.34) * lightStrength, 0.0, 0.65));
-    col = mix(col, mix(u_bg, u_secondary, 0.45), clamp(bottomGlow * 0.28 * lightStrength, 0.0, 0.5));
-  } else if (u_mode < 6.5) {
+    col = mix(col, mix(bg, accent, 0.45), clamp((cloud * 0.28 + topGlow * 0.34) * lightStrength, 0.0, 0.65));
+    col = mix(col, mix(bg, secondary, 0.45), clamp(bottomGlow * 0.28 * lightStrength, 0.0, 0.5));
+  } else if (mode < 6.5) {
     // 6: Velvet Orbs (lava-lamp) — slow organic rising & fusing heat blobs
     float fieldA = 0.0;
     float fieldB = 0.0;
@@ -169,28 +167,28 @@ void main() {
     }
     float maskA = smoothstep(0.55, 1.35, fieldA);
     float maskB = smoothstep(0.55, 1.35, fieldB);
-    col = mix(col, u_accent, maskA * mix(0.62, 0.28, u_isLight));
-    col = mix(col, u_secondary, maskB * mix(0.54, 0.24, u_isLight));
-  } else if (u_mode < 7.5) {
+    col = mix(col, accent, maskA * mix(0.62, 0.28, isLight));
+    col = mix(col, secondary, maskB * mix(0.54, 0.24, isLight));
+  } else if (mode < 7.5) {
     // 7: Poolside Ripple (water-caustics) — sunlit cellular water shimmer
     vec2 wp = p * 3.1;
     float c1 = sin(wp.x * 1.4 + t * 0.6 + sin(wp.y * 1.8 - t * 0.45));
     float c2 = cos(wp.y * 1.5 - t * 0.5 + cos(wp.x * 1.6 + t * 0.4));
     float caustic = pow(1.0 - min(1.0, abs(c1 + c2) * 0.48), 3.0);
     float swell = fbm(p * 1.5 + vec2(t * 0.06, -t * 0.05));
-    col = mix(col, u_secondary, swell * mix(0.45, 0.22, u_isLight));
-    col += mix(u_accent, vec3(0.95, 0.99, 1.0), 0.35) * caustic * mix(0.36, 0.24, u_isLight);
-  } else if (u_mode < 8.5) {
+    col = mix(col, secondary, swell * mix(0.45, 0.22, isLight));
+    col += mix(accent, vec3(0.95, 0.99, 1.0), 0.35) * caustic * mix(0.36, 0.24, isLight);
+  } else if (mode < 8.5) {
     // 8: Drifting Clouds (twilight-clouds) — soft backlit atmospheric cloud banks
     float wind = t * 0.045;
     float baseCloud = fbm(p * vec2(1.1, 1.65) + vec2(wind, 0.0));
     float detailCloud = fbm(p * vec2(2.2, 3.0) + vec2(wind * 1.6, 1.4));
     float density = smoothstep(0.32, 0.78, baseCloud * 0.72 + detailCloud * 0.28);
     float sunBand = exp(-abs(uv.y - 0.68) * 3.2);
-    vec3 rim = mix(u_accent, u_secondary, sunBand);
-    col = mix(col, rim, density * mix(0.56, 0.3, u_isLight));
+    vec3 rim = mix(accent, secondary, sunBand);
+    col = mix(col, rim, density * mix(0.56, 0.3, isLight));
     col += rim * (1.0 - density) * sunBand * 0.22 * lightStrength;
-  } else if (u_mode < 9.5) {
+  } else if (mode < 9.5) {
     // 9: Prism Glass (stained-glass) — soft pearlescent Voronoi crystal facets
     vec2 gUv = p * 2.6 + vec2(t * 0.03, -t * 0.02);
     vec2 n = floor(gUv);
@@ -214,10 +212,10 @@ void main() {
         }
       }
     }
-    vec3 shard = mix(u_accent, u_secondary, cellId);
+    vec3 shard = mix(accent, secondary, cellId);
     float edgeGlow = exp(-(sqrt(md2) - sqrt(md1)) * 7.5);
-    col = mix(col, shard, (0.28 + cellId * 0.3) * mix(0.75, 0.34, u_isLight));
-    col += mix(vec3(1.0), u_accent, 0.5) * edgeGlow * mix(0.24, 0.14, u_isLight);
+    col = mix(col, shard, (0.28 + cellId * 0.3) * mix(0.75, 0.34, isLight));
+    col += mix(vec3(1.0), accent, 0.5) * edgeGlow * mix(0.24, 0.14, isLight);
   } else {
     // 10: Mirrorball Rays (disco-prism) — calm rotating volumetric light shafts & soft prism glow
     float ang = atan(p.y - 0.18, p.x);
@@ -225,9 +223,36 @@ void main() {
     float rays = 0.5 + 0.5 * sin(ang * 8.0 + t * 0.38);
     float subRays = 0.5 + 0.5 * cos(ang * 5.0 - t * 0.24);
     float beam = pow(rays * subRays, 1.8) * exp(-dist * 1.15);
-    vec3 spectrum = mix(u_accent, u_secondary, 0.5 + 0.5 * sin(ang * 3.0 + t * 0.2));
-    col = mix(col, spectrum, clamp(beam * mix(0.78, 0.38, u_isLight), 0.0, 0.72));
-    col += vec3(1.0, 0.98, 0.94) * exp(-dist * 4.5) * mix(0.22, 0.14, u_isLight);
+    vec3 spectrum = mix(accent, secondary, 0.5 + 0.5 * sin(ang * 3.0 + t * 0.2));
+    col = mix(col, spectrum, clamp(beam * mix(0.78, 0.38, isLight), 0.0, 0.72));
+    col += vec3(1.0, 0.98, 0.94) * exp(-dist * 4.5) * mix(0.22, 0.14, isLight);
+  }
+
+  return col;
+}
+
+void main() {
+  vec2 uv = v_uv;
+  float aspect = max(0.5, u_resolution.x / max(1.0, u_resolution.y));
+  vec2 p = (uv - 0.5) * vec2(aspect, 1.0);
+  float t = u_time;
+
+  // Live liquid domain displacement while user types or swaps themes
+  if (u_turbulence > 0.005) {
+    vec2 warp = vec2(
+      fbm(p * 1.9 + vec2(t * 0.25, -t * 0.18)) - 0.5,
+      fbm(p * 1.9 + vec2(-t * 0.2, t * 0.22) + 4.7) - 0.5
+    );
+    p += warp * (0.28 * u_turbulence);
+  }
+
+  float lightStrength = mix(1.0, 0.42, u_isLight);
+
+  vec3 col = evalEffectMode(u_mode, uv, p, aspect, t, u_bg, u_accent, u_secondary, u_isLight, lightStrength);
+  if (u_modeMix < 0.999 && abs(u_prevMode - u_mode) > 0.1) {
+    vec3 prevCol = evalEffectMode(u_prevMode, uv, p, aspect, t, u_bg, u_accent, u_secondary, u_isLight, lightStrength);
+    float smoothMix = u_modeMix * u_modeMix * (3.0 - 2.0 * u_modeMix);
+    col = mix(prevCol, col, smoothMix);
   }
 
   // Extra subtle chromatic shimmer when user types actively in NLP composer
@@ -410,6 +435,8 @@ export function initWebGLBackdrop(
   const uSecondary = gl.getUniformLocation(program, 'u_secondary');
   const uIsLight = gl.getUniformLocation(program, 'u_isLight');
   const uMode = gl.getUniformLocation(program, 'u_mode');
+  const uPrevMode = gl.getUniformLocation(program, 'u_prevMode');
+  const uModeMix = gl.getUniformLocation(program, 'u_modeMix');
   const uTurbulence = gl.getUniformLocation(program, 'u_turbulence');
 
   let state: WebGLBackdropParams = { ...initial };
@@ -425,6 +452,9 @@ export function initWebGLBackdrop(
   let curSecondary = hexToNormalizedVec3(initial.secondaryHex, [0.06, 0.65, 0.91]);
   let curIsLight = initial.isLight ? 1.0 : 0.0;
   let curTurbulence = Math.max(0, Math.min(1, initial.turbulence ?? 0));
+  let curShaderMode = effectToShaderMode(initial.effectId);
+  let prevShaderMode = curShaderMode;
+  let modeMix = 1.0;
 
   const lerpVec3 = (
     cur: [number, number, number],
@@ -441,7 +471,8 @@ export function initWebGLBackdrop(
     const dt = Math.max(0.001, Math.min(0.1, (nowMs - lastFrameMs) * 0.001));
     lastFrameMs = nowMs;
 
-    const alpha = state.reducedMotion ? 1.0 : Math.min(1, 1 - Math.exp(-dt * 4.8));
+    const alpha = state.reducedMotion ? 1.0 : Math.min(1, 1 - Math.exp(-dt * 2.6));
+    modeMix = state.reducedMotion ? 1.0 : Math.min(1.0, modeMix + dt / 1.15);
     const targetBg = hexToNormalizedVec3(state.bgHex, [0.04, 0.1, 0.24]);
     const targetAccent = hexToNormalizedVec3(state.accentHex, [0.2, 0.82, 0.6]);
     const targetSecondary = hexToNormalizedVec3(state.secondaryHex, [0.06, 0.65, 0.91]);
@@ -468,7 +499,9 @@ export function initWebGLBackdrop(
     gl.uniform3f(uAccent, curAccent[0], curAccent[1], curAccent[2]);
     gl.uniform3f(uSecondary, curSecondary[0], curSecondary[1], curSecondary[2]);
     gl.uniform1f(uIsLight, curIsLight);
-    gl.uniform1f(uMode, effectToShaderMode(state.effectId));
+    gl.uniform1f(uMode, curShaderMode);
+    if (uPrevMode) gl.uniform1f(uPrevMode, prevShaderMode);
+    if (uModeMix) gl.uniform1f(uModeMix, modeMix);
     if (uTurbulence) {
       gl.uniform1f(uTurbulence, state.reducedMotion ? 0.0 : curTurbulence);
     }
@@ -507,6 +540,12 @@ export function initWebGLBackdrop(
 
   const updateParams = (next: WebGLBackdropParams) => {
     const motionChanged = state.reducedMotion !== next.reducedMotion;
+    const nextMode = effectToShaderMode(next.effectId);
+    if (nextMode !== curShaderMode) {
+      prevShaderMode = modeMix < 0.5 ? prevShaderMode : curShaderMode;
+      curShaderMode = nextMode;
+      modeMix = next.reducedMotion ? 1.0 : 0.0;
+    }
     state = { ...next };
     if (motionChanged) {
       syncLoop();

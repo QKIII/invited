@@ -55,6 +55,26 @@ interface ShootingStar {
   color: string;
 }
 
+interface ParticleLayer {
+  effectId: AmbientEffectId;
+  palette: string[];
+  particles: Particle[];
+  sparks: FireworkSpark[];
+  shootingStar: ShootingStar | null;
+  fade: number;
+  tick: number;
+  lastBurst: number;
+  lastShootingStar: number;
+}
+
+interface ParticleLayerController {
+  updateLayer: (next: {
+    effectId: AmbientEffectId;
+    accent: string;
+    isLight: boolean;
+  }) => void;
+}
+
 const POSITION_RE = /\b(?:fixed|absolute|relative|sticky|static)\b/;
 
 function isStaticEffect(effectId: AmbientEffectId): boolean {
@@ -485,6 +505,16 @@ export function AmbientBackdrop({
   const webglCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const webglControllerRef = useRef<WebGLBackdropController | null>(null);
+  const particleControllerRef = useRef<ParticleLayerController | null>(null);
+  const latestParticlePropsRef = useRef<{
+    effectId: AmbientEffectId;
+    accent: string;
+    isLight: boolean;
+  }>({
+    effectId,
+    accent: accentColor || (colorMode === 'light' ? '#2c6b4a' : '#34d399'),
+    isLight: colorMode === 'light',
+  });
 
   const isLight = colorMode === 'light';
   const accent = accentColor || (isLight ? '#2c6b4a' : '#34d399');
@@ -597,23 +627,25 @@ export function AmbientBackdrop({
     };
   }, []);
 
-  // 2D Particle foreground canvas (active for particle effects, and automatically active as fallback if WebGL is unavailable)
+  // Keep latest particle layer props synced and dissolve smoothly across effectId/theme swaps
+  useEffect(() => {
+    latestParticlePropsRef.current = { effectId, accent, isLight };
+    if (!staticMode) {
+      particleControllerRef.current?.updateLayer({ effectId, accent, isLight });
+    }
+  }, [effectId, accent, isLight, staticMode]);
+
+  // Persistent 2D particle canvas across theme/effect swaps so old & new particles cross-dissolve smoothly
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || staticMode) {
-      return;
-    }
-
-    const needsParticles =
-      shouldUse2DParticleLayer(effectId) || webglControllerRef.current === null;
-    if (!needsParticles) {
-      const ctx = canvas.getContext('2d');
-      ctx?.clearRect(0, 0, canvas.width, canvas.height);
+      particleControllerRef.current = null;
       return;
     }
 
     const ctx = canvas.getContext('2d');
     if (!ctx) {
+      particleControllerRef.current = null;
       return;
     }
 
@@ -627,24 +659,48 @@ export function AmbientBackdrop({
     let initialized = false;
     let width = canvas.clientWidth || 960;
     let height = canvas.clientHeight || 640;
-
-    const palette = getPalette(effectId, accent, isLight);
-    let particles: Particle[] = [];
-    let sparks: FireworkSpark[] = [];
-    let shootingStar: ShootingStar | null = null;
     let rafId = 0;
-    let tick = 0;
-    let lastBurst = 0;
-    let lastShootingStar = 0;
 
-    const spawnFireworkBurst = (cx: number, cy: number) => {
-      const burstColor = palette[Math.floor(Math.random() * palette.length)];
-      const secondaryBurst = palette[Math.floor(Math.random() * palette.length)];
+    const createEmptyLayer = (
+      nextEffectId: AmbientEffectId,
+      palette: string[],
+      fade: number,
+    ): ParticleLayer => ({
+      effectId: nextEffectId,
+      palette,
+      particles: [],
+      sparks: [],
+      shootingStar: null,
+      fade,
+      tick: 0,
+      lastBurst: 0,
+      lastShootingStar: 0,
+    });
+
+    const initialProps = latestParticlePropsRef.current;
+    const initialNeedsParticles =
+      shouldUse2DParticleLayer(initialProps.effectId) || webglControllerRef.current === null;
+    const initialPalette = getPalette(
+      initialProps.effectId,
+      initialProps.accent,
+      initialProps.isLight,
+    );
+
+    let activeLayer: ParticleLayer = createEmptyLayer(
+      initialProps.effectId,
+      initialPalette,
+      1,
+    );
+    let outgoingLayer: ParticleLayer | null = null;
+
+    const spawnFireworkBurst = (layer: ParticleLayer, cx: number, cy: number) => {
+      const burstColor = layer.palette[Math.floor(Math.random() * layer.palette.length)];
+      const secondaryBurst = layer.palette[Math.floor(Math.random() * layer.palette.length)];
       const count = 28;
       for (let i = 0; i < count; i++) {
         const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.2;
         const speed = 1.1 + Math.random() * 2.2;
-        sparks.push({
+        layer.sparks.push({
           x: cx,
           y: cy,
           vx: Math.cos(angle) * speed,
@@ -654,6 +710,18 @@ export function AmbientBackdrop({
           color: i % 3 === 0 ? secondaryBurst : burstColor,
           size: 1.6 + Math.random() * 1.7,
         });
+      }
+    };
+
+    const populateLayer = (layer: ParticleLayer, needsParticles: boolean) => {
+      if (!needsParticles) {
+        layer.particles = [];
+        return;
+      }
+      layer.particles = createParticles(layer.effectId, width, height, layer.palette);
+      if (layer.effectId === 'fireworks' && layer.sparks.length === 0) {
+        spawnFireworkBurst(layer, width * 0.25, height * 0.26);
+        spawnFireworkBurst(layer, width * 0.74, height * 0.22);
       }
     };
 
@@ -681,34 +749,38 @@ export function AmbientBackdrop({
       canvas.height = Math.max(1, Math.floor(height * dpr));
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      if (!initialized || particles.length === 0) {
-        particles = createParticles(effectId, width, height, palette);
+      const needsParticles =
+        shouldUse2DParticleLayer(activeLayer.effectId) || webglControllerRef.current === null;
+
+      if (!initialized) {
+        populateLayer(activeLayer, needsParticles);
         initialized = true;
       } else if (prevWidth > 0 && prevHeight > 0) {
-        for (const p of particles) {
+        for (const p of activeLayer.particles) {
           p.x = (p.x / prevWidth) * width;
           p.y = (p.y / prevHeight) * height;
         }
-      }
-
-      if (effectId === 'fireworks' && sparks.length === 0) {
-        spawnFireworkBurst(width * 0.25, height * 0.26);
-        spawnFireworkBurst(width * 0.74, height * 0.22);
+        if (outgoingLayer) {
+          for (const p of outgoingLayer.particles) {
+            p.x = (p.x / prevWidth) * width;
+            p.y = (p.y / prevHeight) * height;
+          }
+        }
       }
     };
 
-    const drawParticle = (p: Particle, timeTick: number) => {
+    const drawParticle = (p: Particle, timeTick: number, layerEffectId: AmbientEffectId, layerFade: number) => {
       ctx.save();
       const twinkle =
         p.shape === 'star' ||
-        effectId === 'lullaby-stars' ||
-        effectId === 'aurora' ||
-        effectId === 'fireflies' ||
-        effectId === 'shooting-stars' ||
-        effectId === 'christmas-lights'
+        layerEffectId === 'lullaby-stars' ||
+        layerEffectId === 'aurora' ||
+        layerEffectId === 'fireflies' ||
+        layerEffectId === 'shooting-stars' ||
+        layerEffectId === 'christmas-lights'
           ? 0.48 + 0.52 * Math.sin(timeTick * 0.045 + p.phase)
           : 1;
-      ctx.globalAlpha = Math.max(0.04, Math.min(1, p.alpha * twinkle));
+      ctx.globalAlpha = Math.max(0.01, Math.min(1, p.alpha * twinkle)) * layerFade;
       ctx.fillStyle = p.color;
       ctx.translate(p.x, p.y);
       ctx.rotate(p.rotation);
@@ -789,74 +861,74 @@ export function AmbientBackdrop({
       ctx.restore();
     };
 
-    const renderFrame = (animate: boolean) => {
-      if (animate && isDocumentHidden) {
-        rafId = 0;
-        return;
-      }
+    const stepLayer = (layer: ParticleLayer, animate: boolean, isOutgoing: boolean) => {
+      if (layer.fade <= 0.004) return;
+      layer.tick += 1;
 
-      ctx.clearRect(0, 0, width, height);
-      tick += 1;
-
-      if (effectId === 'starlight-radiance' || effectId === 'lullaby-stars' || effectId === 'shooting-stars') {
-        const starCadence = effectId === 'shooting-stars' ? 75 : 220;
-        if (animate && !shootingStar && tick - lastShootingStar > starCadence) {
-          lastShootingStar = tick;
-          shootingStar = {
+      if (
+        layer.effectId === 'starlight-radiance' ||
+        layer.effectId === 'lullaby-stars' ||
+        layer.effectId === 'shooting-stars'
+      ) {
+        const starCadence = layer.effectId === 'shooting-stars' ? 75 : 220;
+        if (animate && !isOutgoing && !layer.shootingStar && layer.tick - layer.lastShootingStar > starCadence) {
+          layer.lastShootingStar = layer.tick;
+          layer.shootingStar = {
             x: width * (0.12 + Math.random() * 0.65),
             y: height * (0.06 + Math.random() * 0.28),
-            vx: effectId === 'shooting-stars' ? 8.2 : 6.5,
-            vy: effectId === 'shooting-stars' ? 3.4 : 2.6,
+            vx: layer.effectId === 'shooting-stars' ? 8.2 : 6.5,
+            vy: layer.effectId === 'shooting-stars' ? 3.4 : 2.6,
             life: 0,
             maxLife: 34,
-            color: effectId === 'starlight-radiance' ? '#fef3c7' : '#e0f2fe',
+            color: layer.effectId === 'starlight-radiance' ? '#fef3c7' : '#e0f2fe',
           };
         }
-        if (shootingStar) {
+        if (layer.shootingStar) {
           if (animate) {
-            shootingStar.x += shootingStar.vx;
-            shootingStar.y += shootingStar.vy;
-            shootingStar.life += 1;
+            layer.shootingStar.x += layer.shootingStar.vx;
+            layer.shootingStar.y += layer.shootingStar.vy;
+            layer.shootingStar.life += 1;
           }
-          const progress = shootingStar.life / shootingStar.maxLife;
+          const progress = layer.shootingStar.life / layer.shootingStar.maxLife;
           if (progress >= 1) {
-            shootingStar = null;
+            layer.shootingStar = null;
           } else {
-            const alpha = Math.sin(progress * Math.PI) * 0.72;
+            const alpha = Math.sin(progress * Math.PI) * 0.72 * layer.fade;
             ctx.save();
             ctx.globalAlpha = Math.max(0, alpha);
             const tailGrad = ctx.createLinearGradient(
-              shootingStar.x - shootingStar.vx * 7,
-              shootingStar.y - shootingStar.vy * 7,
-              shootingStar.x,
-              shootingStar.y,
+              layer.shootingStar.x - layer.shootingStar.vx * 7,
+              layer.shootingStar.y - layer.shootingStar.vy * 7,
+              layer.shootingStar.x,
+              layer.shootingStar.y,
             );
             tailGrad.addColorStop(0, 'transparent');
-            tailGrad.addColorStop(1, shootingStar.color);
+            tailGrad.addColorStop(1, layer.shootingStar.color);
             ctx.strokeStyle = tailGrad;
             ctx.lineWidth = 1.8;
             ctx.beginPath();
             ctx.moveTo(
-              shootingStar.x - shootingStar.vx * 7,
-              shootingStar.y - shootingStar.vy * 7,
+              layer.shootingStar.x - layer.shootingStar.vx * 7,
+              layer.shootingStar.y - layer.shootingStar.vy * 7,
             );
-            ctx.lineTo(shootingStar.x, shootingStar.y);
+            ctx.lineTo(layer.shootingStar.x, layer.shootingStar.y);
             ctx.stroke();
             ctx.restore();
           }
         }
       }
 
-      if (effectId === 'fireworks') {
-        if (animate && tick - lastBurst > 58) {
-          lastBurst = tick;
+      if (layer.effectId === 'fireworks') {
+        if (animate && !isOutgoing && layer.tick - layer.lastBurst > 58) {
+          layer.lastBurst = layer.tick;
           spawnFireworkBurst(
+            layer,
             width * (0.18 + Math.random() * 0.64),
             height * (0.14 + Math.random() * 0.38),
           );
         }
         const nextSparks: FireworkSpark[] = [];
-        for (const s of sparks) {
+        for (const s of layer.sparks) {
           if (animate) {
             s.x += s.vx;
             s.y += s.vy;
@@ -867,7 +939,7 @@ export function AmbientBackdrop({
           const progress = s.life / s.maxLife;
           if (progress < 1) {
             ctx.save();
-            ctx.globalAlpha = Math.max(0, (1 - progress) * 0.85);
+            ctx.globalAlpha = Math.max(0, (1 - progress) * 0.85 * layer.fade);
             ctx.fillStyle = s.color;
             ctx.beginPath();
             ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
@@ -876,17 +948,16 @@ export function AmbientBackdrop({
             nextSparks.push(s);
           }
         }
-        sparks = nextSparks;
-        if (!animate) {
-          return;
-        }
+        layer.sparks = nextSparks;
       }
 
-      for (const p of particles) {
+      for (const p of layer.particles) {
         if (animate) {
           const sway =
-            effectId === 'snowfall' || effectId === 'botanical-petals' || effectId === 'autumn-leaves'
-              ? Math.sin(tick * 0.02 + p.phase) * 0.35
+            layer.effectId === 'snowfall' ||
+            layer.effectId === 'botanical-petals' ||
+            layer.effectId === 'autumn-leaves'
+              ? Math.sin(layer.tick * 0.02 + p.phase) * 0.35
               : 0;
           p.x += p.vx + sway;
           p.y += p.vy;
@@ -905,25 +976,92 @@ export function AmbientBackdrop({
             p.x = width + 28;
           }
         }
-        drawParticle(p, tick);
+        drawParticle(p, layer.tick, layer.effectId, layer.fade);
+      }
+    };
+
+    const layerNeedsFrames = (layer: ParticleLayer): boolean =>
+      layer.particles.length > 0 ||
+      layer.sparks.length > 0 ||
+      layer.effectId === 'fireworks' ||
+      layer.effectId === 'starlight-radiance' ||
+      layer.effectId === 'lullaby-stars' ||
+      layer.effectId === 'shooting-stars';
+
+    const renderFrame = (animate: boolean) => {
+      if (animate && isDocumentHidden) {
+        rafId = 0;
+        return;
       }
 
-      if (animate && !isDocumentHidden) {
+      ctx.clearRect(0, 0, width, height);
+
+      if (outgoingLayer) {
+        if (animate) {
+          outgoingLayer.fade = reducedMotion ? 0 : Math.max(0, outgoingLayer.fade - 1 / 46);
+        }
+        stepLayer(outgoingLayer, animate, true);
+        if (outgoingLayer.fade <= 0.005) {
+          outgoingLayer = null;
+        }
+      }
+
+      const activeHasWork = layerNeedsFrames(activeLayer);
+      if (activeHasWork) {
+        if (animate && activeLayer.fade < 1) {
+          activeLayer.fade = reducedMotion ? 1 : Math.min(1, activeLayer.fade + 1 / 54);
+        }
+        stepLayer(activeLayer, animate, false);
+      }
+
+      const shouldContinue = Boolean(outgoingLayer) || activeHasWork;
+      if (animate && !isDocumentHidden && shouldContinue) {
         rafId = window.requestAnimationFrame(() => renderFrame(true));
+      } else {
+        rafId = 0;
       }
     };
 
     const startOrResume = () => {
       window.cancelAnimationFrame(rafId);
+      rafId = 0;
       if (reducedMotion) {
         renderFrame(false);
-      } else if (!isDocumentHidden) {
+      } else if (!isDocumentHidden && (Boolean(outgoingLayer) || layerNeedsFrames(activeLayer))) {
         rafId = window.requestAnimationFrame(() => renderFrame(true));
+      } else {
+        ctx.clearRect(0, 0, width, height);
       }
     };
 
-    resize(true);
-    startOrResume();
+    particleControllerRef.current = {
+      updateLayer: (next) => {
+        const nextPalette = getPalette(next.effectId, next.accent, next.isLight);
+        const needsParticles =
+          shouldUse2DParticleLayer(next.effectId) || webglControllerRef.current === null;
+
+        if (!reducedMotion && activeLayer.fade > 0.02 && layerNeedsFrames(activeLayer)) {
+          outgoingLayer = activeLayer;
+        }
+
+        const nextLayer = createEmptyLayer(
+          next.effectId,
+          nextPalette,
+          reducedMotion ? 1 : 0,
+        );
+        populateLayer(nextLayer, needsParticles);
+        activeLayer = nextLayer;
+        startOrResume();
+      },
+    };
+
+    if (!initialNeedsParticles && !layerNeedsFrames(activeLayer)) {
+      resize(true);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    } else {
+      resize(true);
+      startOrResume();
+    }
 
     const onResize = () => {
       resize(false);
@@ -953,18 +1091,21 @@ export function AmbientBackdrop({
 
     const onMotionChange = (e: MediaQueryListEvent) => {
       reducedMotion = e.matches;
+      activeLayer.fade = 1;
+      outgoingLayer = null;
       startOrResume();
     };
     mediaQuery?.addEventListener('change', onMotionChange);
 
     return () => {
+      particleControllerRef.current = null;
       window.cancelAnimationFrame(rafId);
       ro?.disconnect();
       window.removeEventListener('resize', onResize);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       mediaQuery?.removeEventListener('change', onMotionChange);
     };
-  }, [effectId, accent, isLight, staticMode]);
+  }, [staticMode]);
 
   const hasPosition = fixedViewport || POSITION_RE.test(className);
   const positioningClass = fixedViewport
@@ -972,14 +1113,20 @@ export function AmbientBackdrop({
     : hasPosition
       ? ''
       : 'absolute inset-0';
-  const baseClass = `${positioningClass} pointer-events-none select-none overflow-hidden ${className}`.trim();
+  const baseClass = `${positioningClass} ${styles.backdropRoot} pointer-events-none select-none overflow-hidden ${className}`.trim();
+
+  const rootStyle: React.CSSProperties = {
+    ...(fixedViewport ? { backgroundColor: 'var(--theme-page-bg)' } : {}),
+    '--backdrop-accent': accent,
+    '--backdrop-secondary': secondary,
+  } as React.CSSProperties;
 
   return (
     <div
       aria-hidden="true"
       className={baseClass}
       data-effect-id={effectId}
-      style={fixedViewport ? { backgroundColor: 'var(--theme-page-bg)' } : undefined}
+      style={rootStyle}
     >
       {/* WebGL Shader Layer */}
       {!staticMode ? (
@@ -993,78 +1140,78 @@ export function AmbientBackdrop({
       {/* Atmospheric gradient wash fallback + Static Glow */}
       {effectId !== 'none' ? (
         <div
-          className="absolute inset-0"
+          className={`absolute inset-0 ${styles.overlayFadeIn}`}
           style={{
             background:
               effectId === 'static-glow'
                 ? isLight
-                  ? `radial-gradient(ellipse 92% 62% at 22% 8%, ${accent}38, transparent 68%), radial-gradient(ellipse 84% 58% at 86% 90%, ${secondary}32, transparent 70%)`
-                  : `radial-gradient(ellipse 92% 62% at 22% 8%, ${accent}55, transparent 68%), radial-gradient(ellipse 84% 58% at 86% 90%, ${secondary}48, transparent 70%)`
+                  ? 'radial-gradient(ellipse 92% 62% at 22% 8%, color-mix(in srgb, var(--backdrop-accent) 22%, transparent), transparent 68%), radial-gradient(ellipse 84% 58% at 86% 90%, color-mix(in srgb, var(--backdrop-secondary) 20%, transparent), transparent 70%)'
+                  : 'radial-gradient(ellipse 92% 62% at 22% 8%, color-mix(in srgb, var(--backdrop-accent) 34%, transparent), transparent 68%), radial-gradient(ellipse 84% 58% at 86% 90%, color-mix(in srgb, var(--backdrop-secondary) 28%, transparent), transparent 70%)'
                 : isLight
-                  ? `radial-gradient(ellipse 90% 60% at 50% 0%, ${accent}20, transparent 70%), radial-gradient(ellipse 75% 50% at 85% 95%, ${secondary}16, transparent 70%)`
-                  : `radial-gradient(ellipse 95% 65% at 50% 0%, ${accent}28, transparent 72%), radial-gradient(ellipse 80% 55% at 85% 95%, ${secondary}22, transparent 75%)`,
+                  ? 'radial-gradient(ellipse 90% 60% at 50% 0%, color-mix(in srgb, var(--backdrop-accent) 13%, transparent), transparent 70%), radial-gradient(ellipse 75% 50% at 85% 95%, color-mix(in srgb, var(--backdrop-secondary) 10%, transparent), transparent 70%)'
+                  : 'radial-gradient(ellipse 95% 65% at 50% 0%, color-mix(in srgb, var(--backdrop-accent) 17%, transparent), transparent 72%), radial-gradient(ellipse 80% 55% at 85% 95%, color-mix(in srgb, var(--backdrop-secondary) 14%, transparent), transparent 75%)',
           }}
         />
       ) : null}
 
       {/* Static Paper Grain / Linen / Watercolor overlays */}
       {effectId === 'static-grain' && (
-        <div className={`absolute inset-0 ${styles.paperGrainOverlay}`} />
+        <div className={`absolute inset-0 ${styles.overlayFadeIn} ${styles.paperGrainOverlay}`} />
       )}
       {effectId === 'static-linen' && (
-        <div className={`absolute inset-0 ${styles.linenOverlay}`} />
+        <div className={`absolute inset-0 ${styles.overlayFadeIn} ${styles.linenOverlay}`} />
       )}
       {effectId === 'static-watercolor' && (
         <>
           <div
-            className="absolute inset-0"
+            className={`absolute inset-0 ${styles.overlayFadeIn}`}
             style={{
               background: isLight
-                ? `radial-gradient(ellipse 75% 60% at 15% 20%, ${accent}36, transparent 70%), radial-gradient(ellipse 80% 65% at 88% 75%, ${secondary}32, transparent 72%)`
-                : `radial-gradient(ellipse 75% 60% at 15% 20%, ${accent}48, transparent 70%), radial-gradient(ellipse 80% 65% at 88% 75%, ${secondary}44, transparent 72%)`,
+                ? 'radial-gradient(ellipse 75% 60% at 15% 20%, color-mix(in srgb, var(--backdrop-accent) 21%, transparent), transparent 70%), radial-gradient(ellipse 80% 65% at 88% 75%, color-mix(in srgb, var(--backdrop-secondary) 20%, transparent), transparent 72%)'
+                : 'radial-gradient(ellipse 75% 60% at 15% 20%, color-mix(in srgb, var(--backdrop-accent) 28%, transparent), transparent 70%), radial-gradient(ellipse 80% 65% at 88% 75%, color-mix(in srgb, var(--backdrop-secondary) 27%, transparent), transparent 72%)',
             }}
           />
-          <div className={`absolute inset-0 ${styles.watercolorOverlay}`} />
+          <div className={`absolute inset-0 ${styles.overlayFadeIn} ${styles.watercolorOverlay}`} />
         </>
       )}
 
       {/* CSS atmospheric ribbons (soft complement + instant SSR first paint) */}
       {(effectId === 'prism-gradient' || effectId === 'liquid-chrome') && (
-        <div className="absolute inset-0 opacity-60">
+        <div className={`absolute inset-0 opacity-60 ${styles.overlayFadeIn}`}>
           <div
             className={`${styles.prismOrbA} absolute -top-[18%] -left-[12%] h-[68%] w-[85%] rounded-full blur-3xl`}
             style={{
               background: isLight
-                ? `radial-gradient(circle, ${accent}30 0%, #38bdf822 55%, transparent 78%)`
-                : `radial-gradient(circle, ${accent}4a 0%, #38bdf832 55%, transparent 78%)`,
+                ? 'radial-gradient(circle, color-mix(in srgb, var(--backdrop-accent) 19%, transparent) 0%, #38bdf822 55%, transparent 78%)'
+                : 'radial-gradient(circle, color-mix(in srgb, var(--backdrop-accent) 29%, transparent) 0%, #38bdf832 55%, transparent 78%)',
             }}
           />
           <div
             className={`${styles.prismOrbB} absolute top-[18%] -right-[16%] h-[72%] w-[88%] rounded-full blur-3xl`}
             style={{
               background: isLight
-                ? `radial-gradient(circle, ${secondary}2c 0%, #f472b620 55%, transparent 78%)`
-                : `radial-gradient(circle, ${secondary}48 0%, #ec489932 55%, transparent 78%)`,
+                ? 'radial-gradient(circle, color-mix(in srgb, var(--backdrop-secondary) 17%, transparent) 0%, #f472b620 55%, transparent 78%)'
+                : 'radial-gradient(circle, color-mix(in srgb, var(--backdrop-secondary) 28%, transparent) 0%, #ec489932 55%, transparent 78%)',
             }}
           />
         </div>
       )}
 
       {effectId === 'aurora' && (
-        <div className="absolute inset-0 opacity-55">
+        <div className={`absolute inset-0 opacity-55 ${styles.overlayFadeIn}`}>
           <div
             className={`${styles.auroraRibbonA} absolute -top-1/4 -left-1/4 h-[72%] w-[125%] rounded-full blur-3xl`}
             style={{
               background: isLight
-                ? `linear-gradient(125deg, ${accent}22 0%, #38bdf820 48%, #a855f716 100%)`
-                : `linear-gradient(125deg, ${accent}42 0%, #22d3ee36 48%, #a855f730 100%)`,
+                ? 'linear-gradient(125deg, color-mix(in srgb, var(--backdrop-accent) 14%, transparent) 0%, #38bdf820 48%, #a855f716 100%)'
+                : 'linear-gradient(125deg, color-mix(in srgb, var(--backdrop-accent) 26%, transparent) 0%, #22d3ee36 48%, #a855f730 100%)',
             }}
           />
         </div>
       )}
 
       {effectId === 'starlight-radiance' && (
-        <div className="absolute inset-0">
+        <div className={`absolute inset-0 ${styles.overlayFadeIn}`}>
           <div
             className={`${styles.starlightBeam} absolute -top-24 left-1/2 h-[520px] w-[520px] -translate-x-1/2 rounded-full blur-3xl`}
             style={{
@@ -1078,7 +1225,7 @@ export function AmbientBackdrop({
 
       {effectId === 'christmas-lights' && (
         <svg
-          className="absolute top-0 left-0 h-16 w-full opacity-85"
+          className={`absolute top-0 left-0 h-16 w-full opacity-85 ${styles.overlayFadeIn}`}
           viewBox="0 0 1000 80"
           preserveAspectRatio="none"
         >

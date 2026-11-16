@@ -5,6 +5,121 @@
   --font-mono: var(--font-studio-mono), ui-monospace, SFMono-Regular, monospace;
 }
 
+/* Registered <color> custom properties enable smooth browser interpolation across theme transitions */
+@property --app-bg {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #082556;
+}
+
+@property --theme-page-bg {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #082556;
+}
+
+@property --theme-surface-bg {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgba(15, 23, 42, 0.72);
+}
+
+@property --theme-card-surface {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgba(15, 23, 42, 0.72);
+}
+
+@property --theme-border {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgba(255, 255, 255, 0.18);
+}
+
+@property --theme-hairline {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgba(255, 255, 255, 0.16);
+}
+
+@property --theme-text-primary {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #f8fafc;
+}
+
+@property --theme-text-muted {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgba(241, 245, 249, 0.78);
+}
+
+@property --theme-accent {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #34d399;
+}
+
+@property --theme-cta-start {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #10b981;
+}
+
+@property --theme-cta-end {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #0ea5e9;
+}
+
+@property --theme-cta-mid {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #0284c7;
+}
+
+@property --theme-cta-text {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #0f172a;
+}
+
+@property --theme-outer-text {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #f8fafc;
+}
+
+@property --theme-outer-muted {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgba(241, 245, 249, 0.8);
+}
+
+@property --theme-outer-pill-bg {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgba(255, 255, 255, 0.12);
+}
+
+@property --theme-outer-pill-border {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgba(255, 255, 255, 0.22);
+}
+
+@property --backdrop-accent {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #34d399;
+}
+
+@property --backdrop-secondary {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #0ea5e9;
+}
+
 @layer base {
   :root {
     --app-bg: #082556;
@@ -20,6 +135,7 @@
   html {
     font-family: var(--font-ui-body), ui-sans-serif, system-ui, -apple-system, sans-serif;
     background-color: var(--app-bg, #082556);
+    transition: background-color 1.05s cubic-bezier(0.45, 0, 0.55, 1);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overscroll-behavior-x: none;
@@ -28,6 +144,7 @@
 
   body {
     background-color: var(--app-bg, #082556);
+    transition: background-color 1.05s cubic-bezier(0.45, 0, 0.55, 1);
     min-height: 100dvh;
     overflow-wrap: anywhere;
     overscroll-behavior-x: none;
@@ -234,7 +351,11 @@
     0 24px 60px -15px rgba(0, 0, 0, 0.38),
     inset 0 1px 0 0 var(--theme-card-specular, rgba(255, 255, 255, 0.18))
   );
-  transition: background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+  transition:
+    background-color 0.95s cubic-bezier(0.45, 0, 0.55, 1),
+    border-color 0.95s cubic-bezier(0.45, 0, 0.55, 1),
+    box-shadow 0.95s cubic-bezier(0.45, 0, 0.55, 1),
+    color 0.95s cubic-bezier(0.45, 0, 0.55, 1);
 }
 
 .invite-on-accent {
@@ -248,8 +369,16 @@
 }
 
 .invite-cta-btn {
-  background: var(--theme-cta-bg, linear-gradient(135deg, #0284c7 0%, #1d4ed8 100%));
+  background: linear-gradient(
+    135deg,
+    var(--theme-cta-start, #0284c7) 0%,
+    var(--theme-cta-end, #1d4ed8) 100%
+  );
   color: var(--theme-cta-text, #ffffff);
+  transition:
+    color 0.85s cubic-bezier(0.45, 0, 0.55, 1),
+    opacity 0.2s ease,
+    transform 0.18s ease;
 }
 
 @supports (color: contrast-color(#000000)) {
@@ -781,10 +910,54 @@
   }
 }
 
-/* Home hero 1-character-at-a-time typography morph wave & staggered starter chips */
+/* Smooth theme custom-property transitions + locked 2-line hero typography */
+.home-theme-root {
+  transition:
+    --theme-page-bg 1.05s cubic-bezier(0.45, 0, 0.55, 1),
+    --theme-surface-bg 1.05s cubic-bezier(0.45, 0, 0.55, 1),
+    --theme-card-surface 1.05s cubic-bezier(0.45, 0, 0.55, 1),
+    --theme-border 1.05s cubic-bezier(0.45, 0, 0.55, 1),
+    --theme-hairline 1.05s cubic-bezier(0.45, 0, 0.55, 1),
+    --theme-text-primary 1.05s cubic-bezier(0.45, 0, 0.55, 1),
+    --theme-text-muted 1.05s cubic-bezier(0.45, 0, 0.55, 1),
+    --theme-accent 1.05s cubic-bezier(0.45, 0, 0.55, 1),
+    --theme-cta-start 1.05s cubic-bezier(0.45, 0, 0.55, 1),
+    --theme-cta-end 1.05s cubic-bezier(0.45, 0, 0.55, 1),
+    --theme-cta-mid 1.05s cubic-bezier(0.45, 0, 0.55, 1),
+    --theme-cta-text 1.05s cubic-bezier(0.45, 0, 0.55, 1),
+    --theme-outer-text 1.05s cubic-bezier(0.45, 0, 0.55, 1),
+    --theme-outer-muted 1.05s cubic-bezier(0.45, 0, 0.55, 1),
+    --theme-outer-pill-bg 1.05s cubic-bezier(0.45, 0, 0.55, 1),
+    --theme-outer-pill-border 1.05s cubic-bezier(0.45, 0, 0.55, 1),
+    background-color 1.05s cubic-bezier(0.45, 0, 0.55, 1),
+    color 1.05s cubic-bezier(0.45, 0, 0.55, 1);
+}
+
+.hero-headline-line {
+  display: block;
+  height: 1.24em;
+  line-height: 1.24em;
+  white-space: nowrap;
+}
+
 .hero-char-glyph {
-  display: inline-block;
-  transition: color 0.35s ease;
+  display: inline;
+  line-height: 1;
+  vertical-align: baseline;
+  font-size-adjust: 0.48;
+  transition: color 0.65s cubic-bezier(0.45, 0, 0.55, 1);
+}
+
+@supports not (font-size-adjust: 0.48) {
+  .hero-char-glyph {
+    font-size: var(--glyph-fallback-size, 1em);
+  }
+}
+
+@supports not (font-size-adjust: from-font) {
+  .hero-headline-line {
+    line-height: 1.24em;
+  }
 }
 
 .hero-showcase-pill,
@@ -803,16 +976,10 @@
 
 @keyframes heroCharMorph {
   0% {
-    opacity: 0.95;
-    transform: translate3d(0, 2px, 0) scale(0.96);
-  }
-  45% {
-    opacity: 1;
-    transform: translate3d(0, -4px, 0) scale(1.06);
+    opacity: 0.56;
   }
   100% {
     opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
@@ -829,8 +996,8 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .hero-char-glyph[data-wave-active="true"] {
-    will-change: transform, opacity;
-    animation: heroCharMorph 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+    will-change: opacity;
+    animation: heroCharMorph 0.38s cubic-bezier(0.45, 0, 0.55, 1) both;
   }
 
   .starter-chip-list > .starter-chip {

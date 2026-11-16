@@ -5,6 +5,7 @@ import { RichTextEditor } from '@/components/editor/RichTextEditor';
 import {
   HERO_SHOWCASE_CYCLE,
   HomeLandingClient,
+  getHeroStepDelayMs,
 } from '@/components/home/HomeLandingClient';
 import { GuestAvatar } from '@/components/invite/GuestAvatar';
 import { HostManagementPanel } from '@/components/studio/HostManagementPanel';
@@ -335,9 +336,19 @@ describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & 
     for (const t of THEME_PRESETS) expect(coveredThemes.has(t.id)).toBe(true);
     for (const f of FONT_PAIRINGS) expect(coveredFonts.has(f.id)).toBe(true);
 
+    // Raised-cosine ease-in-out timing starts slow, accelerates mid-word, and slows at end
+    expect(getHeroStepDelayMs(0, 24)).toBeGreaterThan(getHeroStepDelayMs(4, 24));
+    expect(getHeroStepDelayMs(12, 24)).toBeLessThan(getHeroStepDelayMs(4, 24));
+    expect(getHeroStepDelayMs(23, 24)).toBeGreaterThan(getHeroStepDelayMs(18, 24));
+
+    window.localStorage.setItem('invited_create_draft_v1', '{"title":"Saved Night"}');
     vi.useFakeTimers();
     const { container, unmount } = renderIntoDom(<HomeLandingClient />);
     try {
+      await act(async () => {
+        await Promise.resolve();
+      });
+
       const heroCard = container.querySelector('[data-testid="home-hero-card"]')!;
       expect(heroCard).not.toBeNull();
       expect(container.querySelector('[data-testid="hero-next-theme-btn"]')).toBeNull();
@@ -346,15 +357,31 @@ describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & 
       expect(heroCard.textContent).not.toContain('\u2014');
 
       const heading = container.querySelector('#home-hero-heading')!;
-      expect(heading.getAttribute('aria-label')).toBe('Invites people actually want to open.');
-      expect(heading.textContent).toBe('Invites people actually want to open.');
+      expect(heading.getAttribute('aria-label')).toBe('Invites people want to open.');
+      expect(heading.textContent).toBe('Invites people want to open.');
+      expect(container.querySelector('[data-testid="hero-line-1"]')?.textContent).toBe('Invites');
+      expect(container.querySelector('[data-testid="hero-line-2"]')?.textContent).toBe(
+        'people want to open.',
+      );
       const glyphs = container.querySelectorAll<HTMLSpanElement>('.hero-char-glyph');
-      expect(glyphs).toHaveLength(32);
+      expect(glyphs).toHaveLength(24);
 
       const subtitle = container.querySelector('[data-testid="home-hero-subtitle"]')!;
       const footnote = container.querySelector('[data-testid="home-hero-footnote"]')!;
+      const draftLink = container.querySelector('[data-testid="home-saved-draft-link"]')!;
+      const ctaButton = container.querySelector<HTMLButtonElement>(
+        '[data-testid="home-create-invite-btn"]',
+      )!;
       expect(subtitle.textContent).not.toContain('\u2014');
       expect(footnote.textContent).toBe('No sign-ups · No app downloads');
+      expect(draftLink).not.toBeNull();
+      // Trust line and optional saved draft link always sit above the bottom CTA
+      expect(
+        Boolean(footnote.compareDocumentPosition(ctaButton) & Node.DOCUMENT_POSITION_FOLLOWING),
+      ).toBe(true);
+      expect(
+        Boolean(draftLink.compareDocumentPosition(ctaButton) & Node.DOCUMENT_POSITION_FOLLOWING),
+      ).toBe(true);
 
       // Pause button sits quietly in header and toggles aria-label without aria-pressed (WCAG 2.2.2)
       const pauseBtn = container.querySelector<HTMLButtonElement>('[data-testid="hero-pause-btn"]')!;
@@ -364,12 +391,12 @@ describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & 
 
       // Auto-cycling advances theme & sweeps typography one character at a time
       await act(async () => {
-        vi.advanceTimersByTime(3800);
+        vi.advanceTimersByTime(4200);
       });
       expect(heroCard.getAttribute('data-showcase-theme')).toBe('y2k-chrome');
 
       await act(async () => {
-        vi.advanceTimersByTime(140);
+        vi.advanceTimersByTime(350);
       });
       const midFonts = Array.from(
         container.querySelectorAll<HTMLSpanElement>('.hero-char-glyph'),
@@ -378,7 +405,7 @@ describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & 
       expect(midFonts[midFonts.length - 1]).toBe('editorial-serif');
 
       await act(async () => {
-        vi.advanceTimersByTime(1000);
+        vi.advanceTimersByTime(1200);
       });
       const endFonts = Array.from(
         container.querySelectorAll<HTMLSpanElement>('.hero-char-glyph'),
@@ -440,6 +467,7 @@ describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & 
       expect(pushMock).toHaveBeenCalledWith('/create');
       expect(window.sessionStorage.getItem('invited_studio_draft')).toContain('42 Maple St');
     } finally {
+      window.localStorage.removeItem('invited_create_draft_v1');
       vi.useRealTimers();
       unmount();
     }

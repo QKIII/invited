@@ -236,3 +236,18 @@
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='w'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.018' numOctaves='3' seed='7'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23w)' opacity='0.18'/%3E%3C/svg%3E");
   mix-blend-mode: soft-light;
 }
+
+.backdropRoot {
+  transition:
+    background-color 1.05s cubic-bezier(0.45, 0, 0.55, 1),
+    --backdrop-accent 1.05s cubic-bezier(0.45, 0, 0.55, 1),
+    --backdrop-secondary 1.05s cubic-bezier(0.45, 0, 0.55, 1);
+}
+
+.overlayFadeIn {
+  opacity: 1;
+  transition: opacity 0.85s cubic-bezier(0.45, 0, 0.55, 1);
+  @starting-style {
+    opacity: 0;
+  }
+}

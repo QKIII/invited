@@ -39,7 +39,8 @@ interface HomeLandingClientProps {
 
 const CREATE_DRAFT_KEY = 'invited_create_draft_v1';
 
-const HERO_HEADLINE = 'Invites people actually want to open.';
+const HERO_LINES = ['Invites', 'people want to open.'] as const;
+const HERO_HEADLINE = HERO_LINES.join(' ');
 
 interface HeroCharToken {
   char: string;
@@ -51,55 +52,74 @@ interface HeroWordToken {
   chars: HeroCharToken[];
 }
 
-const { HERO_WORDS, HERO_CHAR_COUNT } = (() => {
+interface HeroLineToken {
+  lineText: string;
+  words: HeroWordToken[];
+}
+
+const { HERO_LINE_TOKENS, HERO_CHAR_COUNT } = (() => {
   let cursor = 0;
-  const words: HeroWordToken[] = HERO_HEADLINE.split(' ').map((word) => ({
-    word,
-    chars: Array.from(word).map((char) => ({
-      char,
-      globalIndex: cursor++,
+  const lines: HeroLineToken[] = HERO_LINES.map((lineText) => ({
+    lineText,
+    words: lineText.split(' ').map((word) => ({
+      word,
+      chars: Array.from(word).map((char) => ({
+        char,
+        globalIndex: cursor++,
+      })),
     })),
   }));
-  return { HERO_WORDS: words, HERO_CHAR_COUNT: cursor };
+  return { HERO_LINE_TOKENS: lines, HERO_CHAR_COUNT: cursor };
 })();
+
+/**
+ * Raised-cosine ease-in-out timing curve for the character wave:
+ * starts deliberately slow (~72ms), speeds up through the middle (~16ms),
+ * and decelerates smoothly at the end (~72ms).
+ */
+export function getHeroStepDelayMs(stepIndex: number, totalSteps: number): number {
+  const progress = totalSteps <= 1 ? 0.5 : stepIndex / (totalSteps - 1);
+  const easeWeight = 0.5 * (1 + Math.cos(2 * Math.PI * progress));
+  return Math.round(16 + 56 * easeWeight);
+}
 
 const FONT_OPTICAL_TUNING: Record<
   FontPairingId,
-  { fontVar: string; sizeEm: string; tracking: string }
+  { fontVar: string; fallbackSizeEm: string; tracking: string }
 > = {
   'editorial-serif': {
     fontVar: 'var(--font-editorial-serif), Georgia, serif',
-    sizeEm: '1.08em',
+    fallbackSizeEm: '1.08em',
     tracking: '-0.015em',
   },
   'modern-sans': {
     fontVar: 'var(--font-modern-sans), system-ui, -apple-system, sans-serif',
-    sizeEm: '0.96em',
+    fallbackSizeEm: '0.96em',
     tracking: '-0.025em',
   },
   'expressive-display': {
     fontVar: 'var(--font-expressive-display), Georgia, serif',
-    sizeEm: '0.97em',
+    fallbackSizeEm: '0.97em',
     tracking: '-0.02em',
   },
   'sacred-classic': {
     fontVar: 'var(--font-sacred-classic), Georgia, serif',
-    sizeEm: '1.1em',
+    fallbackSizeEm: '1.1em',
     tracking: '-0.01em',
   },
   'playful-rounded': {
     fontVar: 'var(--font-playful-rounded), system-ui, -apple-system, sans-serif',
-    sizeEm: '0.95em',
+    fallbackSizeEm: '0.95em',
     tracking: '-0.015em',
   },
   'studio-mono': {
     fontVar: 'var(--font-studio-mono), ui-monospace, SFMono-Regular, monospace',
-    sizeEm: '0.82em',
+    fallbackSizeEm: '0.82em',
     tracking: '-0.04em',
   },
   'y2k-display': {
     fontVar: 'var(--font-y2k-display), var(--font-modern-sans), sans-serif',
-    sizeEm: '0.85em',
+    fallbackSizeEm: '0.85em',
     tracking: '-0.03em',
   },
 };
@@ -333,34 +353,42 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
     const id = window.setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
       advanceShowcase();
-    }, 3800);
+    }, 4200);
     return () => {
       window.clearInterval(id);
     };
   }, [stage, showcasePaused, prefersReducedMotion, advanceShowcase]);
 
-  // Sweep typography one character at a time on each transition
+  // Sweep typography one character at a time on an ease-in-out curve (slow -> fast -> slow)
   useEffect(() => {
     if (showcase.waveGeneration === 0) return;
     if (prefersReducedMotion) {
       queueMicrotask(() => setMorphedCharCount(HERO_CHAR_COUNT));
       return;
     }
-    const id = window.setInterval(() => {
-      setMorphedCharCount((count) => {
-        if (count >= HERO_CHAR_COUNT) {
-          window.clearInterval(id);
-          return HERO_CHAR_COUNT;
+
+    let step = 0;
+    let timerId = 0;
+    let cancelled = false;
+
+    const scheduleNext = () => {
+      if (cancelled || step >= HERO_CHAR_COUNT) return;
+      const delayMs = getHeroStepDelayMs(step, HERO_CHAR_COUNT);
+      timerId = window.setTimeout(() => {
+        if (cancelled) return;
+        step += 1;
+        setMorphedCharCount(step);
+        if (step < HERO_CHAR_COUNT) {
+          scheduleNext();
         }
-        const next = count + 1;
-        if (next >= HERO_CHAR_COUNT) {
-          window.clearInterval(id);
-        }
-        return next;
-      });
-    }, 22);
+      }, delayMs);
+    };
+
+    scheduleNext();
+
     return () => {
-      window.clearInterval(id);
+      cancelled = true;
+      window.clearTimeout(timerId);
     };
   }, [showcase.waveGeneration, prefersReducedMotion]);
 
@@ -456,7 +484,7 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
         color: 'var(--theme-text-primary)',
         fontFamily: 'var(--font-invite-body), var(--font-sans), sans-serif',
       }}
-      className="min-h-dvh relative overflow-x-hidden flex flex-col transition-colors duration-700"
+      className="home-theme-root min-h-dvh relative overflow-x-hidden flex flex-col"
     >
       {/* Inline SVG turbulence displacement filter for frosted aura modulation during live NLP generation */}
       <svg className="sr-only" aria-hidden="true" width="0" height="0">
@@ -506,9 +534,10 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
         style={{ opacity: stage === 'prompt' ? 0.92 : 0.52 }}
       >
         <div
-          className="h-[min(78vw,560px)] w-[min(92vw,620px)] rounded-full transition-all duration-700"
+          className="h-[min(78vw,560px)] w-[min(92vw,620px)] rounded-full transition-transform duration-700"
           style={{
-            background: `radial-gradient(circle at 28% 32%, ${themeVars['--theme-cta-start']}88, transparent 62%), radial-gradient(circle at 74% 68%, ${themeVars['--theme-cta-end']}77, transparent 66%), radial-gradient(circle at 50% 50%, ${themeVars['--theme-accent']}55, transparent 74%)`,
+            background:
+              'radial-gradient(circle at 28% 32%, color-mix(in srgb, var(--theme-cta-start) 53%, transparent), transparent 62%), radial-gradient(circle at 74% 68%, color-mix(in srgb, var(--theme-cta-end) 47%, transparent), transparent 66%), radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--theme-accent) 34%, transparent), transparent 74%)',
             filter: 'url(#nlp-turbulence-displacement) blur(42px)',
             transform: isActivelyTyping ? 'scale(1.07)' : 'scale(1)',
           }}
@@ -590,48 +619,55 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
                   ref={heroHeadingRef}
                   tabIndex={-1}
                   aria-label={HERO_HEADLINE}
-                  className="font-bold leading-[1.16] text-center outline-none min-h-[4.6rem] sm:min-h-[5.4rem]"
+                  className="font-bold text-center outline-none"
                   style={{
-                    fontSize: 'clamp(1.75rem, 1.3rem + 2.1vw, 2.55rem)',
-                    textWrap: 'balance',
+                    fontSize: 'clamp(1.42rem, 0.98rem + 2.15vw, 2.38rem)',
                   }}
                 >
-                  {HERO_WORDS.map((wordToken, wordIdx) => (
-                    <React.Fragment key={wordIdx}>
+                  {HERO_LINE_TOKENS.map((line, lineIdx) => (
+                    <React.Fragment key={lineIdx}>
                       <span
+                        data-testid={`hero-line-${lineIdx + 1}`}
                         aria-hidden="true"
-                        className="inline-block whitespace-nowrap"
+                        className="hero-headline-line"
                       >
-                        {wordToken.chars.map((token, charIdx) => {
-                          const isMorphed = token.globalIndex < morphedCharCount;
-                          const glyphFont = isMorphed
-                            ? showcase.activeFontId
-                            : showcase.prevFontId;
-                          const tuning = FONT_OPTICAL_TUNING[glyphFont];
-                          return (
-                            <span
-                              key={`${wordIdx}-${charIdx}-${isMorphed ? showcase.waveGeneration : 0}`}
-                              data-char-index={token.globalIndex}
-                              data-char-font={glyphFont}
-                              data-wave-active={
-                                isMorphed && showcase.waveGeneration > 0
-                                  ? 'true'
-                                  : undefined
-                              }
-                              className="hero-char-glyph"
-                              style={{
-                                fontFamily: tuning.fontVar,
-                                fontSize: tuning.sizeEm,
-                                letterSpacing: tuning.tracking,
-                              }}
-                            >
-                              {token.char}
-                            </span>
-                          );
-                        })}
+                        {line.words.map((wordToken, wordIdx) => (
+                          <React.Fragment key={wordIdx}>
+                            {wordToken.chars.map((token, charIdx) => {
+                              const isMorphed = token.globalIndex < morphedCharCount;
+                              const glyphFont = isMorphed
+                                ? showcase.activeFontId
+                                : showcase.prevFontId;
+                              const tuning = FONT_OPTICAL_TUNING[glyphFont];
+                              return (
+                                <span
+                                  key={`${lineIdx}-${wordIdx}-${charIdx}-${isMorphed ? showcase.waveGeneration : 0}`}
+                                  data-char-index={token.globalIndex}
+                                  data-char-font={glyphFont}
+                                  data-wave-active={
+                                    isMorphed && showcase.waveGeneration > 0
+                                      ? 'true'
+                                      : undefined
+                                  }
+                                  className="hero-char-glyph"
+                                  style={
+                                    {
+                                      fontFamily: tuning.fontVar,
+                                      letterSpacing: tuning.tracking,
+                                      '--glyph-fallback-size': tuning.fallbackSizeEm,
+                                    } as React.CSSProperties
+                                  }
+                                >
+                                  {token.char}
+                                </span>
+                              );
+                            })}
+                            {wordIdx < line.words.length - 1 ? ' ' : null}
+                          </React.Fragment>
+                        ))}
                       </span>
-                      {wordIdx < HERO_WORDS.length - 1 ? (
-                        <span aria-hidden="true"> </span>
+                      {lineIdx < HERO_LINE_TOKENS.length - 1 ? (
+                        <span className="sr-only"> </span>
                       ) : null}
                     </React.Fragment>
                   ))}
@@ -650,35 +686,10 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
                 </p>
               </div>
 
-              {/* Primary CTA */}
-              <div className="space-y-2.5 pt-0.5">
-                <button
-                  type="button"
-                  data-testid="home-create-invite-btn"
-                  onClick={() => transitionToStage('prompt')}
-                  className="invite-cta-btn w-full sm:w-auto sm:min-w-[230px] min-h-[50px] inline-flex items-center justify-center gap-2 rounded-full px-7 py-3.5 text-base font-semibold shadow-xl transition hover:opacity-95 active:scale-[0.98] cursor-pointer"
-                >
-                  <span>Create an invite</span>
-                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                </button>
-
-                {hasSavedDraft ? (
-                  <div>
-                    <Link
-                      href="/create"
-                      className="inline-block text-xs font-medium underline underline-offset-4 opacity-75 hover:opacity-100 transition"
-                      style={{ color: 'var(--theme-text-muted)' }}
-                    >
-                      Continue saved draft
-                    </Link>
-                  </div>
-                ) : null}
-              </div>
-
-              {/* Block 3: Standalone single-line footer block */}
+              {/* Block 3: Standalone single-line trust note above the bottom CTA */}
               <p
                 data-testid="home-hero-footnote"
-                className="pt-3.5 border-t text-[11px] sm:text-xs font-medium tracking-wide opacity-90"
+                className="pt-3.5 border-t text-[11px] sm:text-xs font-medium tracking-wide opacity-90 whitespace-nowrap"
                 style={{
                   borderColor: 'var(--theme-hairline)',
                   color: 'var(--theme-text-muted)',
@@ -688,6 +699,32 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
               >
                 No sign-ups · No app downloads
               </p>
+
+              {/* Primary CTA always anchored at the bottom */}
+              <div className="space-y-2.5 pt-0.5">
+                {hasSavedDraft ? (
+                  <div>
+                    <Link
+                      href="/create"
+                      data-testid="home-saved-draft-link"
+                      className="inline-block text-xs font-medium underline underline-offset-4 opacity-75 hover:opacity-100 transition"
+                      style={{ color: 'var(--theme-text-muted)' }}
+                    >
+                      Continue saved draft
+                    </Link>
+                  </div>
+                ) : null}
+
+                <button
+                  type="button"
+                  data-testid="home-create-invite-btn"
+                  onClick={() => transitionToStage('prompt')}
+                  className="invite-cta-btn w-full sm:w-auto sm:min-w-[230px] min-h-[50px] inline-flex items-center justify-center gap-2 rounded-full px-7 py-3.5 text-base font-semibold shadow-xl transition hover:opacity-95 active:scale-[0.98] cursor-pointer"
+                >
+                  <span>Create an invite</span>
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </div>
             </section>
           ) : (
             <section
