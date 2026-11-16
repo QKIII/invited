@@ -2,6 +2,7 @@ import { sendNotification, setVapidDetails } from 'web-push';
 import {
   isEmailConfigured,
   sendEventUpdateEmails,
+  type NotificationCategory,
 } from '@/lib/notifications/email';
 import {
   listEventSubscribers,
@@ -23,6 +24,18 @@ export interface NotifyOptions {
   eventTitle?: string;
   /** Optional public origin extracted from the incoming request URL. */
   baseUrl?: string | null;
+  /** Notification category used to match each subscriber's email alert preference. */
+  category?: NotificationCategory;
+  /** Optional eyebrow label rendered above the email heading. */
+  eyebrow?: string;
+  /** Optional formatted event date/time line. */
+  whenLine?: string;
+  /** Optional formatted event location line. */
+  whereLine?: string;
+  /** Optional list of human-readable change summary bullets. */
+  changeLines?: string[];
+  /** Optional SHA-256 hash of the author's guestToken to prevent self-notification emails. */
+  excludeGuestTokenHash?: string;
 }
 
 /**
@@ -117,6 +130,12 @@ export async function notifyEventSubscribers(
       subject: options.emailSubject ?? payload.title,
       bodyText: payload.body,
       baseUrl: options.baseUrl,
+      category: options.category,
+      excludeGuestTokenHash: options.excludeGuestTokenHash,
+      eyebrow: options.eyebrow,
+      whenLine: options.whenLine,
+      whereLine: options.whereLine,
+      changeLines: options.changeLines,
     });
     emailSent = emailResult.sent;
   }

@@ -7,10 +7,17 @@ import { ValidationError } from '@/lib/storage/errors';
 import {
   addSubscriber,
   getEventDetail,
+  normalizeNotifyLevel,
+  removeGuestEmailSubscription,
   removeSubscriberByTarget,
   type PushSubscriptionPayload,
 } from '@/lib/storage/events';
-import { handleRouteError, readJsonBody } from '@/lib/storage/http';
+import {
+  extractGuestToken,
+  handleRouteError,
+  readJsonBody,
+} from '@/lib/storage/http';
+import type { ActiveEmailNotifyLevel } from '@/types/invite';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -30,6 +37,8 @@ export async function POST(req: Request, context: RouteContext) {
       subscription?: PushSubscriptionPayload;
       email?: string;
       label?: string;
+      notifyLevel?: ActiveEmailNotifyLevel;
+      guestToken?: string;
     }>(req);
 
     const inferredKind =
@@ -50,22 +59,35 @@ export async function POST(req: Request, context: RouteContext) {
 
     if (inferredKind === 'email' && typeof body.email === 'string') {
       const normalizedEmail = body.email.trim().toLowerCase();
+      const guestToken =
+        (typeof body.guestToken === 'string' && body.guestToken.trim()
+          ? body.guestToken.trim()
+          : null) ?? extractGuestToken(req);
+      const notifyLevel =
+        body.notifyLevel !== undefined
+          ? normalizeNotifyLevel(body.notifyLevel)
+          : undefined;
+
       const sub = await addSubscriber(id, {
         kind: 'email',
         email: normalizedEmail,
         label: body.label,
+        notifyLevel,
+        guestToken,
       });
 
       let emailSent = false;
       const emailConfigured = isEmailConfigured();
       if (emailConfigured) {
-        const detail = await getEventDetail(id);
+        const detail = await getEventDetail(id, { guestToken });
         if (detail) {
           const emailRes = await sendSubscriptionConfirmationEmail({
             to: normalizedEmail,
             event: detail.event,
             subId: sub.id,
             baseUrl: requestOrigin(req),
+            rsvpStatus: detail.viewerRsvp?.status,
+            notifyLevel: sub.notifyLevel,
           });
           emailSent = emailRes.sent;
         }
@@ -76,6 +98,7 @@ export async function POST(req: Request, context: RouteContext) {
           subscribed: true,
           id: sub.id,
           kind: sub.kind,
+          notifyLevel: sub.notifyLevel,
           emailSent,
           emailConfigured,
         },
@@ -98,6 +121,7 @@ export async function DELETE(req: Request, context: RouteContext) {
     let subId = url.searchParams.get('subId') ?? undefined;
     let endpoint = url.searchParams.get('endpoint') ?? undefined;
     let email = url.searchParams.get('email') ?? undefined;
+    let guestToken = extractGuestToken(req) ?? undefined;
 
     if (!subId && !endpoint && !email) {
       const text = await req.text();
@@ -106,18 +130,25 @@ export async function DELETE(req: Request, context: RouteContext) {
           subId?: string;
           endpoint?: string;
           email?: string;
+          guestToken?: string;
         };
         subId = parsed.subId;
         endpoint = parsed.endpoint;
         email = parsed.email;
+        if (!guestToken && typeof parsed.guestToken === 'string' && parsed.guestToken.trim()) {
+          guestToken = parsed.guestToken.trim();
+        }
       }
     }
 
-    const removed = await removeSubscriberByTarget(id, {
-      subId,
-      endpoint,
-      email,
-    });
+    const removed =
+      !subId && !endpoint && !email && guestToken
+        ? await removeGuestEmailSubscription(id, { guestToken })
+        : await removeSubscriberByTarget(id, {
+            subId,
+            endpoint,
+            email,
+          });
 
     return NextResponse.json(
       { unsubscribed: true, removed },

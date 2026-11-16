@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server';
+import {
+  computeEventChanges,
+  formatEventWhenLine,
+  formatEventWhereLine,
+} from '@/lib/notifications/email';
 import { notifyEventSubscribers } from '@/lib/notifications/push';
 import {
   deleteEvent,
   getEventDetail,
-  updateEvent,
+  updateEventWithPrevious,
   type UpdateEventPatch,
 } from '@/lib/storage/events';
 import {
@@ -41,33 +46,52 @@ export async function GET(req: Request, context: RouteContext) {
 export async function PATCH(req: Request, context: RouteContext) {
   try {
     const { id } = await context.params;
-    const body = await readJsonBody<UpdateEventPatch & { editKey?: string }>(req);
+    const body = await readJsonBody<
+      UpdateEventPatch & { editKey?: string; notifyGuests?: boolean }
+    >(req);
     const editKey =
       extractEditKey(req) ??
       (typeof body.editKey === 'string' ? body.editKey : null);
 
-    const updated = await updateEvent(id, editKey, body);
-    let baseUrl: string | null = null;
-    try {
-      baseUrl = new URL(req.url).origin;
-    } catch {
-      baseUrl = null;
-    }
-
-    await notifyEventSubscribers(
+    const { previous, updated } = await updateEventWithPrevious(
       id,
-      {
-        title: `Event updated: ${updated.title}`,
-        body: 'The host updated the event details.',
-        url: `/e/${id}`,
-      },
-      {
-        includeEmail: true,
-        eventTitle: updated.title,
-        emailSubject: `Updated: ${updated.title}`,
-        baseUrl,
-      },
-    ).catch(() => {});
+      editKey,
+      body,
+    );
+    const diff = computeEventChanges(previous, updated);
+    const shouldNotify =
+      typeof body.notifyGuests === 'boolean'
+        ? body.notifyGuests
+        : diff.hasMaterialChanges;
+
+    if (shouldNotify) {
+      let baseUrl: string | null = null;
+      try {
+        baseUrl = new URL(req.url).origin;
+      } catch {
+        baseUrl = null;
+      }
+
+      await notifyEventSubscribers(
+        id,
+        {
+          title: `Event updated: ${updated.title}`,
+          body: diff.summaryText,
+          url: `/e/${id}`,
+        },
+        {
+          includeEmail: true,
+          category: 'event_change',
+          eyebrow: 'Event update',
+          eventTitle: updated.title,
+          emailSubject: `Updated: ${updated.title}`,
+          whenLine: formatEventWhenLine(updated),
+          whereLine: formatEventWhereLine(updated),
+          changeLines: diff.changeLines,
+          baseUrl,
+        },
+      ).catch(() => {});
+    }
 
     return NextResponse.json(updated, {
       status: 200,

@@ -1,5 +1,13 @@
 export type RsvpStatus = 'yes' | 'no'; // STRICTLY binary — never 'maybe'
 
+export type EmailNotifyLevel = 'off' | 'changes' | 'host_posts' | 'all_posts';
+export type ActiveEmailNotifyLevel = Exclude<EmailNotifyLevel, 'off'>;
+
+export type ViewerSubscription = {
+  email: string;
+  notifyLevel: ActiveEmailNotifyLevel;
+};
+
 export type AmbientEffectId =
   | 'aurora'
   | 'prism-gradient'
@@ -123,5 +131,6 @@ export interface EventDetailResponse {
   comments: CommentRecord[];
   subscriberCount: number;
   viewerRsvp?: RsvpRecord;
+  viewerSubscription?: ViewerSubscription;
   isHost: boolean;
 }
