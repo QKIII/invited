@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useSyncExternalStore } from 'react';
-import { Bell, Check, Copy, Download, KeyRound, MessageSquare, Trash2, UserCheck, UserX, Users } from 'lucide-react';
+import { type FormEvent, useRef, useState, useSyncExternalStore } from 'react';
+import { Bell, Check, Copy, Download, KeyRound, MessageSquare, Trash2, UserCheck, UserPlus, UserX } from 'lucide-react';
 import { GuestAvatar } from '@/components/invite/GuestAvatar';
 import { downloadLinksBackupTxt } from '@/components/studio/PublishSuccessDialog';
 import type { EventDetailResponse } from '@/types/invite';
@@ -40,6 +40,16 @@ export function HostManagementPanel({
   const [copiedWhich, setCopiedWhich] = useState<'guest' | 'edit' | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  const guestNameInputRef = useRef<HTMLInputElement>(null);
+  const [guestName, setGuestName] = useState<string>('');
+  const [guestNameTouched, setGuestNameTouched] = useState<boolean>(false);
+  const [guestNameError, setGuestNameError] = useState<string | null>(null);
+  const [guestStatus, setGuestStatus] = useState<'yes' | 'no'>('yes');
+  const [plusOnesRaw, setPlusOnesRaw] = useState<string>('0');
+  const [guestNote, setGuestNote] = useState<string>('');
+  const [addingGuest, setAddingGuest] = useState<boolean>(false);
+  const [addSuccessNotice, setAddSuccessNotice] = useState<string | null>(null);
 
   const { event, rsvps, comments, subscriberCount } = detail;
   const guestPath = `/e/${event.id}`;
@@ -108,6 +118,63 @@ export function HostManagementPanel({
       );
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const handleAddGuest = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (addingGuest) return;
+    setActionError(null);
+    setAddSuccessNotice(null);
+
+    const trimmedName = guestName.trim();
+    if (!trimmedName) {
+      setGuestNameError('Please enter a guest name.');
+      guestNameInputRef.current?.focus();
+      return;
+    }
+    setGuestNameError(null);
+
+    const parsedPlusOnes =
+      guestStatus === 'yes'
+        ? Math.max(0, Math.min(20, Number.parseInt(plusOnesRaw.trim() || '0', 10) || 0))
+        : 0;
+
+    setAddingGuest(true);
+    try {
+      const res = await fetch(
+        `/api/events/${encodeURIComponent(event.id)}/rsvps`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            guestName: trimmedName,
+            status: guestStatus,
+            plusOnes: parsedPlusOnes,
+            bringingNote: guestNote.trim() || undefined,
+            postToWall: false,
+          }),
+        },
+      );
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error || 'Could not add guest.');
+      }
+
+      setGuestName('');
+      setGuestNameTouched(false);
+      setGuestNameError(null);
+      setGuestStatus('yes');
+      setPlusOnesRaw('0');
+      setGuestNote('');
+      setAddSuccessNotice('Guest added.');
+      await onRefresh();
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : 'Could not add guest.',
+      );
+    } finally {
+      setAddingGuest(false);
     }
   };
 
@@ -248,11 +315,10 @@ export function HostManagementPanel({
       </section>
 
       {/* Headcount Summary Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+      <div className="grid grid-cols-3 gap-2.5">
         {[
           { icon: UserCheck, label: 'Going', value: rsvps.totalHeadcount },
           { icon: UserX, label: "Can't make it", value: rsvps.no.length },
-          { icon: Users, label: 'Waiting on', value: rsvps.awaitingNames.length },
           { icon: Bell, label: 'Reminders', value: subscriberCount },
         ].map((stat) => {
           const Icon = stat.icon;
@@ -345,79 +411,262 @@ export function HostManagementPanel({
         )}
       </section>
 
-      {/* Declined (No) & Waiting on */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t" style={{ borderColor: 'var(--theme-hairline)' }}>
-        <section aria-labelledby="no-rsvps-heading" className="space-y-3">
-          <h2 id="no-rsvps-heading" className="text-base font-bold">
-            Can&apos;t make it ({rsvps.no.length})
-          </h2>
-          {rsvps.no.length === 0 ? (
-            <p className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>
-              No one has declined.
-            </p>
-          ) : (
-            <ul className="divide-y" style={{ borderColor: 'var(--theme-hairline)' }}>
-              {rsvps.no.map((rsvp) => (
-                <li
-                  key={rsvp.id}
-                  className="flex items-start justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
+      {/* Declined (No) */}
+      <section aria-labelledby="no-rsvps-heading" className="space-y-3 pt-2 border-t" style={{ borderColor: 'var(--theme-hairline)' }}>
+        <h2 id="no-rsvps-heading" className="text-base font-bold">
+          Can&apos;t make it ({rsvps.no.length})
+        </h2>
+        {rsvps.no.length === 0 ? (
+          <p className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>
+            No one has declined.
+          </p>
+        ) : (
+          <ul className="divide-y" style={{ borderColor: 'var(--theme-hairline)' }}>
+            {rsvps.no.map((rsvp) => (
+              <li
+                key={rsvp.id}
+                className="flex items-start justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
+                style={{ borderColor: 'var(--theme-hairline)' }}
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <GuestAvatar name={rsvp.guestName} size="xs" />
+                    <p className="text-sm font-medium">{rsvp.guestName}</p>
+                  </div>
+                  {rsvp.bringingNote ? (
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--theme-text-muted)' }}>
+                      {rsvp.bringingNote}
+                    </p>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  disabled={busyId === `rsvp-${rsvp.id}`}
+                  onClick={() => void handleDeleteRsvp(rsvp.id)}
+                  aria-label={`Remove ${rsvp.guestName} RSVP`}
+                  className="inline-flex items-center justify-center rounded-full border p-1.5 text-rose-500 hover:bg-rose-500/10 disabled:opacity-60 cursor-pointer"
                   style={{ borderColor: 'var(--theme-hairline)' }}
                 >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <GuestAvatar name={rsvp.guestName} size="xs" />
-                      <p className="text-sm font-medium">{rsvp.guestName}</p>
-                    </div>
-                    {rsvp.bringingNote ? (
-                      <p className="text-xs mt-0.5" style={{ color: 'var(--theme-text-muted)' }}>
-                        {rsvp.bringingNote}
-                      </p>
-                    ) : null}
-                  </div>
-                  <button
-                    type="button"
-                    disabled={busyId === `rsvp-${rsvp.id}`}
-                    onClick={() => void handleDeleteRsvp(rsvp.id)}
-                    aria-label={`Remove ${rsvp.guestName} RSVP`}
-                    className="inline-flex items-center justify-center rounded-full border p-1.5 text-rose-500 hover:bg-rose-500/10 disabled:opacity-60 cursor-pointer"
-                    style={{ borderColor: 'var(--theme-hairline)' }}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
-        <section aria-labelledby="awaiting-heading" className="space-y-3">
-          <h2 id="awaiting-heading" className="text-base font-bold">
-            Waiting on ({rsvps.awaitingNames.length})
+      {/* Manually Add Guest RSVP */}
+      <section aria-labelledby="add-guest-heading" className="space-y-3 pt-2 border-t" style={{ borderColor: 'var(--theme-hairline)' }}>
+        <div>
+          <h2 id="add-guest-heading" className="text-base font-bold flex items-center gap-2">
+            <UserPlus className="h-4 w-4" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+            <span>Add a guest</span>
           </h2>
-          {rsvps.awaitingNames.length === 0 ? (
-            <p className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>
-              {event.invitedNames.length === 0
-                ? 'Add guest names under More options in Details to track replies.'
-                : 'Everyone on your list has replied.'}
-            </p>
-          ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {rsvps.awaitingNames.map((name) => (
-                <span
-                  key={name}
-                  className="rounded-full border px-3 py-1 text-xs font-medium"
-                  style={{
-                    backgroundColor: 'var(--theme-surface-bg)',
-                    borderColor: 'var(--theme-hairline)',
-                  }}
-                >
-                  {name}
-                </span>
-              ))}
+          <p className="text-xs mt-0.5" style={{ color: 'var(--theme-text-muted)' }}>
+            Add a reply for someone who texted or told you in person.
+          </p>
+        </div>
+
+        <form
+          aria-labelledby="add-guest-heading"
+          method="POST"
+          action={`/api/events/${encodeURIComponent(event.id)}/rsvps`}
+          onSubmit={handleAddGuest}
+          noValidate
+          data-testid="host-add-guest-form"
+          className="rounded-2xl border p-4 space-y-4"
+          style={{
+            backgroundColor: 'var(--theme-surface-bg)',
+            borderColor: 'var(--theme-hairline)',
+          }}
+        >
+          <div className="space-y-1.5">
+            <label
+              htmlFor="add-guest-name"
+              className="block text-xs font-medium"
+              style={{ color: 'var(--theme-text-muted)' }}
+            >
+              Guest name <span aria-hidden="true">*</span>
+            </label>
+            <input
+              ref={guestNameInputRef}
+              id="add-guest-name"
+              name="guestName"
+              type="text"
+              required
+              maxLength={100}
+              autoComplete="off"
+              enterKeyHint="next"
+              value={guestName}
+              aria-invalid={Boolean(guestNameError) || undefined}
+              aria-describedby={guestNameError ? 'add-guest-name-error' : undefined}
+              onChange={(e) => {
+                setGuestName(e.target.value);
+                setGuestNameTouched(true);
+                setAddSuccessNotice(null);
+                if (e.target.value.trim()) {
+                  setGuestNameError(null);
+                }
+              }}
+              onBlur={() => {
+                if (guestNameTouched && !guestName.trim()) {
+                  setGuestNameError('Please enter a guest name.');
+                }
+              }}
+              placeholder="Sam & Taylor"
+              className="w-full min-h-[48px] rounded-xl border px-3 py-2 text-base outline-none focus-visible:ring-2"
+              style={{
+                fontSize: 'max(1rem, 1em)',
+                backgroundColor: 'var(--theme-card-bg)',
+                borderColor: guestNameError ? '#f43f5e' : 'var(--theme-border)',
+                color: 'var(--theme-text-primary)',
+              }}
+            />
+            {guestNameError ? (
+              <p
+                id="add-guest-name-error"
+                role="alert"
+                className="text-xs font-medium text-rose-500"
+              >
+                {guestNameError}
+              </p>
+            ) : null}
+          </div>
+
+          <fieldset className="space-y-1.5">
+            <legend
+              className="text-xs font-medium mb-1"
+              style={{ color: 'var(--theme-text-muted)' }}
+            >
+              Reply
+            </legend>
+            <div className="flex flex-wrap items-center gap-3">
+              <div
+                className="inline-flex items-center gap-2 min-h-[48px] rounded-full border px-4 py-2"
+                style={{
+                  backgroundColor: 'var(--theme-card-bg)',
+                  borderColor:
+                    guestStatus === 'yes' ? 'var(--theme-accent)' : 'var(--theme-border)',
+                }}
+              >
+                <input
+                  id="add-guest-status-yes"
+                  type="radio"
+                  name="status"
+                  value="yes"
+                  checked={guestStatus === 'yes'}
+                  onChange={() => setGuestStatus('yes')}
+                  className="h-4 w-4 cursor-pointer"
+                  style={{ accentColor: 'var(--theme-accent)' }}
+                />
+                <label htmlFor="add-guest-status-yes" className="text-sm font-medium cursor-pointer">
+                  Going
+                </label>
+              </div>
+
+              <div
+                className="inline-flex items-center gap-2 min-h-[48px] rounded-full border px-4 py-2"
+                style={{
+                  backgroundColor: 'var(--theme-card-bg)',
+                  borderColor:
+                    guestStatus === 'no' ? 'var(--theme-accent)' : 'var(--theme-border)',
+                }}
+              >
+                <input
+                  id="add-guest-status-no"
+                  type="radio"
+                  name="status"
+                  value="no"
+                  checked={guestStatus === 'no'}
+                  onChange={() => setGuestStatus('no')}
+                  className="h-4 w-4 cursor-pointer"
+                  style={{ accentColor: 'var(--theme-accent)' }}
+                />
+                <label htmlFor="add-guest-status-no" className="text-sm font-medium cursor-pointer">
+                  Can&apos;t make it
+                </label>
+              </div>
             </div>
-          )}
-        </section>
-      </div>
+          </fieldset>
+
+          {guestStatus === 'yes' ? (
+            <div className="space-y-1.5">
+              <label
+                htmlFor="add-guest-plus-ones"
+                className="block text-xs font-medium"
+                style={{ color: 'var(--theme-text-muted)' }}
+              >
+                Extra guests (+1s)
+              </label>
+              <input
+                id="add-guest-plus-ones"
+                name="plusOnes"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={2}
+                value={plusOnesRaw}
+                onChange={(e) => setPlusOnesRaw(e.target.value.replace(/[^0-9]/g, ''))}
+                className="w-28 min-h-[48px] rounded-xl border px-3 py-2 text-base outline-none focus-visible:ring-2"
+                style={{
+                  fontSize: 'max(1rem, 1em)',
+                  backgroundColor: 'var(--theme-card-bg)',
+                  borderColor: 'var(--theme-border)',
+                  color: 'var(--theme-text-primary)',
+                }}
+              />
+            </div>
+          ) : null}
+
+          <div className="space-y-1.5">
+            <label
+              htmlFor="add-guest-note"
+              className="block text-xs font-medium"
+              style={{ color: 'var(--theme-text-muted)' }}
+            >
+              Dish or note (optional)
+            </label>
+            <input
+              id="add-guest-note"
+              name="bringingNote"
+              type="text"
+              maxLength={240}
+              enterKeyHint="done"
+              value={guestNote}
+              onChange={(e) => setGuestNote(e.target.value)}
+              placeholder="Bringing fruit salad"
+              className="w-full min-h-[48px] rounded-xl border px-3 py-2 text-base outline-none focus-visible:ring-2"
+              style={{
+                fontSize: 'max(1rem, 1em)',
+                backgroundColor: 'var(--theme-card-bg)',
+                borderColor: 'var(--theme-border)',
+                color: 'var(--theme-text-primary)',
+              }}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="submit"
+              disabled={addingGuest}
+              className="invite-cta-btn min-h-[48px] rounded-full px-5 py-2.5 text-sm font-semibold transition cursor-pointer disabled:opacity-60"
+            >
+              {addingGuest ? 'Adding...' : 'Add guest'}
+            </button>
+            {addSuccessNotice ? (
+              <p
+                role="status"
+                aria-live="polite"
+                className="text-xs font-medium flex items-center gap-1.5"
+                style={{ color: 'var(--theme-accent)' }}
+              >
+                <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>{addSuccessNotice}</span>
+              </p>
+            ) : null}
+          </div>
+        </form>
+      </section>
 
       {/* Guest Notes */}
       <section aria-labelledby="wall-mod-heading" className="space-y-3 pt-2 border-t" style={{ borderColor: 'var(--theme-hairline)' }}>

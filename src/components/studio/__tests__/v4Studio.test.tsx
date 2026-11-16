@@ -55,6 +55,8 @@ describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & 
 
     expect(container.querySelector('[data-testid="prompt-entry-card"]')).toBeNull();
     expect(container.querySelector('#event-start-date')).not.toBeNull();
+    expect(container.querySelector('#event-invited-names')).toBeNull();
+    expect(container.textContent).not.toContain('Invited guests');
     expect(container.querySelector('[data-testid="edit-theme-button"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="change-cover-button"]')).not.toBeNull();
     expect(container.textContent).not.toContain('Start over from a short note');
@@ -167,7 +169,7 @@ describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & 
     rte.unmount();
   });
 
-  it('renders RecentEventsDialog, PublishSuccessDialog, and HostManagementPanel with human copy and zero emojis', () => {
+  it('renders RecentEventsDialog, PublishSuccessDialog, and HostManagementPanel with human copy, manual guest entry, and zero emojis', async () => {
     const sampleEvent: EventMeta = {
       id: 'evt_v4_check',
       title: 'Sunday Supper',
@@ -244,13 +246,72 @@ describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & 
     expect(p.container.textContent).not.toMatch(EMOJI_RE);
     p.unmount();
 
-    const h = renderIntoDom(
-      <HostManagementPanel detail={detail} editKey="key_123" onRefresh={async () => {}} />,
+    const originalFetch = globalThis.fetch;
+    const onRefresh = vi.fn().mockResolvedValue(undefined);
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ rsvp: { id: 'r2' }, guestToken: 'tok_2' }), {
+        status: 201,
+        headers: { 'Content-Type': 'application/json' },
+      }),
     );
-    expect(h.container.textContent).toContain('Invite links');
-    expect(h.container.textContent).toContain('Going');
-    expect(h.container.textContent).not.toMatch(EMOJI_RE);
-    h.unmount();
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const h = renderIntoDom(
+      <HostManagementPanel detail={detail} editKey="key_123" onRefresh={onRefresh} />,
+    );
+    try {
+      expect(h.container.textContent).toContain('Invite links');
+      expect(h.container.textContent).toContain('Going');
+      expect(h.container.textContent).not.toContain('Waiting on');
+      expect(h.container.textContent).toContain('Add a guest');
+      expect(h.container.textContent).not.toMatch(EMOJI_RE);
+
+      const form = h.container.querySelector<HTMLFormElement>('[data-testid="host-add-guest-form"]')!;
+      expect(form).not.toBeNull();
+
+      // Blank submission routes focus & marks aria-invalid without calling fetch
+      await act(async () => {
+        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      });
+      const nameInput = h.container.querySelector<HTMLInputElement>('#add-guest-name')!;
+      expect(nameInput.getAttribute('aria-invalid')).toBe('true');
+      expect(document.activeElement).toBe(nameInput);
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      // Valid submission posts to /rsvps and refreshes host panel
+      const plusInput = h.container.querySelector<HTMLInputElement>('#add-guest-plus-ones')!;
+      const noteInput = h.container.querySelector<HTMLInputElement>('#add-guest-note')!;
+      await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+        setter.call(nameInput, 'Jordan');
+        nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+        setter.call(plusInput, '2');
+        plusInput.dispatchEvent(new Event('input', { bubbles: true }));
+        setter.call(noteInput, 'Bagels');
+        noteInput.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+
+      await act(async () => {
+        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/events/evt_v4_check/rsvps');
+      const reqInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
+      expect(reqInit.method).toBe('POST');
+      expect(JSON.parse(String(reqInit.body))).toEqual({
+        guestName: 'Jordan',
+        status: 'yes',
+        plusOnes: 2,
+        bringingNote: 'Bagels',
+        postToWall: false,
+      });
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+      expect(h.container.querySelector('[role="status"]')?.textContent).toContain('Guest added.');
+    } finally {
+      globalThis.fetch = originalFetch;
+      h.unmount();
+    }
   });
 
   it('transitions from Home Hero into real-time NLP starter with turbulence filter and navigates to /create', async () => {

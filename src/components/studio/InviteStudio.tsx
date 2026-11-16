@@ -20,7 +20,6 @@ import {
   getBrowserTimeZone,
   getSupportedTimeZones,
   isoToLocalFields,
-  parseInvitedNames,
   validateAndBuildZonedIso,
   type DstConflictInfo,
 } from './dateTimeUtils';
@@ -77,7 +76,6 @@ interface StoredStudioDraft {
   hostName: string;
   descriptionHtml: string;
   rsvpNotePrompt: string;
-  invitedNamesRaw: string;
   hideGuestList: boolean;
   style: InviteStyleConfig;
 }
@@ -160,9 +158,6 @@ export function InviteStudio({
   const [rsvpNotePrompt, setRsvpNotePrompt] = useState<string>(
     initialSource?.rsvpNotePrompt ?? '',
   );
-  const [invitedNamesRaw, setInvitedNamesRaw] = useState<string>(
-    initialEvent?.invitedNames?.join(', ') ?? '',
-  );
   const [hideGuestList, setHideGuestList] = useState<boolean>(
     initialEvent?.hideGuestList ?? false,
   );
@@ -191,8 +186,7 @@ export function InviteStudio({
         locationName.trim() ||
         locationAddress.trim() ||
         virtualUrl.trim() ||
-        stripHtmlToText(descriptionHtml).trim() ||
-        invitedNamesRaw.trim(),
+        stripHtmlToText(descriptionHtml).trim(),
     );
 
   // Hydrate saved draft once in create mode when no explicit initialDraft was supplied
@@ -230,7 +224,6 @@ export function InviteStudio({
             }
             if (typeof parsed.descriptionHtml === 'string') setDescriptionHtml(parsed.descriptionHtml);
             if (typeof parsed.rsvpNotePrompt === 'string') setRsvpNotePrompt(parsed.rsvpNotePrompt);
-            if (typeof parsed.invitedNamesRaw === 'string') setInvitedNamesRaw(parsed.invitedNamesRaw);
             if (typeof parsed.hideGuestList === 'boolean') setHideGuestList(parsed.hideGuestList);
             if (parsed.style && typeof parsed.style === 'object') setStyle(parsed.style);
           }
@@ -265,7 +258,6 @@ export function InviteStudio({
         hostName: effectiveHostName,
         descriptionHtml,
         rsvpNotePrompt,
-        invitedNamesRaw,
         hideGuestList,
         style,
       };
@@ -289,7 +281,6 @@ export function InviteStudio({
     effectiveHostName,
     descriptionHtml,
     rsvpNotePrompt,
-    invitedNamesRaw,
     hideGuestList,
     style,
   ]);
@@ -307,7 +298,6 @@ export function InviteStudio({
     setShowLocationDetails(false);
     setDescriptionHtml('');
     setRsvpNotePrompt('');
-    setInvitedNamesRaw('');
     setHideGuestList(false);
     setStyle(getDefaultStyle());
     try {
@@ -445,7 +435,7 @@ export function InviteStudio({
       virtualUrl: virtualUrl.trim() || undefined,
       hostName: effectiveHostName.trim() || undefined,
       rsvpNotePrompt: rsvpNotePrompt.trim() || undefined,
-      invitedNames: parseInvitedNames(invitedNamesRaw),
+      invitedNames: initialEvent?.invitedNames ?? [],
       hideGuestList,
       style,
     };
@@ -1038,30 +1028,6 @@ export function InviteStudio({
                   value={rsvpNotePrompt}
                   onChange={(e) => setRsvpNotePrompt(e.target.value)}
                   placeholder="Bringing food, a dish, or a note?"
-                  className="w-full rounded-xl border px-3 py-2 text-base sm:text-sm outline-none focus:ring-2"
-                  style={{
-                    backgroundColor: 'var(--theme-surface-bg)',
-                    borderColor: 'var(--theme-border)',
-                    color: 'var(--theme-text-primary)',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="event-invited-names"
-                  className="block text-xs font-medium mb-1"
-                  style={{ color: 'var(--theme-text-muted)' }}
-                >
-                  Invited guests (optional, separated by commas)
-                </label>
-                <input
-                  id="event-invited-names"
-                  type="text"
-                  maxLength={1200}
-                  value={invitedNamesRaw}
-                  onChange={(e) => setInvitedNamesRaw(e.target.value)}
-                  placeholder="Alex, Jordan, Sam"
                   className="w-full rounded-xl border px-3 py-2 text-base sm:text-sm outline-none focus:ring-2"
                   style={{
                     backgroundColor: 'var(--theme-surface-bg)',
