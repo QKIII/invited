@@ -1,14 +1,14 @@
 'use client';
 
 import React, { useId, useState } from 'react';
+import type {
+  ActiveEmailNotifyLevel,
+  EmailNotifyLevel,
+  ViewerSubscription,
+} from '@/types/invite';
 
-export type EmailNotifyLevel = 'off' | 'changes' | 'host_posts' | 'all_posts';
-export type ActiveEmailNotifyLevel = Exclude<EmailNotifyLevel, 'off'>;
-
-export interface ViewerSubscriptionData {
-  email: string;
-  notifyLevel: ActiveEmailNotifyLevel;
-}
+export type { ActiveEmailNotifyLevel, EmailNotifyLevel, ViewerSubscription };
+export type ViewerSubscriptionData = ViewerSubscription;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 

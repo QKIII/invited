@@ -4,7 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EventWall } from '@/components/invite/EventWall';
 import { GuestList } from '@/components/invite/GuestList';
 import { getGuestTokenStorageKey, RsvpPanel } from '@/components/invite/RsvpPanel';
-import { saveDeviceProfile } from '@/lib/client/deviceProfile';
+import {
+  getDeviceProfile,
+  saveDeviceProfile,
+  saveGuestToken,
+} from '@/lib/client/deviceProfile';
 import { SafeRichHtml } from '@/components/invite/SafeRichHtml';
 import { SubscribeControl } from '@/components/invite/SubscribeControl';
 import {
@@ -254,8 +258,16 @@ describe('RsvpPanel', () => {
       noteInput.dispatchEvent(new Event('input', { bubbles: true }));
     });
 
-    // Note automatically posts to wall without needing a checkbox; draft badge appears
-    expect(container.querySelector('input[type="checkbox"]')).toBeNull();
+    // Note automatically posts to wall without needing a postToWall checkbox;
+    // email updates toggle renders unchecked by default; draft badge appears
+    expect(container.querySelector('input[name="postToWall"]')).toBeNull();
+    expect(container.textContent).not.toContain('Post to wall');
+    const emailToggle = container.querySelector<HTMLInputElement>(
+      '[data-testid="rsvp-email-updates-toggle"]',
+    );
+    expect(emailToggle).not.toBeNull();
+    expect(emailToggle!.checked).toBe(false);
+    expect(container.querySelector('[data-testid="rsvp-email-input"]')).toBeNull();
     expect(container.querySelector('[data-testid="rsvp-draft-badge"]')?.textContent).toBe('Draft');
 
     // Submit form
@@ -270,6 +282,7 @@ describe('RsvpPanel', () => {
     expect(body.plusOnes).toBe(1);
     expect(body.bringingNote).toBe('Apple pie');
     expect(body.postToWall).toBe(true);
+    expect(body.emailUpdates).toBeUndefined();
     expect(window.localStorage.getItem(getGuestTokenStorageKey(event.id))).toBe('tok_secret_123');
     expect(onRsvpSuccess).toHaveBeenCalledTimes(1);
 
@@ -384,6 +397,266 @@ describe('RsvpPanel', () => {
     expect(body.guestName).toBe('Ivan');
     expect(body.status).toBe('yes');
     expect(onRsvpSuccess).toHaveBeenCalledTimes(1);
+
+    unmount();
+  });
+
+  it('reveals email input + 3-stop bell slider, animates bell classes, submits emailUpdates, and persists email to deviceProfile', async () => {
+    const event = createSampleEvent();
+    const onRsvpSuccess = vi.fn();
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        rsvp: {
+          id: 'rsvp_email_1',
+          eventId: event.id,
+          guestName: 'Clara',
+          status: 'yes',
+          plusOnes: 0,
+          createdAt: '2026-11-16T12:00:00Z',
+          updatedAt: '2026-11-16T12:00:00Z',
+        } satisfies RsvpRecord,
+        guestToken: 'tok_email_1',
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    function EmailHarness() {
+      const [name, setName] = useState('Clara');
+      const [editing, setEditing] = useState(true);
+      return (
+        <RsvpPanel
+          event={event}
+          awaitingNames={[]}
+          guestToken={null}
+          guestName={name}
+          onGuestNameChange={setName}
+          isEditing={editing}
+          onEditingChange={setEditing}
+          onRsvpSuccess={onRsvpSuccess}
+        />
+      );
+    }
+
+    const { container, unmount } = renderIntoDom(<EmailHarness />);
+
+    const toggle = container.querySelector<HTMLInputElement>(
+      '[data-testid="rsvp-email-updates-toggle"]',
+    )!;
+    expect(toggle.checked).toBe(false);
+
+    await act(async () => {
+      toggle.click();
+    });
+
+    const emailInput = container.querySelector<HTMLInputElement>('[data-testid="rsvp-email-input"]')!;
+    const slider = container.querySelector<HTMLInputElement>('[data-testid="rsvp-notify-slider"]')!;
+    const stopChanges = container.querySelector<HTMLButtonElement>('[data-testid="notify-stop-changes"]')!;
+    const stopHost = container.querySelector<HTMLButtonElement>('[data-testid="notify-stop-host_posts"]')!;
+    const stopAll = container.querySelector<HTMLButtonElement>('[data-testid="notify-stop-all_posts"]')!;
+
+    expect(emailInput).not.toBeNull();
+    expect(slider).not.toBeNull();
+    expect(slider.value).toBe('2');
+    expect(stopChanges).not.toBeNull();
+    expect(stopHost).not.toBeNull();
+    expect(stopAll).not.toBeNull();
+    expect(container.querySelector('.bell-swing-host')).not.toBeNull();
+
+    // Switch to 'changes' -> bell-swing-changes
+    await act(async () => {
+      stopChanges.click();
+    });
+    expect(slider.value).toBe('1');
+    expect(container.querySelector('.bell-swing-changes')).not.toBeNull();
+
+    // Switch back to 'host_posts' -> bell-swing-host
+    await act(async () => {
+      stopHost.click();
+    });
+    expect(slider.value).toBe('2');
+    expect(container.querySelector('.bell-swing-host')).not.toBeNull();
+
+    // Switch to 'all_posts' -> bell-swing-all + clapper + 4 wave paths
+    await act(async () => {
+      stopAll.click();
+    });
+    expect(slider.value).toBe('3');
+    expect(container.querySelector('.bell-swing-all')).not.toBeNull();
+    expect(container.querySelector('.bell-clapper-all')).not.toBeNull();
+    expect(container.querySelectorAll('.bell-waves-pop path')).toHaveLength(4);
+
+    // Fill valid email and submit
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+      setter.call(emailInput, 'clara@example.com');
+      emailInput.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    const form = container.querySelector('form')!;
+    await act(async () => {
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.emailUpdates).toEqual({
+      enabled: true,
+      email: 'clara@example.com',
+      notifyLevel: 'all_posts',
+    });
+    expect(getDeviceProfile()?.email).toBe('clara@example.com');
+    expect(onRsvpSuccess).toHaveBeenCalledTimes(1);
+
+    unmount();
+  });
+
+  it('validates email on submit and blur with role="alert" and aria-invalid, clearing on valid input', async () => {
+    const event = createSampleEvent();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { container, unmount } = renderIntoDom(
+      <RsvpPanel
+        event={event}
+        awaitingNames={[]}
+        guestToken={null}
+        guestName="Clara"
+        onGuestNameChange={vi.fn()}
+        isEditing={true}
+        onEditingChange={vi.fn()}
+        onRsvpSuccess={vi.fn()}
+      />,
+    );
+
+    const toggle = container.querySelector<HTMLInputElement>(
+      '[data-testid="rsvp-email-updates-toggle"]',
+    )!;
+    await act(async () => {
+      toggle.click();
+    });
+
+    const form = container.querySelector('form')!;
+    // Empty email submit shows alert & aria-invalid without calling fetch
+    await act(async () => {
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+
+    const emailInput = container.querySelector<HTMLInputElement>('[data-testid="rsvp-email-input"]')!;
+    expect(emailInput.getAttribute('aria-invalid')).toBe('true');
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('enter your email');
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    // Typing valid email clears error & aria-invalid
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+      setter.call(emailInput, 'clara@example.com');
+      emailInput.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(emailInput.getAttribute('aria-invalid')).toBeNull();
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+
+    // Typing invalid email and blurring triggers validation alert
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+      setter.call(emailInput, 'not-an-email');
+      emailInput.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {
+      emailInput.focus();
+      emailInput.blur();
+    });
+    expect(emailInput.getAttribute('aria-invalid')).toBe('true');
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('valid email');
+
+    // Fixing back to valid email clears the error
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+      setter.call(emailInput, 'clara.fixed@example.com');
+      emailInput.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(emailInput.getAttribute('aria-invalid')).toBeNull();
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+
+    unmount();
+  });
+
+  it('prefills returning guest viewerSubscription in Edit RSVP and sends enabled: false when unchecked', async () => {
+    const event = createSampleEvent();
+    const viewerRsvp: RsvpRecord = {
+      id: 'rsvp_ret_1',
+      eventId: event.id,
+      guestName: 'Alex',
+      status: 'yes',
+      plusOnes: 0,
+      createdAt: '2026-11-15T12:00:00Z',
+      updatedAt: '2026-11-15T12:00:00Z',
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        rsvp: viewerRsvp,
+        guestToken: 'tok_ret_1',
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    function ReturningGuestHarness() {
+      const [name, setName] = useState('Alex');
+      const [editing, setEditing] = useState(false);
+      return (
+        <RsvpPanel
+          event={event}
+          awaitingNames={[]}
+          viewerRsvp={viewerRsvp}
+          viewerSubscription={{ email: 'alex@example.com', notifyLevel: 'all_posts' }}
+          guestToken="tok_ret_1"
+          guestName={name}
+          onGuestNameChange={setName}
+          isEditing={editing}
+          onEditingChange={setEditing}
+          onRsvpSuccess={vi.fn()}
+        />
+      );
+    }
+
+    const { container, unmount } = renderIntoDom(<ReturningGuestHarness />);
+
+    const editBtn = container.querySelector<HTMLButtonElement>('[data-testid="edit-rsvp-button"]')!;
+    await act(async () => {
+      editBtn.click();
+    });
+
+    const toggle = container.querySelector<HTMLInputElement>(
+      '[data-testid="rsvp-email-updates-toggle"]',
+    )!;
+    const emailInput = container.querySelector<HTMLInputElement>('[data-testid="rsvp-email-input"]')!;
+    const slider = container.querySelector<HTMLInputElement>('[data-testid="rsvp-notify-slider"]')!;
+
+    expect(toggle.checked).toBe(true);
+    expect(emailInput.value).toBe('alex@example.com');
+    expect(slider.value).toBe('3');
+    expect(container.querySelector('.bell-swing-all')).not.toBeNull();
+
+    // Uncheck email updates and save RSVP
+    await act(async () => {
+      toggle.click();
+    });
+    expect(toggle.checked).toBe(false);
+    expect(container.querySelector('[data-testid="rsvp-email-input"]')).toBeNull();
+
+    const form = container.querySelector('form')!;
+    await act(async () => {
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.emailUpdates).toEqual({
+      enabled: false,
+      email: 'alex@example.com',
+    });
 
     unmount();
   });
@@ -594,6 +867,89 @@ describe('EventWall & SubscribeControl', () => {
       'a[href="/api/events/evt_test123/ics"]',
     );
     expect(icsLink).not.toBeNull();
+    unmount();
+  });
+
+  it('SubscribeControl renders the bell slider and posts notifyLevel + guestToken', async () => {
+    window.localStorage.clear();
+    saveGuestToken('evt_sub_1', 'tok_saved_guest');
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      void _init;
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/push/vapid-public-key')) {
+        return { ok: true, json: async () => ({ publicKey: null }) };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          subscribed: true,
+          id: 'sub_1',
+          kind: 'email',
+          notifyLevel: 'all_posts',
+          emailSent: true,
+          emailConfigured: true,
+        }),
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const onSubscribed = vi.fn();
+    const { container, unmount } = renderIntoDom(
+      <SubscribeControl
+        eventId="evt_sub_1"
+        eventTitle="Winter Cocoa"
+        subscriberCount={2}
+        viewerSubscription={{ email: 'maya@example.com', notifyLevel: 'changes' }}
+        onSubscribed={onSubscribed}
+        variant="inline"
+      />,
+    );
+
+    const openBtn = container.querySelector<HTMLButtonElement>('button')!;
+    await act(async () => {
+      openBtn.click();
+    });
+
+    const slider = container.querySelector<HTMLInputElement>(
+      '[data-testid="subscribe-notify-slider"]',
+    )!;
+    const stopAll = container.querySelector<HTMLButtonElement>(
+      '[data-testid="subscribe-notify-stop-all_posts"]',
+    )!;
+    const emailInput = container.querySelector<HTMLInputElement>(
+      'input[type="email"][name="email"]',
+    )!;
+
+    expect(slider).not.toBeNull();
+    expect(slider.value).toBe('1');
+    expect(emailInput.value).toBe('maya@example.com');
+    expect(container.querySelector('.bell-swing-changes')).not.toBeNull();
+
+    await act(async () => {
+      stopAll.click();
+    });
+    expect(slider.value).toBe('3');
+    expect(container.querySelector('.bell-swing-all')).not.toBeNull();
+
+    const form = container.querySelector('form')!;
+    await act(async () => {
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+
+    const subCall = fetchMock.mock.calls.find((call) =>
+      String(call[0]).includes('/api/events/evt_sub_1/subscribe'),
+    );
+    expect(subCall).toBeDefined();
+    const reqInit = subCall![1] as RequestInit;
+    expect(JSON.parse(String(reqInit.body))).toEqual({
+      kind: 'email',
+      email: 'maya@example.com',
+      notifyLevel: 'all_posts',
+      guestToken: 'tok_saved_guest',
+    });
+    expect(onSubscribed).toHaveBeenCalledTimes(1);
+
     unmount();
   });
 });

@@ -1,4 +1,4 @@
-import { act } from 'react';
+import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RichTextEditor } from '@/components/editor/RichTextEditor';
@@ -352,5 +352,154 @@ describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & 
     expect(pushMock).toHaveBeenCalledWith('/create');
     expect(window.sessionStorage.getItem('invited_studio_draft')).toContain('42 Maple St');
     unmount();
+  });
+
+  it('defaults edit-notify-guests-checkbox unchecked for style-only tweaks and auto-checks on title, location, or date edits', async () => {
+    const baseEvent: EventMeta = {
+      id: 'evt_edit_notify',
+      title: 'Winter Cocoa',
+      descriptionHtml: '<p>Warm mugs by the fire.</p>',
+      startIso: '2026-12-20T18:00:00',
+      timeZone: 'America/New_York',
+      locationName: '42 Maple St',
+      hostName: 'Clara',
+      invitedNames: [],
+      hideGuestList: false,
+      style: {
+        themeId: 'candlelit-dinner',
+        fontId: 'editorial-serif',
+        effectId: 'warm-bokeh',
+        coverPresetId: 'candlelit-table',
+        coverLayout: 'banner',
+      },
+      createdAt: '2026-11-16T08:00:00Z',
+      updatedAt: '2026-11-16T08:00:00Z',
+    };
+
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const patchBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      const nextEvent: EventMeta = {
+        ...baseEvent,
+        title: String(patchBody.title ?? baseEvent.title),
+        startIso: String(patchBody.startIso ?? baseEvent.startIso),
+        locationName:
+          patchBody.locationName === null
+            ? undefined
+            : String(patchBody.locationName ?? baseEvent.locationName),
+        style: (patchBody.style as EventMeta['style']) ?? baseEvent.style,
+        updatedAt: new Date().toISOString(),
+      };
+      return new Response(JSON.stringify(nextEvent), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    function EditHarness() {
+      const [event, setEvent] = useState<EventMeta>(baseEvent);
+      return (
+        <InviteStudio
+          mode="edit"
+          initialEvent={event}
+          eventId={event.id}
+          editKey="edit_secret_123"
+          onSaved={setEvent}
+        />
+      );
+    }
+
+    const { container, unmount } = renderIntoDom(<EditHarness />);
+    try {
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 30));
+      });
+
+      const notifyCheckbox = container.querySelector<HTMLInputElement>(
+        '[data-testid="edit-notify-guests-checkbox"]',
+      )!;
+      expect(notifyCheckbox).not.toBeNull();
+      expect(notifyCheckbox.checked).toBe(false);
+
+      // Style-only change via Theme drawer keeps notifyGuests unchecked
+      const themeBtn = container.querySelector<HTMLButtonElement>(
+        '[data-testid="edit-theme-button"]',
+      )!;
+      await act(async () => {
+        themeBtn.click();
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 15));
+      });
+      const y2kOption = container.querySelector<HTMLButtonElement>(
+        '[data-theme-option="y2k-chrome"]',
+      )!;
+      await act(async () => {
+        y2kOption.click();
+      });
+      expect(notifyCheckbox.checked).toBe(false);
+
+      const form = container.querySelector('form')!;
+      await act(async () => {
+        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 20));
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const styleOnlyBody = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body));
+      expect(styleOnlyBody.notifyGuests).toBe(false);
+
+      // Editing title auto-checks the notify checkbox and submits notifyGuests: true
+      const titleInput = container.querySelector<HTMLTextAreaElement>('textarea[data-title-input]')!;
+      await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+        setter.call(titleInput, 'Winter Cocoa & Cookies');
+        titleInput.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      expect(notifyCheckbox.checked).toBe(true);
+
+      await act(async () => {
+        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 20));
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const titleEditBody = JSON.parse(String((fetchMock.mock.calls[1]?.[1] as RequestInit).body));
+      expect(titleEditBody.notifyGuests).toBe(true);
+
+      // After save resets baseline, location and date edits also auto-check the box
+      expect(notifyCheckbox.checked).toBe(false);
+      const locationInput = container.querySelector<HTMLInputElement>('#event-location-single')!;
+      await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+        setter.call(locationInput, '99 Pine St');
+        locationInput.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      expect(notifyCheckbox.checked).toBe(true);
+
+      // Revert location and test date change
+      await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+        setter.call(locationInput, '42 Maple St');
+        locationInput.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      expect(notifyCheckbox.checked).toBe(false);
+
+      const startDateInput = container.querySelector<HTMLInputElement>('#event-start-date')!;
+      await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+        setter.call(startDateInput, '2026-12-21');
+        startDateInput.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      expect(notifyCheckbox.checked).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+      unmount();
+    }
   });
 });

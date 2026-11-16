@@ -1217,4 +1217,402 @@ describe('storage, crypto, sanitizer, calendar & API routes', () => {
       delete process.env.BLOB_READ_WRITE_TOKEN;
     }
   });
+
+  it('handles inline RSVP email tiers, privacy of viewerSubscription, smart host diffs, filtered comment alerts, RSVP delete cleanup, and zero Blob list() calls', async () => {
+    const prevKey = process.env.RESEND_API_KEY;
+    const prevFrom = process.env.INVITED_FROM_EMAIL;
+    const prevReplyTo = process.env.INVITED_REPLY_TO;
+    const prevAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+
+    process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_test_token';
+    process.env.RESEND_API_KEY = 're_test_key_tiers';
+    delete process.env.INVITED_FROM_EMAIL;
+    process.env.INVITED_REPLY_TO = 'host-reply@example.com';
+    process.env.NEXT_PUBLIC_APP_URL = 'https://invites.ivanw.me';
+
+    blobMock.seq = 0;
+    blobMock.store.clear();
+    blobMock.put.mockClear();
+    blobMock.get.mockClear();
+    blobMock.head.mockClear();
+    blobMock.list.mockClear();
+    blobMock.del.mockClear();
+
+    const fetchSpy = vi.fn().mockImplementation(async () => {
+      return new Response(JSON.stringify({ id: 'resend_ok' }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    try {
+      const createRes = await createEventRoute(
+        jsonRequest('http://localhost/api/events', 'POST', {
+          title: 'Solstice Supper',
+          descriptionHtml: '<p>Bring a cozy sweater.</p>',
+          startIso: '2026-12-21T18:00:00',
+          timeZone: 'America/New_York',
+          locationName: '42 Maple St',
+          hostName: 'Clara',
+          style: {
+            themeId: 'candlelit-dinner',
+            fontId: 'editorial-serif',
+            effectId: 'warm-bokeh',
+            coverPresetId: 'candlelit-table',
+            coverLayout: 'banner',
+          },
+        }),
+      );
+      expect(createRes.status).toBe(201);
+      const { id, editKey } = (await createRes.json()) as { id: string; editKey: string };
+
+      // 1. RSVP with inline emailUpdates for each tier ('changes', 'host_posts', 'all_posts')
+      // Guest A -> 'changes'
+      const rsvpARes = await postRsvpRoute(
+        jsonRequest(`http://localhost/api/events/${id}/rsvps`, 'POST', {
+          guestName: 'Alice',
+          status: 'yes',
+          plusOnes: 0,
+          bringingNote: 'Apple cider',
+          postToWall: true, // Dish note via RSVP must NOT trigger wall-post emails
+          emailUpdates: {
+            enabled: true,
+            email: 'alice@example.com',
+            notifyLevel: 'changes',
+          },
+        }),
+        { params: Promise.resolve({ id }) },
+      );
+      expect(rsvpARes.status).toBe(200);
+      const rsvpAJson = await rsvpARes.json();
+      expect(rsvpAJson.emailSent).toBe(true);
+      expect(rsvpAJson.detail.viewerSubscription).toEqual({
+        email: 'alice@example.com',
+        notifyLevel: 'changes',
+      });
+      // Only 1 confirmation email sent — RSVP postToWall dish note did NOT trigger wall-post emails
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const confirmPayload = JSON.parse(String(fetchSpy.mock.calls[0][1].body));
+      expect(confirmPayload.from).toBe('invited <updates@invites.ivanw.me>');
+      expect(confirmPayload.reply_to).toBe('host-reply@example.com');
+      expect(confirmPayload.subject).toBe("You're in: Solstice Supper");
+      expect(confirmPayload.text).toContain('Event updates only');
+
+      // Saving the same email again (even changing notifyLevel) does NOT re-send confirmation email
+      fetchSpy.mockClear();
+      const rsvpAUpdateSameEmail = await postRsvpRoute(
+        jsonRequest(
+          `http://localhost/api/events/${id}/rsvps`,
+          'POST',
+          {
+            guestName: 'Alice',
+            status: 'yes',
+            plusOnes: 1,
+            emailUpdates: {
+              enabled: true,
+              email: 'alice@example.com',
+              notifyLevel: 'changes',
+            },
+          },
+          { 'x-guest-token': rsvpAJson.guestToken },
+        ),
+        { params: Promise.resolve({ id }) },
+      );
+      expect(rsvpAUpdateSameEmail.status).toBe(200);
+      const rsvpAUpdateJson = await rsvpAUpdateSameEmail.json();
+      expect(rsvpAUpdateJson.emailSent).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      // Changing to a NEW email address sends confirmation once for the new email
+      const rsvpANewEmail = await postRsvpRoute(
+        jsonRequest(
+          `http://localhost/api/events/${id}/rsvps`,
+          'POST',
+          {
+            guestName: 'Alice',
+            status: 'yes',
+            plusOnes: 1,
+            emailUpdates: {
+              enabled: true,
+              email: 'alice.new@example.com',
+              notifyLevel: 'changes',
+            },
+          },
+          { 'x-guest-token': rsvpAJson.guestToken },
+        ),
+        { params: Promise.resolve({ id }) },
+      );
+      expect(rsvpANewEmail.status).toBe(200);
+      expect((await rsvpANewEmail.json()).emailSent).toBe(true);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+      // Guest B -> 'host_posts', Guest C -> 'all_posts', Guest D -> 'all_posts'
+      fetchSpy.mockClear();
+      const rsvpBRes = await postRsvpRoute(
+        jsonRequest(`http://localhost/api/events/${id}/rsvps`, 'POST', {
+          guestName: 'Bob',
+          status: 'yes',
+          plusOnes: 0,
+          emailUpdates: {
+            enabled: true,
+            email: 'bob@example.com',
+            notifyLevel: 'host_posts',
+          },
+        }),
+        { params: Promise.resolve({ id }) },
+      );
+      const rsvpBJson = await rsvpBRes.json();
+
+      const rsvpCRes = await postRsvpRoute(
+        jsonRequest(`http://localhost/api/events/${id}/rsvps`, 'POST', {
+          guestName: 'Charlie',
+          status: 'no',
+          plusOnes: 0,
+          emailUpdates: {
+            enabled: true,
+            email: 'charlie@example.com',
+            notifyLevel: 'all_posts',
+          },
+        }),
+        { params: Promise.resolve({ id }) },
+      );
+      const rsvpCJson = await rsvpCRes.json();
+
+      const rsvpDRes = await postRsvpRoute(
+        jsonRequest(`http://localhost/api/events/${id}/rsvps`, 'POST', {
+          guestName: 'Dana',
+          status: 'yes',
+          plusOnes: 0,
+          emailUpdates: {
+            enabled: true,
+            email: 'dana@example.com',
+            notifyLevel: 'all_posts',
+          },
+        }),
+        { params: Promise.resolve({ id }) },
+      );
+      expect(rsvpDRes.status).toBe(200);
+      expect(fetchSpy).toHaveBeenCalledTimes(3);
+
+      // 2. viewerSubscription privacy: ONLY matching x-guest-token sees it; never public or host editKey alone
+      const publicGet = await getEventRoute(
+        new Request(`http://localhost/api/events/${id}`),
+        { params: Promise.resolve({ id }) },
+      );
+      const publicJson = await publicGet.json();
+      expect(publicJson.viewerSubscription).toBeUndefined();
+      expect(JSON.stringify(publicJson)).not.toContain('alice.new@example.com');
+      expect(JSON.stringify(publicJson)).not.toContain('bob@example.com');
+
+      const hostOnlyGet = await getEventRoute(
+        new Request(`http://localhost/api/events/${id}`, {
+          headers: { 'x-edit-key': editKey },
+        }),
+        { params: Promise.resolve({ id }) },
+      );
+      const hostOnlyJson = await hostOnlyGet.json();
+      expect(hostOnlyJson.isHost).toBe(true);
+      expect(hostOnlyJson.viewerSubscription).toBeUndefined();
+      expect(JSON.stringify(hostOnlyJson)).not.toContain('alice.new@example.com');
+
+      const guestBGet = await getEventRoute(
+        new Request(`http://localhost/api/events/${id}`, {
+          headers: { 'x-guest-token': rsvpBJson.guestToken },
+        }),
+        { params: Promise.resolve({ id }) },
+      );
+      const guestBJson = await guestBGet.json();
+      expect(guestBJson.viewerSubscription).toEqual({
+        email: 'bob@example.com',
+        notifyLevel: 'host_posts',
+      });
+      expect(JSON.stringify(guestBJson)).not.toContain('alice.new@example.com');
+
+      // 3. Comments filtering:
+      // 3a) Host comment emails 'host_posts' (bob) + 'all_posts' (charlie, dana), NOT 'changes' (alice.new)
+      fetchSpy.mockClear();
+      const hostCommentRes = await createCommentRoute(
+        jsonRequest(`http://localhost/api/events/${id}/comments`, 'POST', {
+          authorName: 'Clara',
+          body: 'Bring slippers if you want!',
+          editKey,
+        }),
+        { params: Promise.resolve({ id }) },
+      );
+      expect(hostCommentRes.status).toBe(201);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(fetchSpy.mock.calls[0][0]).toBe('https://api.resend.com/emails/batch');
+      const hostBatch = JSON.parse(String(fetchSpy.mock.calls[0][1].body)) as Array<{
+        to: string[];
+      }>;
+      const hostRecipients = hostBatch.flatMap((m) => m.to).sort();
+      expect(hostRecipients).toEqual(['bob@example.com', 'charlie@example.com', 'dana@example.com']);
+
+      // 3b) Standalone guest wall comment by Charlie ('all_posts') emails ONLY 'all_posts' excluding Charlie's own guestTokenHash (so ONLY Dana!)
+      fetchSpy.mockClear();
+      const guestCommentRes = await createCommentRoute(
+        jsonRequest(
+          `http://localhost/api/events/${id}/comments`,
+          'POST',
+          {
+            authorName: 'Charlie',
+            body: 'Wish I could make it — have fun!',
+          },
+          { 'x-guest-token': rsvpCJson.guestToken },
+        ),
+        { params: Promise.resolve({ id }) },
+      );
+      expect(guestCommentRes.status).toBe(201);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const guestBatch = JSON.parse(String(fetchSpy.mock.calls[0][1].body)) as Array<{
+        to: string[];
+      }>;
+      expect(guestBatch.flatMap((m) => m.to)).toEqual(['dana@example.com']);
+
+      // 4. PATCH smart diffs & notifyGuests overrides
+      // 4a) Style-only PATCH skips Resend
+      fetchSpy.mockClear();
+      const styleOnlyPatch = await patchEventRoute(
+        jsonRequest(
+          `http://localhost/api/events/${id}`,
+          'PATCH',
+          {
+            style: {
+              themeId: 'y2k-chrome',
+              fontId: 'y2k-display',
+              effectId: 'liquid-chrome',
+              coverPresetId: 'vector-starburst-night',
+              coverLayout: 'banner',
+            },
+          },
+          { 'x-edit-key': editKey },
+        ),
+        { params: Promise.resolve({ id }) },
+      );
+      expect(styleOnlyPatch.status).toBe(200);
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      // 4b) Material PATCH sends "What changed" bullets to ALL active email tiers
+      const materialPatch = await patchEventRoute(
+        jsonRequest(
+          `http://localhost/api/events/${id}`,
+          'PATCH',
+          {
+            title: 'Solstice Feast',
+            startIso: '2026-12-22T19:00:00',
+            locationName: '99 Pine St',
+            descriptionHtml: '<p>Bring a cozy sweater and dessert.</p>',
+          },
+          { 'x-edit-key': editKey },
+        ),
+        { params: Promise.resolve({ id }) },
+      );
+      expect(materialPatch.status).toBe(200);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const diffBatch = JSON.parse(String(fetchSpy.mock.calls[0][1].body)) as Array<{
+        to: string[];
+        html: string;
+        text: string;
+      }>;
+      expect(diffBatch.flatMap((m) => m.to).sort()).toEqual([
+        'alice.new@example.com',
+        'bob@example.com',
+        'charlie@example.com',
+        'dana@example.com',
+      ]);
+      expect(diffBatch[0].html).toContain('What changed');
+      expect(diffBatch[0].text).toContain('Title changed to "Solstice Feast"');
+      expect(diffBatch[0].text).toContain('Date & time updated to');
+      expect(diffBatch[0].text).toContain('Location updated to 99 Pine St');
+      expect(diffBatch[0].text).toContain('Event description was updated');
+
+      // 4c) Explicit notifyGuests: false suppresses Resend even on material change
+      fetchSpy.mockClear();
+      const silentMaterialPatch = await patchEventRoute(
+        jsonRequest(
+          `http://localhost/api/events/${id}`,
+          'PATCH',
+          {
+            title: 'Solstice Feast (Silent Tweaked)',
+            notifyGuests: false,
+          },
+          { 'x-edit-key': editKey },
+        ),
+        { params: Promise.resolve({ id }) },
+      );
+      expect(silentMaterialPatch.status).toBe(200);
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      // 4d) Explicit notifyGuests: true sends email even on style-only change
+      const forcedStylePatch = await patchEventRoute(
+        jsonRequest(
+          `http://localhost/api/events/${id}`,
+          'PATCH',
+          {
+            style: {
+              themeId: 'cozy-christmas',
+              fontId: 'editorial-serif',
+              effectId: 'christmas-lights',
+              coverPresetId: 'christmas-tree',
+              coverLayout: 'square',
+            },
+            notifyGuests: true,
+          },
+          { 'x-edit-key': editKey },
+        ),
+        { params: Promise.resolve({ id }) },
+      );
+      expect(forcedStylePatch.status).toBe(200);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+      // 5. Unchecking emailUpdates (enabled: false) removes subscription
+      const disableEmailRes = await postRsvpRoute(
+        jsonRequest(
+          `http://localhost/api/events/${id}/rsvps`,
+          'POST',
+          {
+            guestName: 'Alice',
+            status: 'yes',
+            plusOnes: 1,
+            emailUpdates: { enabled: false },
+          },
+          { 'x-guest-token': rsvpAJson.guestToken },
+        ),
+        { params: Promise.resolve({ id }) },
+      );
+      expect(disableEmailRes.status).toBe(200);
+      const disableJson = await disableEmailRes.json();
+      expect(disableJson.detail.viewerSubscription).toBeUndefined();
+      expect(disableJson.detail.subscriberCount).toBe(3);
+
+      // 6. DELETE /api/events/[id]/rsvps/[rsvpId] removes the guest's email subscription
+      const delBobRes = await deleteRsvpRoute(
+        new Request(`http://localhost/api/events/${id}/rsvps/${rsvpBJson.rsvp.id}`, {
+          method: 'DELETE',
+          headers: { 'x-guest-token': rsvpBJson.guestToken },
+        }),
+        { params: Promise.resolve({ id, rsvpId: rsvpBJson.rsvp.id }) },
+      );
+      expect(delBobRes.status).toBe(200);
+      const delBobJson = await delBobRes.json();
+      expect(delBobJson.deleted).toBe(true);
+      expect(delBobJson.detail.subscriberCount).toBe(2);
+
+      const bobAfterDelete = await getEventDetail(id, { guestToken: rsvpBJson.guestToken });
+      expect(bobAfterDelete!.viewerSubscription).toBeUndefined();
+      expect(bobAfterDelete!.viewerRsvp).toBeUndefined();
+
+      // 7. Zero Vercel Blob list() calls across all v2 reads, RSVPs, comments, and notifications!
+      expect(blobMock.list).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      delete process.env.BLOB_READ_WRITE_TOKEN;
+      if (prevKey === undefined) delete process.env.RESEND_API_KEY;
+      else process.env.RESEND_API_KEY = prevKey;
+      if (prevFrom === undefined) delete process.env.INVITED_FROM_EMAIL;
+      else process.env.INVITED_FROM_EMAIL = prevFrom;
+      if (prevReplyTo === undefined) delete process.env.INVITED_REPLY_TO;
+      else process.env.INVITED_REPLY_TO = prevReplyTo;
+      if (prevAppUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+      else process.env.NEXT_PUBLIC_APP_URL = prevAppUrl;
+    }
+  });
 });

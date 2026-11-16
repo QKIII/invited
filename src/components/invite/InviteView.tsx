@@ -39,7 +39,6 @@ import {
   isSafeExternalHttpUrl,
 } from './calendarLinks';
 import { EventWall } from './EventWall';
-import type { ViewerSubscriptionData } from './EmailUpdatesControl';
 import { GuestAvatar } from './GuestAvatar';
 import { GuestList } from './GuestList';
 import { RsvpPanel } from './RsvpPanel';
@@ -344,10 +343,6 @@ export function InviteView({
       : null;
 
   const hasCover = event.style.coverLayout !== 'none';
-
-  const viewerSubscription = (
-    detail as { viewerSubscription?: ViewerSubscriptionData }
-  ).viewerSubscription;
 
   return (
     <div
@@ -730,7 +725,7 @@ export function InviteView({
             eventId={event.id}
             eventTitle={event.title}
             subscriberCount={detail.subscriberCount}
-            viewerSubscription={viewerSubscription}
+            viewerSubscription={detail.viewerSubscription}
             openSignal={subscribeSignal}
             onSubscribed={() => void refreshDetail()}
             variant="link"
@@ -757,7 +752,7 @@ export function InviteView({
         event={event}
         awaitingNames={detail.rsvps.awaitingNames}
         viewerRsvp={detail.viewerRsvp}
-        viewerSubscription={viewerSubscription}
+        viewerSubscription={detail.viewerSubscription}
         editKey={editKey}
         guestToken={guestToken}
         guestName={rsvpGuestName}

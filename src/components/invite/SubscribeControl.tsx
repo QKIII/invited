@@ -124,7 +124,11 @@ export function SubscribeControl({
     setEmailDone(false);
     setEmailMessage(null);
     if (!dialog.open) {
-      dialog.showModal();
+      if (typeof dialog.showModal === 'function') {
+        dialog.showModal();
+      } else {
+        dialog.setAttribute('open', '');
+      }
     }
     void checkCapabilities();
   }, [checkCapabilities]);
