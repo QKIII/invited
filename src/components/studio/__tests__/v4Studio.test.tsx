@@ -356,7 +356,7 @@ describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & 
       const heroCard = container.querySelector('[data-testid="home-hero-card"]')!;
       expect(heroCard).not.toBeNull();
       expect(container.querySelector('[data-testid="hero-next-theme-btn"]')).toBeNull();
-      expect(container.querySelector('#nlp-turbulence-displacement')).not.toBeNull();
+      expect(container.querySelector('#nlp-turbulence-displacement')).toBeNull();
       expect(container.textContent).not.toMatch(EMOJI_RE);
       expect(heroCard.textContent).not.toContain('\u2014');
 
@@ -444,9 +444,7 @@ describe('v6 Studio Direct Card UX, Live Theme Bottom Sheet, Initials Avatars & 
       expect(container.querySelector('[data-testid="prompt-back-btn"]')?.className).toContain(
         'theme-surface-pill',
       );
-      expect(container.querySelector('[data-testid="skip-to-blank-btn"]')?.className).toContain(
-        'theme-surface-pill',
-      );
+      expect(container.querySelector('[data-testid="skip-to-blank-btn"]')).toBeNull();
 
       const input = container.querySelector<HTMLTextAreaElement>(
         '[data-testid="nlp-prompt-input"]',

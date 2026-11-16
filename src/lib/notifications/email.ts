@@ -11,7 +11,7 @@ export type NotificationCategory = 'event_change' | 'host_post' | 'guest_post';
 const RESEND_ENDPOINT = 'https://api.resend.com/emails';
 const RESEND_BATCH_ENDPOINT = 'https://api.resend.com/emails/batch';
 const DEFAULT_FROM_EMAIL = 'invited <updates@invites.ivanw.me>';
-const DEFAULT_APP_URL = 'https://invites.ivanw.me';
+const DEFAULT_APP_URL = 'https://invited.ivanw.me';
 
 /**
  * Returns `true` when transactional email sending via Resend is configured.

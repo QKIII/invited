@@ -1,6 +1,13 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, Calendar, MapPin, Pause, Play } from 'lucide-react';
@@ -315,13 +322,14 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
   const router = useRouter();
   const [stage, setStage] = useState<HomeStage>(initialStage);
   const [promptText, setPromptText] = useState('');
-  const [isActivelyTyping, setIsActivelyTyping] = useState(false);
+  const deferredPromptText = useDeferredValue(promptText);
   const [hasSavedDraft, setHasSavedDraft] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
 
   const [showcasePaused, setShowcasePaused] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const [promptExampleIndex, setPromptExampleIndex] = useState(0);
+  const [visualViewportHeight, setVisualViewportHeight] = useState<number | null>(null);
   const [showcase, setShowcase] = useState<ShowcaseState>({
     index: 0,
     prevFontId: HERO_SHOWCASE_CYCLE[0].fontId,
@@ -335,7 +343,6 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
 
   const heroHeadingRef = useRef<HTMLHeadingElement>(null);
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
-  const typingTimerRef = useRef<number | null>(null);
   const lastCompositionEndAtRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -360,13 +367,24 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
     };
   }, []);
 
+  // Keep prompt card centered inside the visible above-keyboard viewport on iOS & Android
   useEffect(() => {
-    return () => {
-      if (typingTimerRef.current !== null) {
-        window.clearTimeout(typingTimerRef.current);
-      }
+    if (stage !== 'prompt' || typeof window === 'undefined' || !window.visualViewport) {
+      queueMicrotask(() => setVisualViewportHeight(null));
+      return;
+    }
+    const vv = window.visualViewport;
+    const syncHeight = () => {
+      setVisualViewportHeight(Math.round(vv.height));
     };
-  }, []);
+    syncHeight();
+    vv.addEventListener('resize', syncHeight);
+    vv.addEventListener('scroll', syncHeight);
+    return () => {
+      vv.removeEventListener('resize', syncHeight);
+      vv.removeEventListener('scroll', syncHeight);
+    };
+  }, [stage]);
 
   const advanceShowcase = useCallback(() => {
     setMorphedCharCount(prefersReducedMotion ? HERO_CHAR_COUNT : 0);
@@ -448,13 +466,6 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
     };
   }, [showcase.waveGeneration, prefersReducedMotion]);
 
-  useEffect(() => {
-    const el = promptInputRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(Math.max(el.scrollHeight, 60), 108)}px`;
-  }, [promptText, stage]);
-
   // Cycle prefilled prompt examples and animate the theme to match while input is empty
   useEffect(() => {
     if (stage !== 'prompt' || promptText.trim().length > 0 || prefersReducedMotion) return;
@@ -470,10 +481,10 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
   const activeCyclingExample = CYCLING_PROMPT_EXAMPLES[promptExampleIndex];
 
   const parsedDraft = useMemo(() => {
-    const trimmed = promptText.trim();
+    const trimmed = deferredPromptText.trim();
     if (!trimmed) return null;
     return parseEventPrompt(trimmed, new Date(), getBrowserTimeZone());
-  }, [promptText]);
+  }, [deferredPromptText]);
 
   const activeStyle = useMemo<InviteStyleConfig>(() => {
     if (stage === 'hero') {
@@ -496,16 +507,6 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
 
   useThemeViewportSync(themeVars['--theme-page-bg'], backdropMode);
 
-  const turbulenceStrength = useMemo(() => {
-    if (isActivelyTyping) return 0.92;
-    if (parsedDraft) return 0.36;
-    if (stage === 'prompt') return 0.14;
-    return 0;
-  }, [isActivelyTyping, parsedDraft, stage]);
-
-  const displacementScale = isActivelyTyping ? 44 : parsedDraft ? 22 : 10;
-  const turbulenceFreq = isActivelyTyping ? '0.022 0.028' : '0.014 0.019';
-
   function transitionToStage(nextStage: HomeStage) {
     if (nextStage === stage) return;
 
@@ -523,24 +524,20 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
 
   function handlePromptChange(nextValue: string) {
     setPromptText(nextValue);
-    setIsActivelyTyping(true);
-    if (typingTimerRef.current !== null) {
-      window.clearTimeout(typingTimerRef.current);
-    }
-    typingTimerRef.current = window.setTimeout(() => {
-      setIsActivelyTyping(false);
-    }, 650);
   }
 
   function handleStartInvite(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!parsedDraft) return;
+    const trimmed = promptText.trim();
+    if (!trimmed) return;
+    const submitDraft =
+      parsedDraft ?? parseEventPrompt(trimmed, new Date(), getBrowserTimeZone());
     try {
       window.localStorage.removeItem(CREATE_DRAFT_KEY);
     } catch {
       // Ignore storage access errors
     }
-    saveStudioDraft(parsedDraft);
+    saveStudioDraft(submitDraft);
     router.push('/create');
   }
 
@@ -553,37 +550,12 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
         backgroundColor: 'var(--theme-page-bg)',
         color: 'var(--theme-text-primary)',
         fontFamily: 'var(--font-ui-body), var(--font-sans), sans-serif',
+        ...(stage === 'prompt' && visualViewportHeight
+          ? { minHeight: `${visualViewportHeight}px`, height: `${visualViewportHeight}px` }
+          : {}),
       }}
       className="home-theme-root min-h-dvh relative overflow-x-hidden flex flex-col"
     >
-      {/* Inline SVG turbulence displacement filter for frosted aura modulation during live NLP generation */}
-      <svg className="sr-only" aria-hidden="true" width="0" height="0">
-        <defs>
-          <filter
-            id="nlp-turbulence-displacement"
-            x="-20%"
-            y="-20%"
-            width="140%"
-            height="140%"
-          >
-            <feTurbulence
-              type="fractalNoise"
-              baseFrequency={turbulenceFreq}
-              numOctaves={2}
-              seed={11}
-              result="noise"
-            />
-            <feDisplacementMap
-              in="SourceGraphic"
-              in2="noise"
-              scale={displacementScale}
-              xChannelSelector="R"
-              yChannelSelector="G"
-            />
-          </filter>
-        </defs>
-      </svg>
-
       <AmbientBackdrop
         fixedViewport
         effectId={activeStyle.effectId}
@@ -591,25 +563,25 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
         accentColor={themeVars['--theme-accent']}
         secondaryColor={themeVars['--theme-cta-end']}
         colorMode={backdropMode}
-        turbulence={turbulenceStrength}
+        turbulence={stage === 'prompt' ? 0.24 : 0}
         className="z-0"
       />
 
-      {/* Reactive frosted gradient turbulence aura behind composer card */}
+      {/* Lightweight GPU-composited gradient aura behind composer card */}
       <div
         aria-hidden="true"
         data-testid="nlp-turbulence-aura"
-        data-turbulence-active={isActivelyTyping || Boolean(parsedDraft) ? 'true' : 'false'}
+        data-turbulence-active={Boolean(parsedDraft) ? 'true' : 'false'}
         className="pointer-events-none fixed inset-0 z-[1] flex items-center justify-center transition-opacity duration-500"
-        style={{ opacity: stage === 'prompt' ? 0.92 : 0.52 }}
+        style={{ opacity: stage === 'prompt' ? 0.88 : 0.52 }}
       >
         <div
           className="h-[min(78vw,560px)] w-[min(92vw,620px)] rounded-full transition-transform duration-700"
           style={{
             background:
               'radial-gradient(circle at 28% 32%, color-mix(in srgb, var(--theme-cta-start) 53%, transparent), transparent 62%), radial-gradient(circle at 74% 68%, color-mix(in srgb, var(--theme-cta-end) 47%, transparent), transparent 66%), radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--theme-accent) 34%, transparent), transparent 74%)',
-            filter: 'url(#nlp-turbulence-displacement) blur(42px)',
-            transform: isActivelyTyping ? 'scale(1.07)' : 'scale(1)',
+            filter: 'blur(38px)',
+            transform: parsedDraft ? 'scale(1.04)' : 'scale(1)',
           }}
         />
       </div>
@@ -666,10 +638,8 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
       </header>
 
       <main
-        className={`relative z-10 flex-1 flex justify-center px-3.5 sm:px-4 ${
-          stage === 'prompt'
-            ? 'items-start pt-2 pb-4 sm:items-center sm:py-10'
-            : 'items-center py-6 sm:py-12'
+        className={`relative z-10 flex-1 flex items-center justify-center px-3.5 sm:px-4 ${
+          stage === 'prompt' ? 'py-3 sm:py-10' : 'py-6 sm:py-12'
         }`}
       >
         <div className="w-full max-w-[540px]">
@@ -691,7 +661,7 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
                   aria-label={HERO_HEADLINE}
                   className="font-bold text-center outline-none"
                   style={{
-                    fontSize: 'clamp(1.42rem, 0.98rem + 2.15vw, 2.38rem)',
+                    fontSize: 'clamp(1.52rem, 1.02rem + 2.55vw, 2.9rem)',
                   }}
                 >
                   {HERO_LINE_TOKENS.map((line, lineIdx) => (
@@ -746,7 +716,7 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
                 <p
                   data-testid="home-hero-subtitle"
                   aria-label={HERO_SUBTITLE}
-                  className="text-sm sm:text-base leading-relaxed max-w-[36ch] mx-auto"
+                  className="text-[15px] sm:text-[17px] leading-relaxed max-w-[36ch] mx-auto"
                   style={{
                     color: 'var(--theme-text-muted)',
                     textWrap: 'pretty',
@@ -950,7 +920,7 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
                 <label htmlFor="nlp-prompt-textarea" className="sr-only">
                   Describe your event
                 </label>
-                <div className="relative">
+                <div className="prompt-input-wrap relative">
                   <textarea
                     ref={promptInputRef}
                     id="nlp-prompt-textarea"
@@ -972,7 +942,7 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
                         ) {
                           return;
                         }
-                        if (parsedDraft) {
+                        if (promptText.trim()) {
                           e.currentTarget.form?.requestSubmit();
                         }
                       }
@@ -994,25 +964,17 @@ export function HomeLandingClient({ initialStage = 'hero' }: HomeLandingClientPr
                   ) : null}
                 </div>
 
-                {/* 3. Single-row action bar */}
-                <div className="flex items-center gap-2 pt-0.5">
+                {/* 3. Full-width primary action */}
+                <div className="pt-0.5">
                   <button
                     type="submit"
                     data-testid="start-invite-btn"
-                    disabled={!parsedDraft}
-                    className="invite-cta-btn flex-1 min-h-[44px] inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm sm:text-base font-semibold shadow-xl hover:opacity-95 active:scale-[0.98] disabled:opacity-60 cursor-pointer"
+                    disabled={!promptText.trim()}
+                    className="invite-cta-btn w-full min-h-[46px] inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm sm:text-base font-semibold shadow-xl hover:opacity-95 active:scale-[0.98] disabled:opacity-60 cursor-pointer"
                   >
                     <span>Start invite</span>
                     <ArrowRight className="h-4 w-4" aria-hidden="true" />
                   </button>
-
-                  <Link
-                    href="/create?blank=1"
-                    data-testid="skip-to-blank-btn"
-                    className="theme-surface-pill shrink-0 min-h-[44px] inline-flex items-center justify-center rounded-full border px-3.5 py-2.5 text-xs sm:text-sm font-medium hover:opacity-95 active:scale-[0.98]"
-                  >
-                    Start blank
-                  </Link>
                 </div>
               </form>
             </section>

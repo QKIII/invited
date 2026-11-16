@@ -403,6 +403,7 @@
 }
 
 .theme-prompt-input {
+  field-sizing: content;
   background-color: color-mix(in srgb, var(--theme-accent, #34d399) 8%, var(--theme-card-surface));
   border-color: color-mix(in srgb, var(--theme-accent, #34d399) 26%, var(--theme-border));
   color: var(--theme-text-primary);
@@ -414,6 +415,10 @@
     border-color 0.35s ease,
     box-shadow 0.25s ease,
     color 1.05s cubic-bezier(0.45, 0, 0.55, 1);
+}
+
+.prompt-input-wrap {
+  contain: layout style;
 }
 
 .theme-prompt-input::placeholder {
@@ -1086,7 +1091,7 @@
   }
 
   .stage-card-enter {
-    animation: chipFadeUp 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: chipFadeUp 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
   .prompt-placeholder-fade {
