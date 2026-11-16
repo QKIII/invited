@@ -63,6 +63,7 @@ export interface EventMeta {
 
 export interface StoredEventMeta extends EventMeta {
   editKeyHash: string; // SHA-256 hex of secret editKey — NEVER sent to clients
+  storageVersion?: 2;
 }
 
 export interface RsvpRecord {

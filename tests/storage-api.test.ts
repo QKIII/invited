@@ -5,17 +5,34 @@ import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const blobMock = vi.hoisted(() => ({
-  store: new Map<string, { body: Buffer; contentType: string }>(),
+  seq: 0,
+  store: new Map<string, { body: Buffer; contentType: string; etag: string }>(),
   put: vi.fn(
     async (
       pathname: string,
       body: string | Buffer,
-      options: { access: string; contentType?: string },
+      options: {
+        access: string;
+        contentType?: string;
+        allowOverwrite?: boolean;
+        ifMatch?: string;
+      },
     ) => {
+      const existing = blobMock.store.get(pathname);
+      if (existing && options.allowOverwrite === false) {
+        throw new Error('Blob already exists');
+      }
+      if (options.ifMatch && (!existing || existing.etag !== options.ifMatch)) {
+        throw Object.assign(new Error('Precondition failed'), {
+          name: 'BlobPreconditionFailedError',
+        });
+      }
+      const etag = `etag-${++blobMock.seq}`;
       const buf = Buffer.isBuffer(body) ? body : Buffer.from(body, 'utf8');
       blobMock.store.set(pathname, {
         body: buf,
         contentType: options.contentType || 'application/octet-stream',
+        etag,
       });
       return {
         url: `https://blob.example/${pathname}`,
@@ -23,7 +40,7 @@ const blobMock = vi.hoisted(() => ({
         pathname,
         contentType: options.contentType || 'application/octet-stream',
         contentDisposition: 'inline',
-        etag: 'etag-1',
+        etag,
       };
     },
   ),
@@ -48,7 +65,7 @@ const blobMock = vi.hoisted(() => ({
         contentDisposition: 'inline',
         cacheControl: 'no-cache',
         uploadedAt: new Date(),
-        etag: 'etag-1',
+        etag: item.etag,
         size: item.body.length,
       },
     };
@@ -63,7 +80,7 @@ const blobMock = vi.hoisted(() => ({
         pathname,
         size: item.body.length,
         uploadedAt: new Date(),
-        etag: 'etag-1',
+        etag: item.etag,
       }));
     return { blobs, hasMore: false };
   }),
@@ -143,7 +160,13 @@ import {
   putBinary as storagePutBinary,
   putJson as storagePutJson,
 } from '@/lib/storage/adapter';
-import { getEventDetail, upsertRsvp } from '@/lib/storage/events';
+import {
+  createComment,
+  createEvent,
+  getEventDetail,
+  toggleReaction,
+  upsertRsvp,
+} from '@/lib/storage/events';
 
 let tempDir: string;
 const prevBlobToken = process.env.BLOB_READ_WRITE_TOKEN;
@@ -907,6 +930,88 @@ describe('storage, crypto, sanitizer, calendar & API routes', () => {
       else process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY = prevPub;
       if (prevPriv === undefined) delete process.env.VAPID_PRIVATE_KEY;
       else process.env.VAPID_PRIVATE_KEY = prevPriv;
+    }
+  });
+
+  it('executes v2 event lifecycle on Vercel Blob with zero list() calls and immutable cover headers', async () => {
+    process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_test_token';
+    blobMock.seq = 0;
+    blobMock.store.clear();
+    blobMock.put.mockClear();
+    blobMock.get.mockClear();
+    blobMock.list.mockClear();
+    blobMock.del.mockClear();
+
+    try {
+      const created = await createEvent({
+        title: 'Winter Solstice Supper',
+        startIso: '2026-12-21T18:30:00',
+        timeZone: 'America/New_York',
+      });
+      const id = created.event.id;
+      expect((created.event as unknown as Record<string, unknown>).storageVersion).toBeUndefined();
+
+      // Concurrent RSVPs serialize cleanly via ifMatch optimistic concurrency
+      const [r1, r2] = await Promise.all([
+        upsertRsvp(id, { guestName: 'Alice', status: 'yes', plusOnes: 1 }),
+        upsertRsvp(id, { guestName: 'Bob', status: 'no' }),
+      ]);
+      expect(r1.rsvp.guestName).toBe('Alice');
+      expect(r2.rsvp.guestName).toBe('Bob');
+
+      const comment = await createComment(id, {
+        authorName: 'Alice',
+        body: 'Bringing mulled cider!',
+        guestToken: r1.guestToken,
+      });
+      const reacted = await toggleReaction(id, comment.id, '🎉');
+      expect(reacted.reactions['🎉']).toBe(1);
+
+      const fullDetail = await getEventDetail(id, { guestToken: r1.guestToken });
+      expect(fullDetail!.rsvps.yes).toHaveLength(1);
+      expect(fullDetail!.rsvps.no).toHaveLength(1);
+      expect(fullDetail!.rsvps.totalHeadcount).toBe(2);
+      expect(fullDetail!.comments).toHaveLength(1);
+      expect(fullDetail!.comments[0].rsvpStatus).toBe('yes');
+      expect(fullDetail!.comments[0].reactions['🎉']).toBe(1);
+      expect(fullDetail!.viewerRsvp?.guestName).toBe('Alice');
+
+      const summaryDetail = await getEventDetail(id, { summaryOnly: true });
+      expect(summaryDetail!.rsvps.totalHeadcount).toBe(2);
+      expect(summaryDetail!.comments).toEqual([]);
+
+      // Zero list() Advanced Operations on v2 reads and mutations
+      expect(blobMock.list).not.toHaveBeenCalled();
+
+      // Versioned cover upload uses immutable cache headers and useCache: true
+      const coverForm = new FormData();
+      coverForm.set('file', new File([TINY_PNG], 'solstice.png', { type: 'image/png' }));
+      const uploadedCover = await postEventCoverRoute(
+        new Request(`http://localhost/api/events/${id}/cover`, {
+          method: 'POST',
+          headers: { 'x-edit-key': created.editKey },
+          body: coverForm,
+        }),
+        { params: Promise.resolve({ id }) },
+      );
+      expect(uploadedCover.status).toBe(201);
+      const uploadedJson = (await uploadedCover.json()) as { url: string };
+
+      blobMock.get.mockClear();
+      const cachedCoverRes = await getEventCoverRoute(
+        new Request(`http://localhost${uploadedJson.url}`),
+        { params: Promise.resolve({ id }) },
+      );
+      expect(cachedCoverRes.status).toBe(200);
+      expect(cachedCoverRes.headers.get('cache-control')).toBe(
+        'public, max-age=31536000, s-maxage=31536000, immutable',
+      );
+      expect(blobMock.get).toHaveBeenCalledWith(
+        expect.stringMatching(new RegExp(`^events/${id}/media/cover-`)),
+        expect.objectContaining({ access: 'private', useCache: true }),
+      );
+    } finally {
+      delete process.env.BLOB_READ_WRITE_TOKEN;
     }
   });
 });

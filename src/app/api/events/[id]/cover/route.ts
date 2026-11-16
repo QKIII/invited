@@ -16,11 +16,15 @@ export async function GET(req: Request, context: RouteContext) {
       return NextResponse.json({ error: 'Cover image not found' }, { status: 404 });
     }
 
+    const cacheControl = filename?.trim()
+      ? 'public, max-age=31536000, s-maxage=31536000, immutable'
+      : 'public, max-age=3600';
+
     return new NextResponse(new Uint8Array(media.data), {
       status: 200,
       headers: {
         'Content-Type': media.contentType,
-        'Cache-Control': 'public, max-age=3600',
+        'Cache-Control': cacheControl,
         'X-Content-Type-Options': 'nosniff',
         'Content-Security-Policy': "default-src 'none'",
       },

@@ -124,12 +124,23 @@ export async function extractImagePayload(
   }
 
   if (reqType.includes('application/json')) {
-    const body = (await req.json()) as {
+    const rawText = await req.text();
+    if (rawText.length > 4_200_000) {
+      throw new ValidationError(
+        'JSON image payload exceeds serverless limit; upload as multipart/form-data',
+      );
+    }
+    let body: {
       dataUrl?: string;
       dataBase64?: string;
       contentType?: string;
       editKey?: string;
     };
+    try {
+      body = JSON.parse(rawText) as typeof body;
+    } catch {
+      throw new ValidationError('Invalid JSON image payload');
+    }
 
     if (typeof body.dataUrl === 'string') {
       const match = /^data:(image\/[a-zA-Z0-9+.-]+);base64,([A-Za-z0-9+/=]+)$/.exec(

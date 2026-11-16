@@ -1,6 +1,13 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { BlobNotFoundError, del, get, list, put } from '@vercel/blob';
+import {
+  BlobNotFoundError,
+  BlobPreconditionFailedError,
+  del,
+  get,
+  list,
+  put,
+} from '@vercel/blob';
 
 export interface BinaryReadResult {
   data: Buffer;
@@ -68,6 +75,45 @@ function isBlobMissing(err: unknown): boolean {
   );
 }
 
+function isBlobConflict(err: unknown): boolean {
+  return (
+    err instanceof BlobPreconditionFailedError ||
+    (typeof err === 'object' &&
+      err !== null &&
+      'name' in err &&
+      (err as { name?: string }).name === 'BlobPreconditionFailedError') ||
+    (err instanceof Error && /already exists/i.test(err.message))
+  );
+}
+
+const keyLocks = new Map<string, Promise<void>>();
+
+async function withKeyLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const previous = keyLocks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const tail = previous.then(
+    () => current,
+    () => current,
+  );
+  keyLocks.set(key, tail);
+  await previous;
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (keyLocks.get(key) === tail) {
+      keyLocks.delete(key);
+    }
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function atomicWriteFile(
   filePath: string,
   contents: string | Buffer,
@@ -118,9 +164,11 @@ export async function putJson<T>(key: string, data: T): Promise<void> {
 }
 
 /**
- * Reads and parses JSON stored at `key`, returning `null` if not found.
+ * Reads and parses JSON stored at `key` along with its Blob ETag (when available).
  */
-export async function getJson<T>(key: string): Promise<T | null> {
+export async function getJsonWithEtag<T>(
+  key: string,
+): Promise<{ data: T | null; etag?: string }> {
   const normalized = normalizeStorageKey(key);
 
   if (shouldUseVercelBlob()) {
@@ -130,13 +178,16 @@ export async function getJson<T>(key: string): Promise<T | null> {
         useCache: false,
       });
       if (!result || result.statusCode === 304 || !result.stream) {
-        return null;
+        return { data: null };
       }
       const text = await new Response(result.stream).text();
-      return JSON.parse(text) as T;
+      return {
+        data: JSON.parse(text) as T,
+        etag: result.blob.etag,
+      };
     } catch (err) {
       if (isBlobMissing(err)) {
-        return null;
+        return { data: null };
       }
       throw err;
     }
@@ -145,13 +196,86 @@ export async function getJson<T>(key: string): Promise<T | null> {
   const fullPath = resolveLocalPath(getLocalDataDir(), normalized);
   try {
     const raw = await fs.readFile(fullPath, 'utf8');
-    return JSON.parse(raw) as T;
+    return { data: JSON.parse(raw) as T };
   } catch (err) {
     if (isEnoent(err)) {
-      return null;
+      return { data: null };
     }
     throw err;
   }
+}
+
+/**
+ * Reads and parses JSON stored at `key`, returning `null` if not found.
+ */
+export async function getJson<T>(key: string): Promise<T | null> {
+  const { data } = await getJsonWithEtag<T>(key);
+  return data;
+}
+
+/**
+ * Atomically reads, transforms, and persists JSON at `key` using `ifMatch`
+ * ETag optimistic concurrency control on Vercel Blob (and per-key locking locally).
+ */
+export async function updateJsonAtomically<T>(
+  key: string,
+  defaultValue: T,
+  mutator: (current: T) => T | Promise<T>,
+): Promise<T> {
+  const normalized = normalizeStorageKey(key);
+
+  return withKeyLock(normalized, async () => {
+    if (!shouldUseVercelBlob()) {
+      const fullPath = resolveLocalPath(getLocalDataDir(), normalized);
+      let current: T;
+      try {
+        const raw = await fs.readFile(fullPath, 'utf8');
+        current = JSON.parse(raw) as T;
+      } catch (err) {
+        if (isEnoent(err)) {
+          current = structuredClone(defaultValue);
+        } else {
+          throw err;
+        }
+      }
+      const next = await mutator(current);
+      if (Object.is(next, current)) {
+        return current;
+      }
+      await atomicWriteFile(fullPath, JSON.stringify(next));
+      return next;
+    }
+
+    const MAX_ATTEMPTS = 6;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+      const { data, etag } = await getJsonWithEtag<T>(normalized);
+      const current = data !== null ? data : structuredClone(defaultValue);
+      const next = await mutator(current);
+      if (Object.is(next, current)) {
+        return current;
+      }
+      const serialized = JSON.stringify(next);
+
+      try {
+        await put(normalized, serialized, {
+          access: 'private',
+          allowOverwrite: data !== null || Boolean(etag),
+          addRandomSuffix: false,
+          ...(etag ? { ifMatch: etag } : {}),
+          contentType: 'application/json; charset=utf-8',
+        });
+        return next;
+      } catch (err) {
+        if (isBlobConflict(err) && attempt < MAX_ATTEMPTS - 1) {
+          await sleep(25 + Math.floor(Math.random() * 75));
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    throw new Error(`Failed atomic JSON update for ${normalized}`);
+  });
 }
 
 /**
@@ -182,14 +306,17 @@ export async function putBinary(
 /**
  * Reads binary data stored at `key`, returning `null` if not found.
  */
-export async function getBinary(key: string): Promise<BinaryReadResult | null> {
+export async function getBinary(
+  key: string,
+  options?: { useCache?: boolean },
+): Promise<BinaryReadResult | null> {
   const normalized = normalizeStorageKey(key);
 
   if (shouldUseVercelBlob()) {
     try {
       const result = await get(normalized, {
         access: 'private',
-        useCache: false,
+        useCache: options?.useCache ?? false,
       });
       if (!result || result.statusCode === 304 || !result.stream) {
         return null;

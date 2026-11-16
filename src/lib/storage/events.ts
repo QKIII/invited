@@ -13,6 +13,7 @@ import {
   listPrefix,
   putBinary,
   putJson,
+  updateJsonAtomically,
 } from '@/lib/storage/adapter';
 import {
   ForbiddenError,
@@ -140,6 +141,18 @@ function eventMetaKey(id: string): string {
   return `events/${id}/meta.json`;
 }
 
+function rsvpsCollectionKey(id: string): string {
+  return `events/${id}/rsvps.json`;
+}
+
+function commentsCollectionKey(id: string): string {
+  return `events/${id}/comments.json`;
+}
+
+function subscribersCollectionKey(id: string): string {
+  return `events/${id}/subscribers.json`;
+}
+
 function rsvpKey(id: string, rsvpId: string): string {
   return `events/${id}/rsvps/${rsvpId}.json`;
 }
@@ -161,8 +174,13 @@ function tempCoverKey(filename: string): string {
 }
 
 function stripEventSecret(stored: StoredEventMeta): EventMeta {
-  const { editKeyHash: _omit, ...publicMeta } = stored;
+  const {
+    editKeyHash: _omit,
+    storageVersion: _omitVersion,
+    ...publicMeta
+  } = stored;
   void _omit;
+  void _omitVersion;
   return publicMeta;
 }
 
@@ -475,6 +493,7 @@ export async function createEvent(
     createdAt: now,
     updatedAt: now,
     editKeyHash,
+    storageVersion: 2,
   };
 
   await putJson(eventMetaKey(id), stored);
@@ -487,7 +506,7 @@ export async function createEvent(
  */
 export async function getEventDetail(
   id: string,
-  options?: { editKey?: string | null; guestToken?: string | null },
+  options?: { editKey?: string | null; guestToken?: string | null; summaryOnly?: boolean },
 ): Promise<EventDetailResponse | null> {
   if (!id || typeof id !== 'string' || !SAFE_ID_RE.test(id)) {
     return null;
@@ -498,23 +517,51 @@ export async function getEventDetail(
     return null;
   }
 
-  const [rsvpKeys, commentKeys, subscriberKeys] = await Promise.all([
-    listPrefix(`events/${id}/rsvps/`),
-    listPrefix(`events/${id}/comments/`),
-    listPrefix(`events/${id}/subscribers/`),
-  ]);
+  let storedRsvps: StoredRsvpRecord[] = [];
+  let comments: CommentRecord[] = [];
+  let subscriberCount = 0;
 
-  const [rawRsvps, rawComments] = await Promise.all([
-    Promise.all(rsvpKeys.map((k) => getJson<StoredRsvpRecord>(k))),
-    Promise.all(commentKeys.map((k) => getJson<CommentRecord>(k))),
-  ]);
+  if (storedMeta.storageVersion === 2) {
+    if (options?.summaryOnly) {
+      storedRsvps = [
+        ...((await getJson<StoredRsvpRecord[]>(rsvpsCollectionKey(id))) ?? []),
+      ];
+    } else {
+      const [rawRsvps, rawComments, rawSubscribers] = await Promise.all([
+        getJson<StoredRsvpRecord[]>(rsvpsCollectionKey(id)),
+        getJson<CommentRecord[]>(commentsCollectionKey(id)),
+        getJson<SubscriberRecord[]>(subscribersCollectionKey(id)),
+      ]);
+      storedRsvps = [...(rawRsvps ?? [])];
+      comments = [...(rawComments ?? [])];
+      subscriberCount = (rawSubscribers ?? []).length;
+    }
+  } else if (options?.summaryOnly) {
+    const rsvpKeys = await listPrefix(`events/${id}/rsvps/`);
+    const rawRsvps = await Promise.all(
+      rsvpKeys.map((k) => getJson<StoredRsvpRecord>(k)),
+    );
+    storedRsvps = rawRsvps.filter((r): r is StoredRsvpRecord => r !== null);
+  } else {
+    const [rsvpKeys, commentKeys, subscriberKeys] = await Promise.all([
+      listPrefix(`events/${id}/rsvps/`),
+      listPrefix(`events/${id}/comments/`),
+      listPrefix(`events/${id}/subscribers/`),
+    ]);
 
-  const storedRsvps = rawRsvps.filter(
-    (r): r is StoredRsvpRecord => r !== null,
-  );
+    const [rawRsvps, rawComments] = await Promise.all([
+      Promise.all(rsvpKeys.map((k) => getJson<StoredRsvpRecord>(k))),
+      Promise.all(commentKeys.map((k) => getJson<CommentRecord>(k))),
+    ]);
+
+    storedRsvps = rawRsvps.filter(
+      (r): r is StoredRsvpRecord => r !== null,
+    );
+    comments = rawComments.filter((c): c is CommentRecord => c !== null);
+    subscriberCount = subscriberKeys.length;
+  }
+
   storedRsvps.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-
-  const comments = rawComments.filter((c): c is CommentRecord => c !== null);
   comments.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
   const isHost = verifySecret(options?.editKey, storedMeta.editKeyHash);
@@ -560,7 +607,7 @@ export async function getEventDetail(
       awaitingNames: hideListForViewer ? [] : awaitingAll,
     },
     comments,
-    subscriberCount: subscriberKeys.length,
+    subscriberCount,
     ...(viewerRsvp ? { viewerRsvp } : {}),
     isHost,
   };
@@ -666,6 +713,7 @@ export async function updateEvent(
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
     editKeyHash: existing.editKeyHash,
+    ...(existing.storageVersion ? { storageVersion: existing.storageVersion } : {}),
   };
 
   await putJson(eventMetaKey(id), updated);
@@ -702,7 +750,7 @@ export async function upsertRsvp(
   guestToken: string;
   wallComment?: CommentRecord;
 }> {
-  await loadStoredEventOrThrow(id);
+  const event = await loadStoredEventOrThrow(id);
 
   if (payload?.status !== 'yes' && payload?.status !== 'no') {
     throw new ValidationError("RSVP status must be strictly 'yes' or 'no'");
@@ -727,41 +775,90 @@ export async function upsertRsvp(
   const bringingNote =
     sanitizePlainText(payload.bringingNote ?? '', 500) || undefined;
 
-  let existingMatch: StoredRsvpRecord | null = null;
-  if (payload.guestToken) {
-    const rsvpKeys = await listPrefix(`events/${id}/rsvps/`);
-    const candidates = await Promise.all(
-      rsvpKeys.map((k) => getJson<StoredRsvpRecord>(k)),
+  let storedRsvp!: StoredRsvpRecord;
+  let guestToken!: string;
+
+  if (event.storageVersion === 2) {
+    await updateJsonAtomically<StoredRsvpRecord[]>(
+      rsvpsCollectionKey(id),
+      [],
+      (current) => {
+        const existingIndex = payload.guestToken
+          ? current.findIndex((r) =>
+              verifySecret(payload.guestToken, r.guestTokenHash),
+            )
+          : -1;
+        const existingMatch =
+          existingIndex >= 0 ? current[existingIndex] : null;
+        const now = new Date().toISOString();
+        const rsvpId = existingMatch ? existingMatch.id : generateId(12);
+        guestToken =
+          existingMatch && payload.guestToken
+            ? payload.guestToken.trim()
+            : generateSecretKey();
+        const guestTokenHash = existingMatch
+          ? existingMatch.guestTokenHash
+          : hashSecret(guestToken);
+
+        storedRsvp = {
+          id: rsvpId,
+          eventId: id,
+          guestName,
+          status,
+          plusOnes,
+          ...(bringingNote ? { bringingNote } : {}),
+          createdAt: existingMatch ? existingMatch.createdAt : now,
+          updatedAt: now,
+          guestTokenHash,
+        };
+
+        const next = [...current];
+        if (existingIndex >= 0) {
+          next[existingIndex] = storedRsvp;
+        } else {
+          next.push(storedRsvp);
+        }
+        return next;
+      },
     );
-    existingMatch =
-      candidates.find(
-        (r) => r !== null && verifySecret(payload.guestToken, r.guestTokenHash),
-      ) ?? null;
+  } else {
+    let existingMatch: StoredRsvpRecord | null = null;
+    if (payload.guestToken) {
+      const rsvpKeys = await listPrefix(`events/${id}/rsvps/`);
+      const candidates = await Promise.all(
+        rsvpKeys.map((k) => getJson<StoredRsvpRecord>(k)),
+      );
+      existingMatch =
+        candidates.find(
+          (r) =>
+            r !== null && verifySecret(payload.guestToken, r.guestTokenHash),
+        ) ?? null;
+    }
+
+    const now = new Date().toISOString();
+    const rsvpId = existingMatch ? existingMatch.id : generateId(12);
+    guestToken =
+      existingMatch && payload.guestToken
+        ? payload.guestToken.trim()
+        : generateSecretKey();
+    const guestTokenHash = existingMatch
+      ? existingMatch.guestTokenHash
+      : hashSecret(guestToken);
+
+    storedRsvp = {
+      id: rsvpId,
+      eventId: id,
+      guestName,
+      status,
+      plusOnes,
+      ...(bringingNote ? { bringingNote } : {}),
+      createdAt: existingMatch ? existingMatch.createdAt : now,
+      updatedAt: now,
+      guestTokenHash,
+    };
+
+    await putJson(rsvpKey(id, rsvpId), storedRsvp);
   }
-
-  const now = new Date().toISOString();
-  const rsvpId = existingMatch ? existingMatch.id : generateId(12);
-  const guestToken =
-    existingMatch && payload.guestToken
-      ? payload.guestToken.trim()
-      : generateSecretKey();
-  const guestTokenHash = existingMatch
-    ? existingMatch.guestTokenHash
-    : hashSecret(guestToken);
-
-  const storedRsvp: StoredRsvpRecord = {
-    id: rsvpId,
-    eventId: id,
-    guestName,
-    status,
-    plusOnes,
-    ...(bringingNote ? { bringingNote } : {}),
-    createdAt: existingMatch ? existingMatch.createdAt : now,
-    updatedAt: now,
-    guestTokenHash,
-  };
-
-  await putJson(rsvpKey(id, rsvpId), storedRsvp);
 
   let wallComment: CommentRecord | undefined;
   if (payload.postToWall === true && bringingNote) {
@@ -791,13 +888,36 @@ export async function deleteRsvp(
   const event = await loadStoredEventOrThrow(id);
   assertValidId(rsvpId, 'RSVP ID');
 
+  const isHost = verifySecret(auth?.editKey, event.editKeyHash);
+
+  if (event.storageVersion === 2) {
+    await updateJsonAtomically<StoredRsvpRecord[]>(
+      rsvpsCollectionKey(id),
+      [],
+      (current) => {
+        const idx = current.findIndex((r) => r.id === rsvpId);
+        if (idx === -1) {
+          throw new NotFoundError('RSVP not found');
+        }
+        const isOwner = verifySecret(
+          auth?.guestToken,
+          current[idx].guestTokenHash,
+        );
+        if (!isHost && !isOwner) {
+          throw new ForbiddenError('Not authorized to remove this RSVP');
+        }
+        return current.filter((_, i) => i !== idx);
+      },
+    );
+    return;
+  }
+
   const key = rsvpKey(id, rsvpId);
   const existing = await getJson<StoredRsvpRecord>(key);
   if (!existing) {
     throw new NotFoundError('RSVP not found');
   }
 
-  const isHost = verifySecret(auth?.editKey, event.editKeyHash);
   const isOwner = verifySecret(auth?.guestToken, existing.guestTokenHash);
   if (!isHost && !isOwner) {
     throw new ForbiddenError('Not authorized to remove this RSVP');
@@ -807,7 +927,7 @@ export async function deleteRsvp(
 }
 
 /**
- * Creates a wall comment stored in its own sortable timestamp shard.
+ * Creates a wall comment stored in its consolidated collection (v2) or sortable shard (v1).
  */
 export async function createComment(
   id: string,
@@ -840,15 +960,26 @@ export async function createComment(
       : undefined;
 
   if (!rsvpStatus && payload?.guestToken) {
-    const rsvpKeys = await listPrefix(`events/${id}/rsvps/`);
-    const rsvps = await Promise.all(
-      rsvpKeys.map((k) => getJson<StoredRsvpRecord>(k)),
-    );
-    const matching = rsvps.find(
-      (r) => r !== null && verifySecret(payload.guestToken, r.guestTokenHash),
-    );
-    if (matching) {
-      rsvpStatus = matching.status;
+    if (event.storageVersion === 2) {
+      const rsvps =
+        (await getJson<StoredRsvpRecord[]>(rsvpsCollectionKey(id))) ?? [];
+      const matching = rsvps.find((r) =>
+        verifySecret(payload.guestToken, r.guestTokenHash),
+      );
+      if (matching) {
+        rsvpStatus = matching.status;
+      }
+    } else {
+      const rsvpKeys = await listPrefix(`events/${id}/rsvps/`);
+      const rsvps = await Promise.all(
+        rsvpKeys.map((k) => getJson<StoredRsvpRecord>(k)),
+      );
+      const matching = rsvps.find(
+        (r) => r !== null && verifySecret(payload.guestToken, r.guestTokenHash),
+      );
+      if (matching) {
+        rsvpStatus = matching.status;
+      }
     }
   }
 
@@ -865,6 +996,15 @@ export async function createComment(
     createdAt: new Date().toISOString(),
   };
 
+  if (event.storageVersion === 2) {
+    await updateJsonAtomically<CommentRecord[]>(
+      commentsCollectionKey(id),
+      [],
+      (current) => [...current, record],
+    );
+    return record;
+  }
+
   await putJson(commentKey(id, sortableTs, commentId), record);
   return record;
 }
@@ -878,7 +1018,8 @@ export async function toggleReaction(
   emoji: string,
   options?: { delta?: 1 | -1 },
 ): Promise<CommentRecord> {
-  await loadStoredEventOrThrow(id);
+  const event = await loadStoredEventOrThrow(id);
+  assertValidId(commentId, 'comment ID');
 
   if (
     !ALLOWED_REACTION_EMOJIS.includes(
@@ -886,6 +1027,37 @@ export async function toggleReaction(
     )
   ) {
     throw new ValidationError('Unsupported reaction emoji');
+  }
+
+  const delta = options?.delta === -1 ? -1 : 1;
+
+  if (event.storageVersion === 2) {
+    let updatedComment!: CommentRecord;
+    await updateJsonAtomically<CommentRecord[]>(
+      commentsCollectionKey(id),
+      [],
+      (current) => {
+        const idx = current.findIndex((c) => c.id === commentId);
+        if (idx === -1) {
+          throw new NotFoundError('Comment not found');
+        }
+        const existing = current[idx];
+        const reactions: Record<string, number> = {
+          ...(existing.reactions ?? {}),
+        };
+        const nextCount = (reactions[emoji] ?? 0) + delta;
+        if (nextCount <= 0) {
+          delete reactions[emoji];
+        } else {
+          reactions[emoji] = nextCount;
+        }
+        updatedComment = { ...existing, reactions };
+        const next = [...current];
+        next[idx] = updatedComment;
+        return next;
+      },
+    );
+    return updatedComment;
   }
 
   const key = await findCommentKeyById(id, commentId);
@@ -898,7 +1070,6 @@ export async function toggleReaction(
     throw new NotFoundError('Comment not found');
   }
 
-  const delta = options?.delta === -1 ? -1 : 1;
   const reactions: Record<string, number> = { ...(existing.reactions ?? {}) };
   const nextCount = (reactions[emoji] ?? 0) + delta;
 
@@ -927,6 +1098,22 @@ export async function deleteComment(
 ): Promise<void> {
   const event = await loadStoredEventOrThrow(id);
   assertHostAuth(editKey, event);
+  assertValidId(commentId, 'comment ID');
+
+  if (event.storageVersion === 2) {
+    await updateJsonAtomically<CommentRecord[]>(
+      commentsCollectionKey(id),
+      [],
+      (current) => {
+        const next = current.filter((c) => c.id !== commentId);
+        if (next.length === current.length) {
+          throw new NotFoundError('Comment not found');
+        }
+        return next;
+      },
+    );
+    return;
+  }
 
   const key = await findCommentKeyById(id, commentId);
   if (!key) {
@@ -958,14 +1145,12 @@ export async function addSubscriber(
   kind: 'webpush' | 'email';
   createdAt: string;
 }> {
-  await loadStoredEventOrThrow(id);
-
-  const existingKeys = await listPrefix(`events/${id}/subscribers/`);
-  const existingRecords = (
-    await Promise.all(existingKeys.map((k) => getJson<SubscriberRecord>(k)))
-  ).filter((r): r is SubscriberRecord => r !== null);
-
+  const event = await loadStoredEventOrThrow(id);
   const label = normalizeOptionalText(payload?.label, 80);
+
+  let validatedPush: { endpointUrl: string; sub: PushSubscriptionPayload } | null =
+    null;
+  let validatedEmail: string | null = null;
 
   if (payload?.kind === 'webpush') {
     const sub = payload.subscription;
@@ -992,54 +1177,57 @@ export async function addSubscriber(
     } catch {
       throw new ValidationError('Invalid Web Push endpoint URL');
     }
-
-    const duplicate = existingRecords.find(
-      (r) =>
-        r.kind === 'webpush' && r.subscription?.endpoint === endpointUrl,
-    );
-
-    const subId = duplicate ? duplicate.id : generateId(12);
-    const createdAt = duplicate
-      ? duplicate.createdAt
-      : new Date().toISOString();
-
-    const record: SubscriberRecord = {
-      id: subId,
-      eventId: id,
-      kind: 'webpush',
-      subscription: {
-        endpoint: endpointUrl,
-        expirationTime: sub.expirationTime ?? null,
-        keys: {
-          p256dh: sub.keys.p256dh.trim(),
-          auth: sub.keys.auth.trim(),
-        },
-      },
-      ...(label ? { label } : {}),
-      createdAt,
-    };
-
-    await putJson(subscriberKey(id, subId), record);
-    return { id: subId, eventId: id, kind: 'webpush', createdAt };
-  }
-
-  if (payload?.kind === 'email') {
+    validatedPush = { endpointUrl, sub };
+  } else if (payload?.kind === 'email') {
     const rawEmail =
-      typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';
+      typeof payload.email === 'string'
+        ? payload.email.trim().toLowerCase()
+        : '';
     if (!rawEmail || rawEmail.length > 254 || !EMAIL_RE.test(rawEmail)) {
       throw new ValidationError('Valid email address is required');
     }
+    validatedEmail = rawEmail;
+  } else {
+    throw new ValidationError("Subscriber kind must be 'webpush' or 'email'");
+  }
 
+  const buildRecord = (existingRecords: SubscriberRecord[]): SubscriberRecord => {
+    if (validatedPush) {
+      const { endpointUrl, sub } = validatedPush;
+      const duplicate = existingRecords.find(
+        (r) =>
+          r.kind === 'webpush' && r.subscription?.endpoint === endpointUrl,
+      );
+      const subId = duplicate ? duplicate.id : generateId(12);
+      const createdAt = duplicate
+        ? duplicate.createdAt
+        : new Date().toISOString();
+      return {
+        id: subId,
+        eventId: id,
+        kind: 'webpush',
+        subscription: {
+          endpoint: endpointUrl,
+          expirationTime: sub.expirationTime ?? null,
+          keys: {
+            p256dh: sub.keys.p256dh.trim(),
+            auth: sub.keys.auth.trim(),
+          },
+        },
+        ...(label ? { label } : {}),
+        createdAt,
+      };
+    }
+
+    const rawEmail = validatedEmail!;
     const duplicate = existingRecords.find(
       (r) => r.kind === 'email' && r.email === rawEmail,
     );
-
     const subId = duplicate ? duplicate.id : generateId(12);
     const createdAt = duplicate
       ? duplicate.createdAt
       : new Date().toISOString();
-
-    const record: SubscriberRecord = {
+    return {
       id: subId,
       eventId: id,
       kind: 'email',
@@ -1047,12 +1235,46 @@ export async function addSubscriber(
       ...(label ? { label } : {}),
       createdAt,
     };
+  };
 
-    await putJson(subscriberKey(id, subId), record);
-    return { id: subId, eventId: id, kind: 'email', createdAt };
+  if (event.storageVersion === 2) {
+    let saved!: SubscriberRecord;
+    await updateJsonAtomically<SubscriberRecord[]>(
+      subscribersCollectionKey(id),
+      [],
+      (current) => {
+        saved = buildRecord(current);
+        const idx = current.findIndex((r) => r.id === saved.id);
+        const next = [...current];
+        if (idx >= 0) {
+          next[idx] = saved;
+        } else {
+          next.push(saved);
+        }
+        return next;
+      },
+    );
+    return {
+      id: saved.id,
+      eventId: id,
+      kind: saved.kind,
+      createdAt: saved.createdAt,
+    };
   }
 
-  throw new ValidationError("Subscriber kind must be 'webpush' or 'email'");
+  const existingKeys = await listPrefix(`events/${id}/subscribers/`);
+  const existingRecords = (
+    await Promise.all(existingKeys.map((k) => getJson<SubscriberRecord>(k)))
+  ).filter((r): r is SubscriberRecord => r !== null);
+
+  const record = buildRecord(existingRecords);
+  await putJson(subscriberKey(id, record.id), record);
+  return {
+    id: record.id,
+    eventId: id,
+    kind: record.kind,
+    createdAt: record.createdAt,
+  };
 }
 
 /**
@@ -1061,6 +1283,20 @@ export async function addSubscriber(
 export async function removeSubscriber(id: string, subId: string): Promise<void> {
   assertValidId(id, 'event ID');
   assertValidId(subId, 'subscriber ID');
+
+  const storedMeta = await getJson<StoredEventMeta>(eventMetaKey(id));
+  if (storedMeta?.storageVersion === 2) {
+    await updateJsonAtomically<SubscriberRecord[]>(
+      subscribersCollectionKey(id),
+      [],
+      (current) => {
+        const next = current.filter((r) => r.id !== subId);
+        return next.length === current.length ? current : next;
+      },
+    );
+    return;
+  }
+
   await deletePath(subscriberKey(id, subId));
 }
 
@@ -1071,10 +1307,21 @@ export async function removeSubscriberByTarget(
   id: string,
   target: { subId?: string; endpoint?: string; email?: string },
 ): Promise<boolean> {
-  await loadStoredEventOrThrow(id);
+  const event = await loadStoredEventOrThrow(id);
 
   if (target.subId) {
     assertValidId(target.subId, 'subscriber ID');
+    if (event.storageVersion === 2) {
+      await updateJsonAtomically<SubscriberRecord[]>(
+        subscribersCollectionKey(id),
+        [],
+        (current) => {
+          const next = current.filter((r) => r.id !== target.subId);
+          return next.length === current.length ? current : next;
+        },
+      );
+      return true;
+    }
     await deletePath(subscriberKey(id, target.subId));
     return true;
   }
@@ -1087,12 +1334,7 @@ export async function removeSubscriberByTarget(
     );
   }
 
-  const keys = await listPrefix(`events/${id}/subscribers/`);
-  const records = await Promise.all(
-    keys.map(async (k) => ({ key: k, rec: await getJson<SubscriberRecord>(k) })),
-  );
-
-  const matching = records.filter(({ rec }) => {
+  const matchesTarget = (rec: SubscriberRecord | null): boolean => {
     if (!rec) return false;
     if (endpoint && rec.kind === 'webpush' && rec.subscription?.endpoint === endpoint) {
       return true;
@@ -1101,7 +1343,28 @@ export async function removeSubscriberByTarget(
       return true;
     }
     return false;
-  });
+  };
+
+  if (event.storageVersion === 2) {
+    let removed = false;
+    await updateJsonAtomically<SubscriberRecord[]>(
+      subscribersCollectionKey(id),
+      [],
+      (current) => {
+        const next = current.filter((rec) => !matchesTarget(rec));
+        removed = next.length < current.length;
+        return removed ? next : current;
+      },
+    );
+    return removed;
+  }
+
+  const keys = await listPrefix(`events/${id}/subscribers/`);
+  const records = await Promise.all(
+    keys.map(async (k) => ({ key: k, rec: await getJson<SubscriberRecord>(k) })),
+  );
+
+  const matching = records.filter(({ rec }) => matchesTarget(rec));
 
   await Promise.all(matching.map((m) => deletePath(m.key)));
   return matching.length > 0;
@@ -1114,6 +1377,11 @@ export async function listEventSubscribers(
   id: string,
 ): Promise<SubscriberRecord[]> {
   assertValidId(id, 'event ID');
+  const storedMeta = await getJson<StoredEventMeta>(eventMetaKey(id));
+  if (storedMeta?.storageVersion === 2) {
+    return (await getJson<SubscriberRecord[]>(subscribersCollectionKey(id))) ?? [];
+  }
+
   const keys = await listPrefix(`events/${id}/subscribers/`);
   const records = await Promise.all(
     keys.map((k) => getJson<SubscriberRecord>(k)),
@@ -1178,6 +1446,7 @@ export async function getEventCover(
     return null;
   }
 
+  const hasExplicitFilename = Boolean(filename?.trim());
   let targetFile = filename?.trim() || '';
   if (targetFile) {
     if (!/^[a-zA-Z0-9_-]{4,64}\.(png|jpg|jpeg|webp|gif)$/.test(targetFile)) {
@@ -1195,7 +1464,7 @@ export async function getEventCover(
 
   const key = mediaFileKey(id, targetFile);
   const [binary, sidecar] = await Promise.all([
-    getBinary(key),
+    getBinary(key, hasExplicitFilename ? { useCache: true } : undefined),
     getJson<CoverMetaSidecar>(`${key}.meta.json`),
   ]);
 

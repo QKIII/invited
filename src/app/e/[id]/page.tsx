@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { InviteView } from '@/components/invite/InviteView';
@@ -7,6 +8,8 @@ import { getEventDetail } from '@/lib/storage/events';
 
 export const dynamic = 'force-dynamic';
 
+const getCachedPublicEventDetail = cache((id: string) => getEventDetail(id));
+
 interface PageProps {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ key?: string }>;
@@ -14,7 +17,7 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { id } = await params;
-  const detail = await getEventDetail(id);
+  const detail = await getCachedPublicEventDetail(id);
 
   if (!detail) {
     return {
@@ -63,7 +66,9 @@ export default async function EventInvitePage({ params, searchParams }: PageProp
   const { id } = await params;
   const { key } = await searchParams;
 
-  const detail = await getEventDetail(id, { editKey: key ?? null });
+  const detail = key
+    ? await getEventDetail(id, { editKey: key })
+    : await getCachedPublicEventDetail(id);
   if (!detail) {
     notFound();
   }
