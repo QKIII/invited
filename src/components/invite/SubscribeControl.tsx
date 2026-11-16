@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { Bell, Calendar, Check, Mail, Sparkles, X } from 'lucide-react';
+import { Bell, Calendar, Check, Download, Mail, X } from 'lucide-react';
 import { getDeviceProfile, saveDeviceProfile } from '@/lib/client/deviceProfile';
 import { setupDialogLightDismiss } from '@/lib/polyfills/ui';
 
@@ -232,7 +232,7 @@ export function SubscribeControl({
           }}
         >
           <Bell className="h-4 w-4 shrink-0" aria-hidden="true" />
-          <span>Get Event Updates (Optional)</span>
+          <span>Get reminders</span>
         </button>
       )}
 
@@ -256,13 +256,13 @@ export function SubscribeControl({
                 fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
               }}
             >
-              Event Reminders
+              Event reminders
             </h2>
             <p
               className="mt-0.5 text-xs truncate"
               style={{ color: 'var(--theme-text-muted)' }}
             >
-              {eventTitle} · No account needed
+              {eventTitle} · No sign-in needed
             </p>
           </div>
 
@@ -288,12 +288,12 @@ export function SubscribeControl({
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
-                  <Sparkles
+                  <Bell
                     className="h-4 w-4 shrink-0"
                     style={{ color: 'var(--theme-accent)' }}
                     aria-hidden="true"
                   />
-                  <span className="text-sm font-medium truncate">Browser push alerts</span>
+                  <span className="text-sm font-medium truncate">Device notifications</span>
                 </div>
                 <button
                   type="button"
@@ -319,7 +319,7 @@ export function SubscribeControl({
               style={{ color: 'var(--theme-text-muted)' }}
             >
               <Mail className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>Email reminders (optional)</span>
+              <span>Email updates</span>
             </label>
             <div className="flex items-center gap-2">
               <input
@@ -368,9 +368,9 @@ export function SubscribeControl({
             >
               <span className="inline-flex items-center gap-2">
                 <Calendar className="h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>Download Calendar Invite (.ics)</span>
+                <span>Add to calendar (.ics)</span>
               </span>
-              <span className="text-xs opacity-60">↓</span>
+              <Download className="h-3.5 w-3.5 opacity-60" aria-hidden="true" />
             </a>
           </div>
         </div>

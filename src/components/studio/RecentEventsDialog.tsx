@@ -13,13 +13,14 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { setupDialogLightDismiss } from '@/lib/polyfills/ui';
+import { InstallAppButton } from '@/components/pwa/InstallAppButton';
 import {
   getRecentEvents,
   getRecentEventsServerSnapshot,
   removeRecentEvent,
   subscribeRecentEvents,
 } from '@/lib/client/recentEvents';
+import { setupDialogLightDismiss } from '@/lib/polyfills/ui';
 
 interface RecentEventsDialogProps {
   open: boolean;
@@ -27,10 +28,10 @@ interface RecentEventsDialogProps {
 }
 
 function formatShortDate(iso?: string, timeZone?: string): string {
-  if (!iso) return 'Date TBD';
+  if (!iso) return 'Date to be decided';
   try {
     const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return 'Date TBD';
+    if (Number.isNaN(date.getTime())) return 'Date to be decided';
     return new Intl.DateTimeFormat('en-US', {
       month: 'short',
       day: 'numeric',
@@ -40,7 +41,7 @@ function formatShortDate(iso?: string, timeZone?: string): string {
       ...(timeZone ? { timeZone } : {}),
     }).format(date);
   } catch {
-    return 'Date TBD';
+    return 'Date to be decided';
   }
 }
 
@@ -76,9 +77,17 @@ export function RecentEventsDialog({
     const dialog = dialogRef.current;
     if (!dialog) return;
     if (open && !dialog.open) {
-      dialog.showModal();
+      if (typeof dialog.showModal === 'function') {
+        dialog.showModal();
+      } else {
+        dialog.setAttribute('open', '');
+      }
     } else if (!open && dialog.open) {
-      dialog.close();
+      if (typeof dialog.close === 'function') {
+        dialog.close();
+      } else {
+        dialog.removeAttribute('open');
+      }
     }
   }, [open]);
 
@@ -106,49 +115,76 @@ export function RecentEventsDialog({
     <dialog
       ref={dialogRef}
       closedby="any"
-      aria-labelledby="my-events-dialog-title"
-      className="m-auto w-[min(94vw,640px)] max-h-[86dvh] overflow-hidden rounded-3xl border border-white/15 bg-slate-950/95 text-slate-100 shadow-2xl p-0 backdrop:bg-black/60"
+      aria-labelledby="my-invites-dialog-title"
+      data-testid="my-invites-dialog"
+      className="w-full sm:w-[min(94vw,540px)] max-h-[86dvh] mx-auto mt-auto mb-0 sm:my-auto overflow-hidden rounded-t-3xl sm:rounded-3xl border shadow-2xl p-0 backdrop:bg-black/60 backdrop:backdrop-blur-sm"
+      style={{
+        backgroundColor: 'var(--theme-card-solid, #121a2e)',
+        borderColor: 'var(--theme-border, rgba(255,255,255,0.16))',
+        color: 'var(--theme-text-primary, #f8fafc)',
+      }}
     >
-      <div className="flex items-center justify-between gap-4 border-b border-white/10 px-6 py-4">
-        <div>
+      <div className="flex flex-col max-h-[86dvh]">
+      <div
+        className="shrink-0 flex items-center justify-between gap-4 border-b px-5 py-4"
+        style={{ borderColor: 'var(--theme-hairline, rgba(255,255,255,0.12))' }}
+      >
+        <div className="min-w-0">
           <h2
-            id="my-events-dialog-title"
-            className="text-xl font-semibold tracking-tight text-white"
+            id="my-invites-dialog-title"
+            className="text-lg sm:text-xl font-bold tracking-tight"
+            style={{
+              fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
+            }}
           >
-            My Events
+            My Invites
           </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Saved locally on this browser — no accounts required.
+          <p
+            className="text-xs mt-0.5"
+            style={{ color: 'var(--theme-text-muted, #a3b3cf)' }}
+          >
+            Saved on this device — no sign-in needed.
           </p>
         </div>
+
         <button
           type="button"
           onClick={() => dialogRef.current?.close()}
-          aria-label="Close My Events"
-          className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 text-slate-300 hover:bg-white/15 hover:text-white transition min-h-[44px] min-w-[44px]"
+          aria-label="Close My Invites"
+          className="h-9 w-9 rounded-full border inline-flex items-center justify-center opacity-80 hover:opacity-100 transition cursor-pointer shrink-0"
+          style={{
+            borderColor: 'var(--theme-hairline, rgba(255,255,255,0.16))',
+            color: 'var(--theme-text-primary, #f8fafc)',
+          }}
         >
-          <X className="h-5 w-5" aria-hidden="true" />
+          <X className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
 
-      <div className="overflow-y-auto max-h-[calc(86dvh-140px)] p-6 space-y-4">
+      <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-3">
         {events.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-8 text-center space-y-3">
-            <p className="text-base font-medium text-slate-200">
-              No saved invites on this browser yet
+          <div
+            className="rounded-2xl border border-dashed p-7 text-center space-y-3"
+            style={{
+              backgroundColor: 'var(--theme-surface-bg, rgba(255,255,255,0.04))',
+              borderColor: 'var(--theme-border, rgba(255,255,255,0.14))',
+            }}
+          >
+            <p className="text-base font-semibold">No invites saved yet</p>
+            <p
+              className="text-sm max-w-sm mx-auto"
+              style={{ color: 'var(--theme-text-muted, #a3b3cf)' }}
+            >
+              When you create or open an invite, you can jump back to it here anytime.
             </p>
-            <p className="text-sm text-slate-400 max-w-md mx-auto">
-              Whenever you publish or open an event on invited, its Guest Link
-              and your Host Edit Link appear right here for quick access.
-            </p>
-            <div className="pt-2">
+            <div className="pt-1">
               <Link
-                href="/create"
+                href="/"
                 onClick={() => dialogRef.current?.close()}
-                className="inline-flex items-center gap-2 rounded-full bg-emerald-400 px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-emerald-300 transition min-h-[48px]"
+                className="invite-cta-btn inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold shadow-md transition hover:opacity-95"
               >
                 <Plus className="h-4 w-4" aria-hidden="true" />
-                Create Your First Invite
+                <span>Create an invite</span>
               </Link>
             </div>
           </div>
@@ -160,41 +196,50 @@ export function RecentEventsDialog({
               return (
                 <li
                   key={entry.id}
-                  className="invite-card rounded-2xl border border-white/12 bg-white/[0.04] p-4 space-y-3"
+                  className="rounded-2xl border p-4 space-y-3"
+                  style={{
+                    backgroundColor: 'var(--theme-surface-bg, rgba(255,255,255,0.05))',
+                    borderColor: 'var(--theme-hairline, rgba(255,255,255,0.14))',
+                  }}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span
-                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold"
+                          style={
                             entry.role === 'host'
-                              ? 'bg-amber-400/15 text-amber-200 border border-amber-400/30'
-                              : 'bg-sky-400/15 text-sky-200 border border-sky-400/30'
-                          }`}
+                              ? {
+                                  backgroundColor: 'var(--theme-card-bg)',
+                                  borderColor: 'var(--theme-accent)',
+                                  color: 'var(--theme-accent)',
+                                }
+                              : {
+                                  backgroundColor: 'var(--theme-card-bg)',
+                                  borderColor: 'var(--theme-hairline)',
+                                  color: 'var(--theme-text-muted)',
+                                }
+                          }
                         >
-                          {entry.role === 'host' ? (
-                            <>
-                              <KeyRound className="h-3 w-3" aria-hidden="true" />
-                              Host
-                            </>
-                          ) : (
-                            'Visited'
-                          )}
+                          {entry.role === 'host' ? 'Hosting' : 'Opened'}
                         </span>
-                        <h3 className="text-base font-semibold text-white truncate">
+                        <h3 className="text-base font-semibold truncate">
                           {entry.title}
                         </h3>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
-                        <span className="inline-flex items-center gap-1">
-                          <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
-                          {formatShortDate(entry.startIso, entry.timeZone)}
+                      <div
+                        className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs"
+                        style={{ color: 'var(--theme-text-muted, #a3b3cf)' }}
+                      >
+                        <span className="inline-flex items-center gap-1.5">
+                          <Calendar className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                          <span>{formatShortDate(entry.startIso, entry.timeZone)}</span>
                         </span>
                         {entry.locationName ? (
-                          <span className="inline-flex items-center gap-1">
-                            <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-                            {entry.locationName}
+                          <span className="inline-flex items-center gap-1.5 min-w-0">
+                            <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                            <span className="truncate">{entry.locationName}</span>
                           </span>
                         ) : null}
                       </div>
@@ -203,38 +248,42 @@ export function RecentEventsDialog({
                     <button
                       type="button"
                       onClick={() => handleForget(entry.id)}
-                      aria-label={`Remove ${entry.title} from saved events`}
-                      title="Remove from this browser"
-                      className="inline-flex items-center justify-center rounded-xl text-slate-400 hover:bg-rose-500/15 hover:text-rose-300 transition min-h-[40px] min-w-[40px]"
+                      aria-label={`Remove ${entry.title} from saved invites`}
+                      title="Remove from list"
+                      className="inline-flex items-center justify-center rounded-full opacity-60 hover:opacity-100 hover:text-rose-500 transition h-8 w-8 shrink-0 cursor-pointer"
                     >
                       <Trash2 className="h-4 w-4" aria-hidden="true" />
                     </button>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
                     <Link
                       href={entry.guestUrl}
                       onClick={() => dialogRef.current?.close()}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-white/10 px-3.5 py-2 text-sm font-medium text-white hover:bg-white/20 transition min-h-[44px]"
+                      className="invite-cta-btn inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold shadow-sm transition hover:opacity-95"
                     >
                       <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-                      Guest Invite
+                      <span>Open</span>
                     </Link>
 
                     <button
                       type="button"
                       onClick={() => void handleCopy(guestTag, entry.guestUrl)}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-white/10 transition min-h-[44px]"
+                      className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition hover:opacity-85 cursor-pointer"
+                      style={{
+                        borderColor: 'var(--theme-border, rgba(255,255,255,0.16))',
+                        color: 'var(--theme-text-primary, #f8fafc)',
+                      }}
                     >
                       {copiedId === guestTag ? (
                         <>
-                          <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
-                          Copied
+                          <Check className="h-3.5 w-3.5 text-emerald-500" aria-hidden="true" />
+                          <span>Copied</span>
                         </>
                       ) : (
                         <>
                           <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-                          Copy Guest Link
+                          <span>Copy link</span>
                         </>
                       )}
                     </button>
@@ -244,27 +293,33 @@ export function RecentEventsDialog({
                         <Link
                           href={entry.editUrl}
                           onClick={() => dialogRef.current?.close()}
-                          className="inline-flex items-center gap-1.5 rounded-xl bg-amber-400/15 border border-amber-400/35 px-3.5 py-2 text-sm font-medium text-amber-100 hover:bg-amber-400/25 transition min-h-[44px]"
+                          className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition hover:opacity-85"
+                          style={{
+                            borderColor: 'var(--theme-border, rgba(255,255,255,0.16))',
+                            color: 'var(--theme-text-primary, #f8fafc)',
+                          }}
                         >
                           <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
-                          Edit Event
+                          <span>Edit</span>
                         </Link>
                         <button
                           type="button"
-                          onClick={() =>
-                            void handleCopy(editTag, entry.editUrl ?? '')
-                          }
-                          className="inline-flex items-center gap-1.5 rounded-xl border border-amber-400/25 px-3 py-2 text-xs font-medium text-amber-200 hover:bg-amber-400/15 transition min-h-[44px]"
+                          onClick={() => void handleCopy(editTag, entry.editUrl ?? '')}
+                          className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition hover:opacity-85 cursor-pointer"
+                          style={{
+                            borderColor: 'var(--theme-hairline, rgba(255,255,255,0.12))',
+                            color: 'var(--theme-text-muted, #a3b3cf)',
+                          }}
                         >
                           {copiedId === editTag ? (
                             <>
-                              <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
-                              Copied
+                              <Check className="h-3.5 w-3.5 text-emerald-500" aria-hidden="true" />
+                              <span>Copied edit link</span>
                             </>
                           ) : (
                             <>
                               <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-                              Copy Edit Link
+                              <span>Copy edit link</span>
                             </>
                           )}
                         </button>
@@ -278,18 +333,29 @@ export function RecentEventsDialog({
         )}
       </div>
 
-      <div className="border-t border-white/10 bg-slate-900/60 px-6 py-3 flex items-center justify-between gap-3">
-        <p className="text-xs text-slate-400">
-          Tip: Bookmark or save your Secret Edit Link if you switch devices.
-        </p>
+      <div
+        className="shrink-0 border-t px-5 py-3 flex items-center justify-between gap-3"
+        style={{ borderColor: 'var(--theme-hairline, rgba(255,255,255,0.12))' }}
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <InstallAppButton />
+          <p
+            className="text-xs truncate"
+            style={{ color: 'var(--theme-text-muted, #a3b3cf)' }}
+          >
+            Stored on this device
+          </p>
+        </div>
+
         <Link
-          href="/create"
+          href="/"
           onClick={() => dialogRef.current?.close()}
-          className="inline-flex items-center gap-1.5 rounded-full bg-emerald-400 px-4 py-2 text-xs font-semibold text-slate-950 hover:bg-emerald-300 transition min-h-[40px] shrink-0"
+          className="invite-cta-btn inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition hover:opacity-95 shrink-0"
         >
           <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-          New Invite
+          <span>New invite</span>
         </Link>
+      </div>
       </div>
     </dialog>
   );

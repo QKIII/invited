@@ -2,8 +2,9 @@
 
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
-import { Calendar, Sparkles } from 'lucide-react';
+import { Calendar } from 'lucide-react';
 import { AmbientBackdrop } from '@/components/effects/AmbientBackdrop';
+import { InviteIcon } from '@/components/icons/InviteIcons';
 import { GuestAvatar } from '@/components/invite/GuestAvatar';
 import {
   getDeviceProfile,
@@ -11,6 +12,7 @@ import {
   subscribeDeviceProfile,
 } from '@/lib/client/deviceProfile';
 import { consumeStudioDraft } from '@/lib/client/recentEvents';
+import { useThemeViewportSync } from '@/lib/client/useThemeViewportSync';
 import { parseEventPrompt, type ParsedEventDraft } from '@/lib/nlp/parseEventPrompt';
 import { getThemePreset, resolveThemeCssVars } from '@/lib/themes/presets';
 import type { InviteStyleConfig } from '@/types/invite';
@@ -84,6 +86,8 @@ export function CreateInviteClient({ initialPrompt }: CreateInviteClientProps) {
   const backdropMode =
     themeVars['--theme-backdrop-mode'] === 'light' ? 'light' : 'dark';
 
+  useThemeViewportSync(themeVars['--theme-page-bg'], backdropMode);
+
   return (
     <div
       style={{
@@ -92,23 +96,24 @@ export function CreateInviteClient({ initialPrompt }: CreateInviteClientProps) {
         color: 'var(--theme-text-primary)',
         fontFamily: 'var(--font-invite-body), var(--font-sans), sans-serif',
       }}
-      className="min-h-screen relative overflow-x-hidden transition-colors duration-300"
+      className="min-h-dvh relative overflow-x-hidden"
     >
       <AmbientBackdrop
+        fixedViewport
         effectId={liveStyle.effectId}
         accentColor={themeVars['--theme-accent']}
         colorMode={backdropMode}
-        className="fixed inset-0 z-0"
+        className="z-0"
       />
 
-      {/* Minimal 48px single-row header */}
-      <header className="relative z-10 h-12 max-w-[580px] mx-auto px-3.5 sm:px-6 flex items-center justify-between gap-2">
+      {/* Compact single-row app header */}
+      <header className="relative z-10 app-top-bar h-13 max-w-[580px] mx-auto flex items-center justify-between gap-2">
         <Link
           href="/"
-          className="inline-flex items-center gap-1.5 text-sm font-semibold tracking-tight hover:opacity-80 transition shrink-0"
+          className="inline-flex items-center gap-2 text-sm font-semibold tracking-tight hover:opacity-80 transition shrink-0"
           style={{ color: 'var(--theme-outer-text)' }}
         >
-          <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+          <InviteIcon name="brand" className="h-4 w-4" />
           <span>invited</span>
         </Link>
 
@@ -116,7 +121,7 @@ export function CreateInviteClient({ initialPrompt }: CreateInviteClientProps) {
           <button
             type="button"
             onClick={() => setRecentOpen(true)}
-            className="h-8 inline-flex items-center gap-1.5 rounded-full border px-3 text-xs font-medium backdrop-blur-md transition hover:opacity-90 cursor-pointer"
+            className="h-9 inline-flex items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium backdrop-blur-md transition hover:opacity-90 cursor-pointer"
             style={{
               backgroundColor: 'var(--theme-outer-pill-bg)',
               borderColor: 'var(--theme-outer-pill-border)',
@@ -133,7 +138,7 @@ export function CreateInviteClient({ initialPrompt }: CreateInviteClientProps) {
         </div>
       </header>
 
-      <main className="relative z-10 max-w-[580px] mx-auto px-3.5 sm:px-6 pt-1 sm:pt-2 pb-16">
+      <main className="relative z-10 max-w-[580px] mx-auto px-3.5 sm:px-6 pt-2 pb-16">
         <InviteStudio
           key={studioKey}
           mode="create"

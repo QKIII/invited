@@ -1,3 +1,17 @@
+.fixedViewport {
+  position: fixed;
+  top: -12vh;
+  top: -12lvh;
+  left: 0;
+  right: 0;
+  height: 124vh;
+  height: 124lvh;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  pointer-events: none;
+  overflow: hidden;
+}
+
 .auroraRibbonA {
   animation: auroraDriftA 22s ease-in-out infinite alternate;
   will-change: transform, opacity;

@@ -93,7 +93,7 @@ describe('curated themes, fonts, effects, and covers', () => {
     }
   });
 
-  it('covers all 6 font pairings, 14 ambient effects, and 18+ cover presets', () => {
+  it('covers all 6 font pairings, 14 ambient effects, and 36 stylized cover presets (Illustrated, Painted, Graphic)', () => {
     const expectedFonts: FontPairingId[] = [
       'editorial-serif',
       'modern-sans',
@@ -122,7 +122,10 @@ describe('curated themes, fonts, effects, and covers', () => {
     ];
     expect(EFFECT_OPTIONS.map((e) => e.id)).toEqual(expectedEffects);
 
-    expect(COVER_PRESETS.length).toBeGreaterThanOrEqual(18);
+    expect(COVER_PRESETS.length).toBeGreaterThanOrEqual(36);
+    expect(COVER_PRESETS.filter((c) => c.styleGroup === 'illustrated')).toHaveLength(12);
+    expect(COVER_PRESETS.filter((c) => c.styleGroup === 'painted')).toHaveLength(12);
+    expect(COVER_PRESETS.filter((c) => c.styleGroup === 'graphic')).toHaveLength(12);
     const coverIds = new Set(COVER_PRESETS.map((c) => c.id));
     for (const preset of THEME_PRESETS) {
       expect(coverIds.has(preset.defaultCoverPresetId)).toBe(true);
@@ -560,5 +563,99 @@ describe('AmbientBackdrop and CoverArt components', () => {
       }
       expect(markup).toContain(`data-cover-preset="${preset.id}"`);
     }
+  });
+
+  it('ignores minor mobile browser chrome height jitter in AmbientBackdrop without wiping the canvas', () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+    let resizeCallback: (() => void) | null = null;
+    let observedEl: HTMLElement | null = null;
+    class MockResizeObserver {
+      constructor(cb: () => void) {
+        resizeCallback = cb;
+      }
+      observe(el: Element) {
+        observedEl = el as HTMLElement;
+      }
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', MockResizeObserver);
+
+    let mockHeight = 760;
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    const fakeCtx = {
+      clearRect: vi.fn(),
+      setTransform: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      translate: vi.fn(),
+      rotate: vi.fn(),
+      scale: vi.fn(),
+      beginPath: vi.fn(),
+      closePath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      bezierCurveTo: vi.fn(),
+      quadraticCurveTo: vi.fn(),
+      arc: vi.fn(),
+      ellipse: vi.fn(),
+      fill: vi.fn(),
+      fillRect: vi.fn(),
+      createRadialGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
+      fillStyle: '',
+      globalAlpha: 1,
+    } as unknown as CanvasRenderingContext2D;
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(fakeCtx);
+
+    const root = createRoot(container);
+    act(() => {
+      root.render(
+        React.createElement(AmbientBackdrop, {
+          effectId: 'snowfall',
+          fixedViewport: true,
+          colorMode: 'dark',
+        }),
+      );
+    });
+
+    const backdropParent = observedEl!;
+    expect(backdropParent).not.toBeNull();
+    Object.defineProperty(backdropParent, 'clientWidth', { configurable: true, get: () => 390 });
+    Object.defineProperty(backdropParent, 'clientHeight', { configurable: true, get: () => mockHeight });
+    // Trigger an initial baseline resize with mocked clientWidth/clientHeight
+    act(() => {
+      resizeCallback?.();
+    });
+
+    const canvas = container.querySelector('canvas')!;
+    const setTransformCallsAfterBaseline = (fakeCtx.setTransform as ReturnType<typeof vi.fn>).mock.calls.length;
+    expect(canvas.height).toBeGreaterThan(0);
+
+    // Simulate mobile Chrome address bar hide/show (56px delta < 140px threshold)
+    mockHeight = 816;
+    act(() => {
+      resizeCallback?.();
+    });
+    expect((fakeCtx.setTransform as ReturnType<typeof vi.fn>).mock.calls.length).toBe(
+      setTransformCallsAfterBaseline,
+    );
+
+    // Simulate genuine rotation / window resize (>= 140px delta)
+    mockHeight = 1040;
+    act(() => {
+      resizeCallback?.();
+    });
+    expect((fakeCtx.setTransform as ReturnType<typeof vi.fn>).mock.calls.length).toBe(
+      setTransformCallsAfterBaseline + 1,
+    );
+
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 });

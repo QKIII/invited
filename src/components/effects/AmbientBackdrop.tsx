@@ -281,11 +281,13 @@ export function AmbientBackdrop({
   effectId,
   accentColor,
   colorMode = 'dark',
+  fixedViewport = false,
   className = '',
 }: {
   effectId: AmbientEffectId;
   accentColor?: string;
   colorMode?: 'dark' | 'light';
+  fixedViewport?: boolean;
   className?: string;
 }): React.JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -308,6 +310,7 @@ export function AmbientBackdrop({
         : null;
 
     let reducedMotion = mediaQuery?.matches ?? false;
+    let initialized = false;
     let width = canvas.clientWidth || 960;
     let height = canvas.clientHeight || 640;
 
@@ -338,15 +341,41 @@ export function AmbientBackdrop({
       }
     };
 
-    const resize = () => {
+    const resize = (force = false) => {
       const parent = canvas.parentElement;
-      width = parent?.clientWidth || window.innerWidth || 960;
-      height = parent?.clientHeight || window.innerHeight || 640;
+      const nextWidth = parent?.clientWidth || window.innerWidth || 960;
+      const nextHeight = parent?.clientHeight || window.innerHeight || 640;
+
+      // Ignore minor vertical chrome/address-bar transitions on mobile scroll so animations never flash or reset
+      if (
+        initialized &&
+        !force &&
+        Math.abs(nextWidth - width) < 2 &&
+        Math.abs(nextHeight - height) < 140
+      ) {
+        return;
+      }
+
+      const prevWidth = width;
+      const prevHeight = height;
+      width = Math.max(1, nextWidth);
+      height = Math.max(1, nextHeight);
+
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.max(1, Math.floor(width * dpr));
       canvas.height = Math.max(1, Math.floor(height * dpr));
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      particles = createParticles(effectId, width, height, palette);
+
+      if (!initialized || particles.length === 0) {
+        particles = createParticles(effectId, width, height, palette);
+        initialized = true;
+      } else if (prevWidth > 0 && prevHeight > 0) {
+        for (const p of particles) {
+          p.x = (p.x / prevWidth) * width;
+          p.y = (p.y / prevHeight) * height;
+        }
+      }
+
       if (effectId === 'fireworks' && sparks.length === 0) {
         spawnFireworkBurst(width * 0.25, height * 0.26);
         spawnFireworkBurst(width * 0.74, height * 0.22);
@@ -477,7 +506,7 @@ export function AmbientBackdrop({
       }
     };
 
-    resize();
+    resize(true);
     if (reducedMotion) {
       renderFrame(false);
     } else {
@@ -485,7 +514,7 @@ export function AmbientBackdrop({
     }
 
     const onResize = () => {
-      resize();
+      resize(false);
       if (reducedMotion) {
         renderFrame(false);
       }
@@ -518,11 +547,21 @@ export function AmbientBackdrop({
     };
   }, [effectId, accent, isLight]);
 
-  const hasPosition = POSITION_RE.test(className);
-  const baseClass = `${hasPosition ? '' : 'absolute inset-0'} pointer-events-none select-none overflow-hidden ${className}`.trim();
+  const hasPosition = fixedViewport || POSITION_RE.test(className);
+  const positioningClass = fixedViewport
+    ? styles.fixedViewport
+    : hasPosition
+      ? ''
+      : 'absolute inset-0';
+  const baseClass = `${positioningClass} pointer-events-none select-none overflow-hidden ${className}`.trim();
 
   return (
-    <div aria-hidden="true" className={baseClass} data-effect-id={effectId}>
+    <div
+      aria-hidden="true"
+      className={baseClass}
+      data-effect-id={effectId}
+      style={fixedViewport ? { backgroundColor: 'var(--theme-page-bg)' } : undefined}
+    >
       {/* Ambient base radial wash */}
       <div
         className="absolute inset-0"

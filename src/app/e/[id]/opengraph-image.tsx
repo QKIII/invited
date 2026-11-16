@@ -175,7 +175,14 @@ export default async function OpenGraphImage({
                 fontWeight: 600,
               }}
             >
-              <span>{preset.emoji}</span>
+              <span
+                style={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: 999,
+                  backgroundColor: accent,
+                }}
+              />
               <span>{preset.name}</span>
             </div>
 

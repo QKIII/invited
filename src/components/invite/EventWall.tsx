@@ -3,6 +3,11 @@
 import React, { useEffect, useId, useState, useSyncExternalStore } from 'react';
 import { Send, Trash2 } from 'lucide-react';
 import {
+  DEFAULT_WALL_REACTIONS,
+  ReactionIcon,
+  getReactionLabel,
+} from '@/components/icons/InviteIcons';
+import {
   getDeviceProfile,
   getDeviceProfileServerSnapshot,
   saveDeviceProfile,
@@ -23,8 +28,6 @@ interface EventWallProps {
   onCommentsChange: (comments: CommentRecord[]) => void;
   onRefreshDetail: () => Promise<void>;
 }
-
-const REACTION_EMOJIS = ['🎉', '❤️', '🍽️', '🙌'] as const;
 
 export function EventWall({
   eventId,
@@ -369,15 +372,18 @@ export function EventWall({
                 <div className="flex flex-wrap items-center gap-1.5 pl-9">
                   {existingReactions.map(([emoji, count]) => {
                     const isActive = Boolean(activeReactions[`${comment.id}:${emoji}`]);
+                    const label = getReactionLabel(emoji);
                     return (
                       <button
                         key={emoji}
                         type="button"
+                        data-reaction={emoji}
                         aria-pressed={isActive}
-                        aria-label={`React with ${emoji} (${count})`}
+                        aria-label={`${label} (${count})`}
+                        title={label}
                         disabled={reactingId === `${comment.id}:${emoji}`}
                         onClick={() => void handleReact(comment.id, emoji)}
-                        className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition hover:opacity-90 cursor-pointer"
+                        className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition hover:opacity-90 cursor-pointer"
                         style={
                           isActive
                             ? {
@@ -392,25 +398,31 @@ export function EventWall({
                               }
                         }
                       >
-                        <span>{emoji}</span>
+                        <ReactionIcon reactionKey={emoji} className="h-3.5 w-3.5" />
                         <span className="tabular-nums text-[11px]">{count}</span>
                       </button>
                     );
                   })}
 
-                  {REACTION_EMOJIS.filter((emoji) => !(comment.reactions?.[emoji] > 0)).map(
-                    (emoji) => (
-                      <button
-                        key={emoji}
-                        type="button"
-                        aria-label={`React with ${emoji} (0)`}
-                        disabled={reactingId === `${comment.id}:${emoji}`}
-                        onClick={() => void handleReact(comment.id, emoji)}
-                        className="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs opacity-45 hover:opacity-100 transition cursor-pointer"
-                      >
-                        {emoji}
-                      </button>
-                    ),
+                  {DEFAULT_WALL_REACTIONS.filter((emoji) => !(comment.reactions?.[emoji] > 0)).map(
+                    (emoji) => {
+                      const label = getReactionLabel(emoji);
+                      return (
+                        <button
+                          key={emoji}
+                          type="button"
+                          data-reaction={emoji}
+                          aria-label={`${label} (0)`}
+                          title={label}
+                          disabled={reactingId === `${comment.id}:${emoji}`}
+                          onClick={() => void handleReact(comment.id, emoji)}
+                          className="inline-flex items-center rounded-full p-1.5 text-xs opacity-50 hover:opacity-100 transition cursor-pointer"
+                          style={{ color: 'var(--theme-text-muted)' }}
+                        >
+                          <ReactionIcon reactionKey={emoji} className="h-3.5 w-3.5" />
+                        </button>
+                      );
+                    },
                   )}
                 </div>
               </li>

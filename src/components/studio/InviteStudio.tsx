@@ -13,8 +13,7 @@ import {
   Lock,
   MapPin,
   Palette,
-  Sliders,
-  Sparkles,
+  RotateCcw,
   User,
 } from 'lucide-react';
 import { CoverArt } from '@/components/covers/CoverArt';
@@ -31,12 +30,7 @@ import {
   parseEventPrompt,
   type ParsedEventDraft,
 } from '@/lib/nlp/parseEventPrompt';
-import {
-  CTA_PRESETS,
-  THEME_PRESETS,
-  getThemePreset,
-  type ThemePreset,
-} from '@/lib/themes/presets';
+import { getThemePreset } from '@/lib/themes/presets';
 import type { EventMeta, InviteStyleConfig } from '@/types/invite';
 import {
   getBrowserTimeZone,
@@ -50,7 +44,7 @@ import {
   PublishSuccessDialog,
   type PublishedEventResult,
 } from './PublishSuccessDialog';
-import { StyleStudioDrawer } from './StyleStudioDrawer';
+import { StyleStudioDrawer, type StudioDrawerTab } from './StyleStudioDrawer';
 
 interface InviteStudioProps {
   mode: 'create' | 'edit';
@@ -61,18 +55,6 @@ interface InviteStudioProps {
   onSaved?: (updated: EventMeta) => void;
   onStyleChange?: (style: InviteStyleConfig) => void;
 }
-
-const QUICK_THEME_IDS = [
-  'winter-snowfall',
-  'cozy-christmas',
-  'sacred-nativity',
-  'candlelit-dinner',
-  'birthday-confetti',
-  'warm-thanksgiving',
-  'spring-easter-garden',
-  'aurora-midnight',
-  'minimal-paper',
-] as const;
 
 function getDefaultStyle(): InviteStyleConfig {
   const preset = getThemePreset('winter-snowfall');
@@ -104,6 +86,7 @@ export function InviteStudio({
   onStyleChange,
 }: InviteStudioProps) {
   const titleId = useId();
+  const promptInputId = useId();
   const deviceProfile = useSyncExternalStore(
     subscribeDeviceProfile,
     getDeviceProfile,
@@ -113,9 +96,13 @@ export function InviteStudio({
   const initialSource = initialEvent ?? initialDraft;
   const initialStyle: InviteStyleConfig = initialSource?.style ?? getDefaultStyle();
 
-  const [showAutoFill, setShowAutoFill] = useState<boolean>(false);
+  const [hasStartedCard, setHasStartedCard] = useState<boolean>(
+    mode === 'edit' || Boolean(initialDraft || initialEvent),
+  );
   const [quickPrompt, setQuickPrompt] = useState<string>('');
-  const [autofillNote, setAutofillNote] = useState<string | null>(null);
+  const [filledNote, setFilledNote] = useState<string | null>(
+    initialDraft ? `Started with ${initialDraft.detectedOccasionLabel}` : null,
+  );
 
   const [title, setTitle] = useState<string>(initialSource?.title ?? '');
   const [startDate, setStartDate] = useState<string>(() => {
@@ -150,9 +137,14 @@ export function InviteStudio({
   const [virtualUrl, setVirtualUrl] = useState<string>(
     initialSource?.virtualUrl ?? '',
   );
+  const hasDistinctVenueAndAddress = Boolean(
+    initialSource?.locationAddress?.trim() &&
+      initialSource.locationAddress.trim().toLowerCase() !==
+        (initialSource.locationName?.trim().toLowerCase() ?? ''),
+  );
   const [showLocationDetails, setShowLocationDetails] = useState<boolean>(
     Boolean(
-      initialSource?.locationAddress?.trim() ||
+      hasDistinctVenueAndAddress ||
         (initialSource?.locationName?.trim() && initialSource?.virtualUrl?.trim()),
     ),
   );
@@ -177,8 +169,9 @@ export function InviteStudio({
     initialEvent?.hideGuestList ?? false,
   );
   const [style, setStyle] = useState<InviteStyleConfig>(initialStyle);
-  const [showCoverPicker, setShowCoverPicker] = useState<boolean>(false);
-  const [showCustomize, setShowCustomize] = useState<boolean>(false);
+
+  const [themeDrawerOpen, setThemeDrawerOpen] = useState<boolean>(false);
+  const [themeDrawerTab, setThemeDrawerTab] = useState<StudioDrawerTab>('theme');
 
   const [startDstConflict, setStartDstConflict] = useState<DstConflictInfo | null>(null);
   const [startDisambiguation, setStartDisambiguation] = useState<'earlier' | 'later' | undefined>();
@@ -192,12 +185,10 @@ export function InviteStudio({
 
   const titleTextareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Sync live style up to client page wrapper
   useEffect(() => {
     onStyleChange?.(style);
   }, [style, onStyleChange]);
 
-  // Pre-fill browser timezone & ISO local fields accurately using Temporal
   useEffect(() => {
     let active = true;
     queueMicrotask(() => {
@@ -224,43 +215,27 @@ export function InviteStudio({
     };
   }, [initialSource?.endIso, initialSource?.startIso, initialSource?.timeZone]);
 
-  // Auto-size title textarea when content wraps
   useEffect(() => {
     const el = titleTextareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${Math.max(el.scrollHeight, 36)}px`;
-  }, [title]);
+  }, [title, hasStartedCard]);
 
   const timeZones = useMemo(() => getSupportedTimeZones(timeZone), [timeZone]);
   const activePreset = getThemePreset(style.themeId);
-  const quickThemes = useMemo(
-    () =>
-      QUICK_THEME_IDS.map((id) => THEME_PRESETS.find((t) => t.id === id)).filter(
-        (t): t is ThemePreset => Boolean(t),
-      ),
-    [],
-  );
 
-  function applyQuickTheme(preset: ThemePreset) {
-    setStyle((prev) => ({
-      ...prev,
-      themeId: preset.id,
-      fontId: preset.defaultFontId,
-      effectId: preset.defaultEffectId,
-      coverPresetId: prev.customCoverUrl ? prev.coverPresetId : preset.defaultCoverPresetId,
-      coverLayout: prev.coverLayout === 'none' ? 'banner' : prev.coverLayout,
-      colorMode: preset.colorMode,
-      customAccentHex: undefined,
-      customCtaEndHex: undefined,
-      ctaStyle: undefined,
-      customSurfaceHex: undefined,
-    }));
+  function openThemeDrawer(tab: StudioDrawerTab) {
+    setThemeDrawerTab(tab);
+    setThemeDrawerOpen(true);
   }
 
   function handleAutofillPrompt(rawInput?: string) {
     const sourcePrompt = (rawInput ?? quickPrompt).trim();
-    if (!sourcePrompt) return;
+    if (!sourcePrompt) {
+      setHasStartedCard(true);
+      return;
+    }
 
     const parsed = parseEventPrompt(
       sourcePrompt,
@@ -269,12 +244,17 @@ export function InviteStudio({
     );
     setTitle(parsed.title);
     if (parsed.timeZone) setTimeZone(parsed.timeZone);
-    if (parsed.locationName !== undefined) setLocationName(parsed.locationName);
-    if (parsed.locationAddress !== undefined) setLocationAddress(parsed.locationAddress);
-    if (parsed.virtualUrl !== undefined) setVirtualUrl(parsed.virtualUrl);
-    if (parsed.locationAddress || (parsed.locationName && parsed.virtualUrl)) {
-      setShowLocationDetails(true);
-    }
+    setLocationName(parsed.locationName ?? '');
+    setLocationAddress(parsed.locationAddress ?? '');
+    setVirtualUrl(parsed.virtualUrl ?? '');
+    const distinctVenueAndAddress = Boolean(
+      parsed.locationAddress?.trim() &&
+        parsed.locationAddress.trim().toLowerCase() !==
+          (parsed.locationName?.trim().toLowerCase() ?? ''),
+    );
+    setShowLocationDetails(
+      Boolean(distinctVenueAndAddress || (parsed.locationName && parsed.virtualUrl)),
+    );
     if (parsed.hostName && !effectiveHostName.trim()) {
       setHostTouched(true);
       setHostName(parsed.hostName);
@@ -297,8 +277,8 @@ export function InviteStudio({
       setHasEndTime(false);
     }
 
-    setShowAutoFill(false);
-    setAutofillNote(`Autofilled (${parsed.detectedOccasionLabel})`);
+    setHasStartedCard(true);
+    setFilledNote(`Filled from your note · ${parsed.detectedOccasionLabel}`);
     setErrorMsg(null);
   }
 
@@ -310,8 +290,10 @@ export function InviteStudio({
     if (/^https?:\/\//i.test(trimmed)) {
       setVirtualUrl(val);
       setLocationName('');
+      setLocationAddress('');
     } else {
       setLocationName(val);
+      setLocationAddress('');
       if (/^https?:\/\//i.test(virtualUrl)) {
         setVirtualUrl('');
       }
@@ -325,7 +307,7 @@ export function InviteStudio({
 
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
-      setErrorMsg('Please enter an event name.');
+      setErrorMsg('Please enter an event title.');
       titleTextareaRef.current?.focus();
       return;
     }
@@ -343,7 +325,7 @@ export function InviteStudio({
     }
     setStartDstConflict(null);
     if (startRes.error || !startRes.iso) {
-      setErrorMsg(startRes.error || 'Invalid start date or time.');
+      setErrorMsg(startRes.error || 'Please pick a valid start date and time.');
       return;
     }
 
@@ -362,11 +344,11 @@ export function InviteStudio({
       }
       setEndDstConflict(null);
       if (endRes.error || !endRes.iso) {
-        setErrorMsg(endRes.error || 'Invalid end date or time.');
+        setErrorMsg(endRes.error || 'Please pick a valid end date and time.');
         return;
       }
       if (new Date(endRes.iso).getTime() < new Date(startRes.iso).getTime()) {
-        setErrorMsg('End time must be after start time.');
+        setErrorMsg('End time needs to be after the start time.');
         return;
       }
       finalEndIso = endRes.iso;
@@ -403,7 +385,7 @@ export function InviteStudio({
           error?: string;
         };
         if (!res.ok || !data.id || !data.editKey || !data.event) {
-          setErrorMsg(data.error || 'Could not create invite. Please check required fields.');
+          setErrorMsg(data.error || 'Could not create invite. Please check the details.');
           return;
         }
 
@@ -451,7 +433,7 @@ export function InviteStudio({
           error?: string;
         };
         if (!res.ok || !updated.id) {
-          setErrorMsg(updated.error || 'Could not save event updates.');
+          setErrorMsg(updated.error || 'Could not save your changes.');
           return;
         }
 
@@ -473,113 +455,108 @@ export function InviteStudio({
         onSaved?.(updated);
       }
     } catch {
-      setErrorMsg('Network error saving invite. Please try again.');
+      setErrorMsg('Could not reach the server. Please try again.');
     } finally {
       setSubmitting(false);
     }
   }
 
-  const isThemeMatchActive =
-    !style.customAccentHex && !style.customCtaEndHex && !style.ctaStyle;
-
   return (
     <>
-      <form onSubmit={handleSubmit} className="space-y-3.5">
-        {/* Top 1-Row Vibe & Optional Autofill Pill Bar */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-            {mode === 'create' ? (
-              <button
-                type="button"
-                aria-expanded={showAutoFill}
-                onClick={() => setShowAutoFill((prev) => !prev)}
-                className="shrink-0 h-8 inline-flex items-center gap-1.5 rounded-full border px-3 text-xs font-semibold backdrop-blur-md transition cursor-pointer"
+      {mode === 'create' && !hasStartedCard ? (
+        <section
+          data-testid="prompt-entry-card"
+          className="pt-4 sm:pt-8 space-y-4"
+        >
+          <div
+            className="rounded-3xl border shadow-2xl p-6 sm:p-8 space-y-5"
+            style={{
+              backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
+              borderColor: 'var(--theme-border)',
+              color: 'var(--theme-text-primary)',
+            }}
+          >
+            <div className="space-y-1.5">
+              <h1
+                className="text-3xl sm:text-4xl font-bold tracking-tight"
                 style={{
-                  backgroundColor: showAutoFill
-                    ? 'var(--theme-card-solid)'
-                    : 'var(--theme-outer-pill-bg)',
-                  borderColor: showAutoFill
-                    ? 'var(--theme-accent)'
-                    : 'var(--theme-outer-pill-border)',
-                  color: showAutoFill
-                    ? 'var(--theme-text-primary)'
-                    : 'var(--theme-outer-text)',
+                  fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
                 }}
               >
-                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>Auto-fill</span>
-              </button>
-            ) : null}
+                What&apos;s your event?
+              </h1>
+              <p
+                className="text-sm leading-relaxed"
+                style={{ color: 'var(--theme-text-muted)' }}
+              >
+                Write what, when, or where — we&apos;ll start your invite for you.
+              </p>
+            </div>
 
-            {quickThemes.map((preset) => {
-              const selected = style.themeId === preset.id;
-              return (
-                <button
-                  key={preset.id}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => applyQuickTheme(preset)}
-                  className="shrink-0 h-8 inline-flex items-center gap-1 rounded-full border px-3 text-xs font-medium backdrop-blur-md transition cursor-pointer"
-                  style={
-                    selected
-                      ? {
-                          backgroundColor: 'var(--theme-card-solid)',
-                          borderColor: 'var(--theme-accent)',
-                          color: 'var(--theme-text-primary)',
-                        }
-                      : {
-                          backgroundColor: 'var(--theme-outer-pill-bg)',
-                          borderColor: 'var(--theme-outer-pill-border)',
-                          color: 'var(--theme-outer-text)',
-                        }
+            <div className="space-y-3">
+              <label htmlFor={promptInputId} className="sr-only">
+                What&apos;s your event?
+              </label>
+              <textarea
+                id={promptInputId}
+                data-testid="event-prompt-input"
+                rows={3}
+                autoFocus
+                value={quickPrompt}
+                onChange={(e) => setQuickPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                  if (e.key === 'Enter' && !e.shiftKey && quickPrompt.trim()) {
+                    e.preventDefault();
+                    handleAutofillPrompt();
                   }
-                >
-                  <span aria-hidden="true">{preset.emoji}</span>
-                  <span>{preset.name.split(' ')[0]}</span>
-                </button>
-              );
-            })}
-          </div>
+                }}
+                placeholder="Christmas dinner Saturday Dec 19 at 6pm at 42 Maple St"
+                className="w-full rounded-2xl border px-4 py-3 text-base leading-relaxed outline-none focus:ring-2 resize-none"
+                style={{
+                  backgroundColor: 'var(--theme-surface-bg)',
+                  borderColor: 'var(--theme-border)',
+                  color: 'var(--theme-text-primary)',
+                }}
+              />
 
-          {mode === 'create' && showAutoFill ? (
-            <div
-              className="rounded-2xl border p-3 shadow-lg space-y-2.5"
-              style={{
-                backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
-                borderColor: 'var(--theme-border)',
-                color: 'var(--theme-text-primary)',
-              }}
-            >
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  aria-label="Describe your event to autofill"
-                  value={quickPrompt}
-                  onChange={(e) => setQuickPrompt(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAutofillPrompt();
-                    }
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  data-testid="prompt-continue-button"
+                  disabled={!quickPrompt.trim()}
+                  onClick={() => handleAutofillPrompt()}
+                  className="invite-cta-btn flex-1 min-h-[48px] rounded-full px-5 text-sm sm:text-base font-semibold shadow-lg transition active:scale-[0.99] disabled:opacity-45 cursor-pointer"
+                >
+                  Continue
+                </button>
+
+                <button
+                  type="button"
+                  data-testid="skip-prompt-button"
+                  onClick={() => {
+                    setFilledNote(null);
+                    setHasStartedCard(true);
                   }}
-                  placeholder="Describe it: Christmas brunch Dec 5 at 9:30am..."
-                  className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                  className="min-h-[48px] rounded-full border px-4 text-xs sm:text-sm font-medium transition hover:opacity-85 cursor-pointer"
                   style={{
                     backgroundColor: 'var(--theme-surface-bg)',
                     borderColor: 'var(--theme-border)',
                     color: 'var(--theme-text-primary)',
                   }}
-                />
-                <button
-                  type="button"
-                  disabled={!quickPrompt.trim()}
-                  onClick={() => handleAutofillPrompt()}
-                  className="invite-cta-btn shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition disabled:opacity-45 cursor-pointer"
                 >
-                  Fill
+                  Fill in details yourself
                 </button>
               </div>
+            </div>
 
+            <div
+              className="pt-3 border-t space-y-2"
+              style={{ borderColor: 'var(--theme-hairline)' }}
+            >
+              <p className="text-xs font-medium" style={{ color: 'var(--theme-text-muted)' }}>
+                Try an example
+              </p>
               <div className="flex flex-wrap gap-1.5">
                 {EXAMPLE_EVENT_PROMPTS.slice(0, 4).map((sample) => (
                   <button
@@ -589,325 +566,419 @@ export function InviteStudio({
                       setQuickPrompt(sample.prompt);
                       handleAutofillPrompt(sample.prompt);
                     }}
-                    className="rounded-full border px-2.5 py-1 text-xs transition hover:opacity-85 cursor-pointer"
+                    className="rounded-full border px-3 py-1.5 text-xs font-medium transition hover:opacity-90 cursor-pointer"
                     style={{
                       backgroundColor: 'var(--theme-surface-bg)',
                       borderColor: 'var(--theme-hairline)',
-                      color: 'var(--theme-text-muted)',
+                      color: 'var(--theme-text-primary)',
                     }}
                   >
-                    {sample.emoji} {sample.label}
+                    {sample.label}
                   </button>
                 ))}
               </div>
             </div>
-          ) : null}
-
-          {autofillNote ? (
-            <p
-              className="flex items-center gap-1.5 text-xs px-1 font-medium"
-              style={{ color: 'var(--theme-outer-text)' }}
-            >
-              <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              <span>{autofillNote} · Edit anything below</span>
-            </p>
-          ) : null}
-        </div>
-
-        {/* Live Editorial Invitation Card Composer */}
-        <div
-          className="rounded-3xl border shadow-2xl overflow-hidden"
-          style={{
-            backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
-            borderColor: 'var(--theme-border)',
-          }}
-        >
-          {/* Flush Top Cover Art + Overlay Change Cover Button */}
-          {style.coverLayout !== 'none' ? (
-            <CoverArt
-              flushTop
-              coverPresetId={style.coverPresetId}
-              customCoverUrl={style.customCoverUrl}
-              layout={style.coverLayout === 'square' ? 'square' : 'banner'}
-              title={title || 'Event cover preview'}
-              className="w-full"
-            >
-              <button
-                type="button"
-                aria-expanded={showCoverPicker}
-                onClick={() => setShowCoverPicker((prev) => !prev)}
-                className="inline-flex items-center gap-1.5 rounded-full bg-slate-950/80 backdrop-blur-md border border-white/25 px-3 py-1.5 text-xs font-medium text-white shadow-lg hover:bg-slate-950 transition cursor-pointer"
-              >
-                <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>{showCoverPicker ? 'Done' : 'Change Cover'}</span>
-              </button>
-            </CoverArt>
-          ) : (
-            <div className="p-4 pb-0">
-              <button
-                type="button"
-                onClick={() => {
-                  setStyle((prev) => ({ ...prev, coverLayout: 'banner' }));
-                  setShowCoverPicker(true);
-                }}
-                className="w-full rounded-2xl border border-dashed py-3.5 px-4 text-xs font-medium flex items-center justify-center gap-2 transition hover:opacity-85 cursor-pointer"
-                style={{
-                  borderColor: 'var(--theme-border)',
-                  color: 'var(--theme-text-muted)',
-                }}
-              >
-                <ImageIcon className="h-4 w-4" aria-hidden="true" />
-                <span>Add Cover Art</span>
-              </button>
-            </div>
-          )}
-
-          {/* Inline Cover Art Picker Drawer (inside card below cover when opened) */}
-          {showCoverPicker ? (
-            <div
-              className="p-4 border-b"
-              style={{ borderColor: 'var(--theme-hairline)' }}
-            >
-              <StyleStudioDrawer
-                section="covers"
-                style={style}
-                onChange={setStyle}
-                eventId={eventId}
-                editKey={editKey}
-              />
-            </div>
-          ) : null}
-
-          <div className="p-5 sm:p-6 space-y-4">
-            {/* 1. Event Title */}
-            <div className="pb-3 border-b" style={{ borderColor: 'var(--theme-hairline)' }}>
-              <label htmlFor={titleId} className="sr-only">
-                Event Name
-              </label>
-              <textarea
-                ref={titleTextareaRef}
-                id={titleId}
-                rows={1}
-                required
-                maxLength={140}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Event Title"
-                className="w-full bg-transparent border-0 outline-none resize-none text-2xl sm:text-[28px] font-bold leading-tight tracking-tight placeholder:opacity-45"
-                style={{
-                  color: 'var(--theme-text-primary)',
-                  fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
-                }}
-              />
-            </div>
-
-            {/* 2. Date & Time */}
-            <div className="space-y-2.5 pb-3 border-b" style={{ borderColor: 'var(--theme-hairline)' }}>
-              <div className="flex items-center justify-between gap-2">
-                <span
-                  className="inline-flex items-center gap-1.5 text-xs font-medium"
-                  style={{ color: 'var(--theme-text-muted)' }}
-                >
-                  <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span>Date &amp; Time</span>
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  id="event-start-date"
-                  type="date"
-                  required
-                  aria-label="Start date"
-                  value={startDate}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    setStartDate(next);
-                    setStartDstConflict(null);
-                    setStartDisambiguation(undefined);
-                    if (!hasEndTime) setEndDate(next);
-                  }}
-                  className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-sm outline-none focus:ring-2"
+          </div>
+        </section>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-3.5">
+          {/* Clean Top Toolbar: Prompt Backtrack + Edit Theme */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              {mode === 'create' ? (
+                <button
+                  type="button"
+                  onClick={() => setHasStartedCard(false)}
+                  className="h-9 inline-flex items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium backdrop-blur-md transition hover:opacity-90 cursor-pointer shrink-0"
                   style={{
-                    backgroundColor: 'var(--theme-surface-bg)',
-                    borderColor: 'var(--theme-border)',
-                    color: 'var(--theme-text-primary)',
+                    backgroundColor: 'var(--theme-outer-pill-bg)',
+                    borderColor: 'var(--theme-outer-pill-border)',
+                    color: 'var(--theme-outer-text)',
                   }}
-                />
-                <input
-                  id="event-start-time"
-                  type="time"
-                  required
-                  aria-label="Start time"
-                  value={startTime}
-                  onChange={(e) => {
-                    setStartTime(e.target.value);
-                    setStartDstConflict(null);
-                    setStartDisambiguation(undefined);
-                  }}
-                  className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-sm outline-none focus:ring-2"
-                  style={{
-                    backgroundColor: 'var(--theme-surface-bg)',
-                    borderColor: 'var(--theme-border)',
-                    color: 'var(--theme-text-primary)',
-                  }}
-                />
-              </div>
-
-              {startDstConflict ? (
-                <div
-                  role="alert"
-                  className="rounded-xl border border-amber-400/40 bg-amber-500/10 p-2.5 space-y-2 text-xs"
                 >
-                  <p>{startDstConflict.message}</p>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStartDisambiguation('earlier');
-                        setStartDstConflict(null);
-                      }}
-                      className="rounded-lg border px-2.5 py-1 font-medium cursor-pointer"
-                    >
-                      Use earlier ({startDstConflict.earlierLabel})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStartDisambiguation('later');
-                        setStartDstConflict(null);
-                      }}
-                      className="rounded-lg border px-2.5 py-1 font-medium cursor-pointer"
-                    >
-                      Use later ({startDstConflict.laterLabel})
-                    </button>
-                  </div>
-                </div>
+                  <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Write prompt again</span>
+                </button>
               ) : null}
 
-              {hasEndTime ? (
-                <div className="space-y-1.5 pt-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span
-                      className="inline-flex items-center gap-1.5 text-xs font-medium"
-                      style={{ color: 'var(--theme-text-muted)' }}
-                    >
-                      <Clock className="h-3.5 w-3.5" aria-hidden="true" />
-                      <span>Ends</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setHasEndTime(false);
-                        setEndDstConflict(null);
-                      }}
-                      className="text-xs opacity-75 hover:opacity-100 cursor-pointer"
-                      style={{ color: 'var(--theme-text-muted)' }}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      id="event-end-date"
-                      type="date"
-                      aria-label="End date"
-                      value={endDate}
-                      onChange={(e) => {
-                        setEndDate(e.target.value);
-                        setEndDstConflict(null);
-                        setEndDisambiguation(undefined);
-                      }}
-                      className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-sm outline-none focus:ring-2"
-                      style={{
-                        backgroundColor: 'var(--theme-surface-bg)',
-                        borderColor: 'var(--theme-border)',
-                        color: 'var(--theme-text-primary)',
-                      }}
-                    />
-                    <input
-                      id="event-end-time"
-                      type="time"
-                      aria-label="End time"
-                      value={endTime}
-                      onChange={(e) => {
-                        setEndTime(e.target.value);
-                        setEndDstConflict(null);
-                        setEndDisambiguation(undefined);
-                      }}
-                      className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-sm outline-none focus:ring-2"
-                      style={{
-                        backgroundColor: 'var(--theme-surface-bg)',
-                        borderColor: 'var(--theme-border)',
-                        color: 'var(--theme-text-primary)',
-                      }}
-                    />
-                  </div>
-                  {endDstConflict ? (
-                    <div
-                      role="alert"
-                      className="rounded-xl border border-amber-400/40 bg-amber-500/10 p-2.5 space-y-2 text-xs"
-                    >
-                      <p>{endDstConflict.message}</p>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEndDisambiguation('earlier');
-                            setEndDstConflict(null);
-                          }}
-                          className="rounded-lg border px-2.5 py-1 font-medium cursor-pointer"
-                        >
-                          {endDstConflict.earlierLabel}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEndDisambiguation('later');
-                            setEndDstConflict(null);
-                          }}
-                          className="rounded-lg border px-2.5 py-1 font-medium cursor-pointer"
-                        >
-                          {endDstConflict.laterLabel}
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setHasEndTime(true);
-                    setEndDate(startDate);
-                  }}
-                  className="text-xs font-medium opacity-80 hover:opacity-100 transition cursor-pointer"
-                  style={{ color: 'var(--theme-text-muted)' }}
+              {filledNote ? (
+                <span
+                  className="hidden sm:inline-flex items-center gap-1 text-xs font-medium truncate"
+                  style={{ color: 'var(--theme-outer-text)' }}
                 >
-                  + Add end time
-                </button>
-              )}
+                  <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <span className="truncate">{filledNote}</span>
+                </span>
+              ) : null}
             </div>
 
-            {/* 3. Smart Location or Link + Hosted By */}
-            <div className="space-y-3 pb-3 border-b" style={{ borderColor: 'var(--theme-hairline)' }}>
-              {!showLocationDetails ? (
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <MapPin
-                      className="h-4 w-4 shrink-0"
+            <button
+              type="button"
+              data-testid="edit-theme-button"
+              onClick={() => openThemeDrawer('theme')}
+              className="h-9 inline-flex items-center gap-1.5 rounded-full border px-3.5 text-xs font-semibold backdrop-blur-md transition hover:opacity-90 cursor-pointer shrink-0 ml-auto"
+              style={{
+                backgroundColor: 'var(--theme-outer-pill-bg)',
+                borderColor: 'var(--theme-outer-pill-border)',
+                color: 'var(--theme-outer-text)',
+              }}
+            >
+              <Palette className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>Edit theme</span>
+              <span className="opacity-70 hidden xs:inline">· {activePreset.name}</span>
+            </button>
+          </div>
+
+          {/* Live Invitation Card */}
+          <div
+            className="rounded-3xl border shadow-2xl overflow-hidden"
+            style={{
+              backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
+              borderColor: 'var(--theme-border)',
+            }}
+          >
+            {style.coverLayout !== 'none' ? (
+              <CoverArt
+                flushTop
+                coverPresetId={style.coverPresetId}
+                customCoverUrl={style.customCoverUrl}
+                layout={style.coverLayout === 'square' ? 'square' : 'banner'}
+                title={title || 'Event cover preview'}
+                accentColor={activePreset.accent}
+                className="w-full"
+              >
+                <button
+                  type="button"
+                  data-testid="change-cover-button"
+                  onClick={() => openThemeDrawer('cover')}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-slate-950/80 backdrop-blur-md border border-white/25 px-3.5 py-1.5 text-xs font-medium text-white shadow-lg hover:bg-slate-950 transition cursor-pointer"
+                >
+                  <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Change cover</span>
+                </button>
+              </CoverArt>
+            ) : (
+              <div className="p-4 pb-0">
+                <button
+                  type="button"
+                  data-testid="change-cover-button"
+                  onClick={() => {
+                    setStyle((prev) => ({ ...prev, coverLayout: 'banner' }));
+                    openThemeDrawer('cover');
+                  }}
+                  className="w-full rounded-2xl border border-dashed py-3.5 px-4 text-xs font-medium flex items-center justify-center gap-2 transition hover:opacity-85 cursor-pointer"
+                  style={{
+                    borderColor: 'var(--theme-border)',
+                    color: 'var(--theme-text-muted)',
+                  }}
+                >
+                  <ImageIcon className="h-4 w-4" aria-hidden="true" />
+                  <span>Add cover photo or artwork</span>
+                </button>
+              </div>
+            )}
+
+            <div className="p-5 sm:p-6 space-y-4">
+              {/* 1. Event Title */}
+              <div className="pb-3 border-b" style={{ borderColor: 'var(--theme-hairline)' }}>
+                <label htmlFor={titleId} className="sr-only">
+                  Event title
+                </label>
+                <textarea
+                  ref={titleTextareaRef}
+                  id={titleId}
+                  rows={1}
+                  required
+                  maxLength={140}
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Event title"
+                  className="w-full bg-transparent border-0 outline-none resize-none text-2xl sm:text-[28px] font-bold leading-tight tracking-tight placeholder:opacity-45"
+                  style={{
+                    color: 'var(--theme-text-primary)',
+                    fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
+                  }}
+                />
+              </div>
+
+              {/* 2. Date & Time */}
+              <div className="space-y-2.5 pb-3 border-b" style={{ borderColor: 'var(--theme-hairline)' }}>
+                <div className="flex items-center justify-between gap-2">
+                  <span
+                    className="inline-flex items-center gap-1.5 text-xs font-medium"
+                    style={{ color: 'var(--theme-text-muted)' }}
+                  >
+                    <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span>When</span>
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    id="event-start-date"
+                    type="date"
+                    required
+                    aria-label="Start date"
+                    value={startDate}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setStartDate(next);
+                      setStartDstConflict(null);
+                      setStartDisambiguation(undefined);
+                      if (!hasEndTime) setEndDate(next);
+                    }}
+                    className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-sm outline-none focus:ring-2"
+                    style={{
+                      backgroundColor: 'var(--theme-surface-bg)',
+                      borderColor: 'var(--theme-border)',
+                      color: 'var(--theme-text-primary)',
+                    }}
+                  />
+                  <input
+                    id="event-start-time"
+                    type="time"
+                    required
+                    aria-label="Start time"
+                    value={startTime}
+                    onChange={(e) => {
+                      setStartTime(e.target.value);
+                      setStartDstConflict(null);
+                      setStartDisambiguation(undefined);
+                    }}
+                    className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-sm outline-none focus:ring-2"
+                    style={{
+                      backgroundColor: 'var(--theme-surface-bg)',
+                      borderColor: 'var(--theme-border)',
+                      color: 'var(--theme-text-primary)',
+                    }}
+                  />
+                </div>
+
+                {startDstConflict ? (
+                  <div
+                    role="alert"
+                    className="rounded-xl border border-amber-400/40 bg-amber-500/10 p-2.5 space-y-2 text-xs"
+                  >
+                    <p>{startDstConflict.message}</p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStartDisambiguation('earlier');
+                          setStartDstConflict(null);
+                        }}
+                        className="rounded-lg border px-2.5 py-1 font-medium cursor-pointer"
+                      >
+                        Use earlier ({startDstConflict.earlierLabel})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStartDisambiguation('later');
+                          setStartDstConflict(null);
+                        }}
+                        className="rounded-lg border px-2.5 py-1 font-medium cursor-pointer"
+                      >
+                        Use later ({startDstConflict.laterLabel})
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {hasEndTime ? (
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className="inline-flex items-center gap-1.5 text-xs font-medium"
+                        style={{ color: 'var(--theme-text-muted)' }}
+                      >
+                        <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span>Ends</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHasEndTime(false);
+                          setEndDstConflict(null);
+                        }}
+                        className="text-xs opacity-75 hover:opacity-100 cursor-pointer"
+                        style={{ color: 'var(--theme-text-muted)' }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        id="event-end-date"
+                        type="date"
+                        aria-label="End date"
+                        value={endDate}
+                        onChange={(e) => {
+                          setEndDate(e.target.value);
+                          setEndDstConflict(null);
+                          setEndDisambiguation(undefined);
+                        }}
+                        className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-sm outline-none focus:ring-2"
+                        style={{
+                          backgroundColor: 'var(--theme-surface-bg)',
+                          borderColor: 'var(--theme-border)',
+                          color: 'var(--theme-text-primary)',
+                        }}
+                      />
+                      <input
+                        id="event-end-time"
+                        type="time"
+                        aria-label="End time"
+                        value={endTime}
+                        onChange={(e) => {
+                          setEndTime(e.target.value);
+                          setEndDstConflict(null);
+                          setEndDisambiguation(undefined);
+                        }}
+                        className="w-full min-w-0 appearance-none rounded-xl border px-2.5 py-2 text-sm outline-none focus:ring-2"
+                        style={{
+                          backgroundColor: 'var(--theme-surface-bg)',
+                          borderColor: 'var(--theme-border)',
+                          color: 'var(--theme-text-primary)',
+                        }}
+                      />
+                    </div>
+                    {endDstConflict ? (
+                      <div
+                        role="alert"
+                        className="rounded-xl border border-amber-400/40 bg-amber-500/10 p-2.5 space-y-2 text-xs"
+                      >
+                        <p>{endDstConflict.message}</p>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEndDisambiguation('earlier');
+                              setEndDstConflict(null);
+                            }}
+                            className="rounded-lg border px-2.5 py-1 font-medium cursor-pointer"
+                          >
+                            {endDstConflict.earlierLabel}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEndDisambiguation('later');
+                              setEndDstConflict(null);
+                            }}
+                            className="rounded-lg border px-2.5 py-1 font-medium cursor-pointer"
+                          >
+                            {endDstConflict.laterLabel}
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHasEndTime(true);
+                      setEndDate(startDate);
+                    }}
+                    className="text-xs font-medium opacity-80 hover:opacity-100 transition cursor-pointer"
+                    style={{ color: 'var(--theme-text-muted)' }}
+                  >
+                    + Add end time
+                  </button>
+                )}
+              </div>
+
+              {/* 3. Place or Video Link + Hosted By */}
+              <div className="space-y-3 pb-3 border-b" style={{ borderColor: 'var(--theme-hairline)' }}>
+                {!showLocationDetails ? (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <MapPin
+                        className="h-4 w-4 shrink-0"
+                        style={{ color: 'var(--theme-text-muted)' }}
+                        aria-hidden="true"
+                      />
+                      <input
+                        id="event-location-single"
+                        type="text"
+                        maxLength={200}
+                        value={singleLocationValue}
+                        onChange={(e) => handleSingleLocationChange(e.target.value)}
+                        placeholder="Add a place, address, or link"
+                        aria-label="Event location or link"
+                        className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                        style={{
+                          backgroundColor: 'var(--theme-surface-bg)',
+                          borderColor: 'var(--theme-border)',
+                          color: 'var(--theme-text-primary)',
+                        }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowLocationDetails(true)}
+                      className="pl-6 text-xs font-medium opacity-75 hover:opacity-100 transition cursor-pointer"
                       style={{ color: 'var(--theme-text-muted)' }}
-                      aria-hidden="true"
+                    >
+                      + Separate venue and street address
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className="inline-flex items-center gap-1.5 text-xs font-medium"
+                        style={{ color: 'var(--theme-text-muted)' }}
+                      >
+                        <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span>Where</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowLocationDetails(false)}
+                        className="text-xs opacity-75 hover:opacity-100 cursor-pointer"
+                        style={{ color: 'var(--theme-text-muted)' }}
+                      >
+                        Single field
+                      </button>
+                    </div>
+                    <input
+                      id="event-location-name"
+                      type="text"
+                      maxLength={140}
+                      value={locationName}
+                      onChange={(e) => setLocationName(e.target.value)}
+                      placeholder="Place name"
+                      className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                      style={{
+                        backgroundColor: 'var(--theme-surface-bg)',
+                        borderColor: 'var(--theme-border)',
+                        color: 'var(--theme-text-primary)',
+                      }}
                     />
                     <input
-                      id="event-location-single"
+                      id="event-location-address"
                       type="text"
-                      maxLength={200}
-                      value={singleLocationValue}
-                      onChange={(e) => handleSingleLocationChange(e.target.value)}
-                      placeholder="Add address, venue, or link"
-                      aria-label="Event location or virtual link"
-                      className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                      maxLength={240}
+                      value={locationAddress}
+                      onChange={(e) => setLocationAddress(e.target.value)}
+                      placeholder="Street address, city, state"
+                      className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                      style={{
+                        backgroundColor: 'var(--theme-surface-bg)',
+                        borderColor: 'var(--theme-border)',
+                        color: 'var(--theme-text-primary)',
+                      }}
+                    />
+                    <input
+                      id="event-virtual-url"
+                      type="url"
+                      maxLength={400}
+                      value={virtualUrl}
+                      onChange={(e) => setVirtualUrl(e.target.value)}
+                      placeholder="Video call link https://... (optional)"
+                      className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
                       style={{
                         backgroundColor: 'var(--theme-surface-bg)',
                         borderColor: 'var(--theme-border)',
@@ -915,98 +986,81 @@ export function InviteStudio({
                       }}
                     />
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowLocationDetails(true)}
-                    className="pl-6 text-xs font-medium opacity-75 hover:opacity-100 transition cursor-pointer"
-                    style={{ color: 'var(--theme-text-muted)' }}
-                  >
-                    + Street address or separate video link
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span
-                      className="inline-flex items-center gap-1.5 text-xs font-medium"
-                      style={{ color: 'var(--theme-text-muted)' }}
-                    >
-                      <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-                      <span>Location</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowLocationDetails(false)}
-                      className="text-xs opacity-75 hover:opacity-100 cursor-pointer"
-                      style={{ color: 'var(--theme-text-muted)' }}
-                    >
-                      Simplify
-                    </button>
-                  </div>
-                  <input
-                    id="event-location-name"
-                    type="text"
-                    maxLength={140}
-                    value={locationName}
-                    onChange={(e) => setLocationName(e.target.value)}
-                    placeholder="Venue or place name"
-                    className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
-                    style={{
-                      backgroundColor: 'var(--theme-surface-bg)',
-                      borderColor: 'var(--theme-border)',
-                      color: 'var(--theme-text-primary)',
-                    }}
-                  />
-                  <input
-                    id="event-location-address"
-                    type="text"
-                    maxLength={240}
-                    value={locationAddress}
-                    onChange={(e) => setLocationAddress(e.target.value)}
-                    placeholder="Street address, city, state"
-                    className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
-                    style={{
-                      backgroundColor: 'var(--theme-surface-bg)',
-                      borderColor: 'var(--theme-border)',
-                      color: 'var(--theme-text-primary)',
-                    }}
-                  />
-                  <input
-                    id="event-virtual-url"
-                    type="url"
-                    maxLength={400}
-                    value={virtualUrl}
-                    onChange={(e) => setVirtualUrl(e.target.value)}
-                    placeholder="Virtual link https://... (optional)"
-                    className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
-                    style={{
-                      backgroundColor: 'var(--theme-surface-bg)',
-                      borderColor: 'var(--theme-border)',
-                      color: 'var(--theme-text-primary)',
-                    }}
-                  />
-                </div>
-              )}
+                )}
 
-              {/* Hosted By */}
-              <div className="flex items-center gap-2">
-                <User
-                  className="h-4 w-4 shrink-0"
+                <div className="flex items-center gap-2">
+                  <User
+                    className="h-4 w-4 shrink-0"
+                    style={{ color: 'var(--theme-text-muted)' }}
+                    aria-hidden="true"
+                  />
+                  <input
+                    id="event-host-name"
+                    type="text"
+                    maxLength={80}
+                    aria-label="Hosted by"
+                    value={effectiveHostName}
+                    onChange={(e) => {
+                      setHostTouched(true);
+                      setHostName(e.target.value);
+                    }}
+                    placeholder="Hosted by (your name)"
+                    className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                    style={{
+                      backgroundColor: 'var(--theme-surface-bg)',
+                      borderColor: 'var(--theme-border)',
+                      color: 'var(--theme-text-primary)',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* 4. Details */}
+              <RichTextEditor
+                label=""
+                placeholder="Add details, what food or drinks to bring, parking..."
+                value={descriptionHtml}
+                onChange={setDescriptionHtml}
+              />
+            </div>
+          </div>
+
+          {/* Closed-By-Default Guest & Time Zone Options */}
+          <details
+            className="group rounded-3xl border shadow-lg overflow-hidden"
+            style={{
+              backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
+              borderColor: 'var(--theme-hairline)',
+            }}
+          >
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-5 py-3.5 text-xs sm:text-sm font-medium">
+              <span>More options</span>
+              <ChevronDown
+                className="h-4 w-4 opacity-70 transition-transform group-open:rotate-180"
+                aria-hidden="true"
+              />
+            </summary>
+
+            <div
+              className="border-t p-5 space-y-3.5"
+              style={{ borderColor: 'var(--theme-hairline)' }}
+            >
+              <div>
+                <label
+                  htmlFor="event-rsvp-prompt"
+                  className="block text-xs font-medium mb-1"
                   style={{ color: 'var(--theme-text-muted)' }}
-                  aria-hidden="true"
-                />
+                >
+                  Question on the RSVP form
+                </label>
                 <input
-                  id="event-host-name"
+                  id="event-rsvp-prompt"
                   type="text"
-                  maxLength={80}
-                  aria-label="Hosted by"
-                  value={effectiveHostName}
-                  onChange={(e) => {
-                    setHostTouched(true);
-                    setHostName(e.target.value);
-                  }}
-                  placeholder="Hosted by (your name)"
-                  className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                  maxLength={140}
+                  value={rsvpNotePrompt}
+                  onChange={(e) => setRsvpNotePrompt(e.target.value)}
+                  placeholder="Bringing food, a dish, or a note?"
+                  className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
                   style={{
                     backgroundColor: 'var(--theme-surface-bg)',
                     borderColor: 'var(--theme-border)',
@@ -1014,299 +1068,134 @@ export function InviteStudio({
                   }}
                 />
               </div>
-            </div>
 
-            {/* 4. Rich Description */}
-            <RichTextEditor
-              label=""
-              placeholder="Add event details, what food or gifts to bring, parking..."
-              value={descriptionHtml}
-              onChange={setDescriptionHtml}
-            />
-          </div>
-        </div>
-
-        {/* Button Color / Gradient Customizer + Style Controls */}
-        <section
-          className="rounded-3xl border shadow-xl p-4 sm:p-5 space-y-3"
-          style={{
-            backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
-            borderColor: 'var(--theme-border)',
-          }}
-        >
-          <div className="flex items-center justify-between gap-2">
-            <span
-              className="inline-flex items-center gap-1.5 text-xs font-semibold"
-              style={{ color: 'var(--theme-text-primary)' }}
-            >
-              <Palette className="h-3.5 w-3.5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-              <span>Button Style</span>
-            </span>
-
-            <button
-              type="button"
-              aria-expanded={showCustomize}
-              onClick={() => setShowCustomize((prev) => !prev)}
-              className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition hover:opacity-90 cursor-pointer"
-              style={{
-                backgroundColor: 'var(--theme-surface-bg)',
-                borderColor: 'var(--theme-hairline)',
-                color: 'var(--theme-text-primary)',
-              }}
-            >
-              <Sliders className="h-3 w-3" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-              <span>Customize Style</span>
-              <ChevronDown
-                className={`h-3.5 w-3.5 transition-transform ${showCustomize ? 'rotate-180' : ''}`}
-                aria-hidden="true"
-              />
-            </button>
-          </div>
-
-          {/* 1-Row Quick Button Gradient Swatch Picker */}
-          <div className="flex items-center gap-2 overflow-x-auto py-1">
-            <button
-              type="button"
-              aria-label="Match invite theme button gradient"
-              aria-pressed={isThemeMatchActive}
-              onClick={() =>
-                setStyle((prev) => ({
-                  ...prev,
-                  customAccentHex: undefined,
-                  customCtaEndHex: undefined,
-                  ctaStyle: undefined,
-                }))
-              }
-              className={`shrink-0 h-8 rounded-full border px-3 text-[11px] font-semibold inline-flex items-center gap-1.5 transition cursor-pointer ${
-                isThemeMatchActive ? 'ring-2 ring-sky-400' : 'opacity-85 hover:opacity-100'
-              }`}
-              style={{
-                backgroundColor: 'var(--theme-surface-bg)',
-                borderColor: isThemeMatchActive
-                  ? 'var(--theme-accent)'
-                  : 'var(--theme-hairline)',
-                color: 'var(--theme-text-primary)',
-              }}
-            >
-              <span
-                aria-hidden="true"
-                className="h-3.5 w-3.5 rounded-full"
-                style={{
-                  background: `linear-gradient(135deg, ${activePreset.ctaStart} 0%, ${activePreset.ctaEnd} 100%)`,
-                }}
-              />
-              <span>Theme Match</span>
-            </button>
-
-            {CTA_PRESETS.map((swatch) => {
-              const selected =
-                style.customAccentHex?.toLowerCase() === swatch.startHex.toLowerCase() &&
-                (swatch.mode === 'solid'
-                  ? style.ctaStyle === 'solid'
-                  : style.customCtaEndHex?.toLowerCase() === swatch.endHex.toLowerCase());
-              return (
-                <button
-                  key={swatch.id}
-                  type="button"
-                  aria-label={`Use ${swatch.name} button gradient`}
-                  aria-pressed={selected}
-                  title={swatch.name}
-                  onClick={() =>
-                    setStyle((prev) => ({
-                      ...prev,
-                      ctaStyle: swatch.mode,
-                      customAccentHex: swatch.startHex,
-                      customCtaEndHex: swatch.endHex,
-                    }))
-                  }
-                  className={`shrink-0 h-8 w-8 rounded-full border-2 transition cursor-pointer ${
-                    selected ? 'scale-110 ring-2 ring-offset-1 ring-sky-400 border-white' : 'border-black/15'
-                  }`}
+              <div>
+                <label
+                  htmlFor="event-invited-names"
+                  className="block text-xs font-medium mb-1"
+                  style={{ color: 'var(--theme-text-muted)' }}
+                >
+                  Invited guests (optional, separated by commas)
+                </label>
+                <input
+                  id="event-invited-names"
+                  type="text"
+                  maxLength={1200}
+                  value={invitedNamesRaw}
+                  onChange={(e) => setInvitedNamesRaw(e.target.value)}
+                  placeholder="Alex, Jordan, Sam"
+                  className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
                   style={{
-                    background:
-                      swatch.mode === 'solid'
-                        ? swatch.startHex
-                        : `linear-gradient(135deg, ${swatch.startHex} 0%, ${swatch.endHex} 100%)`,
+                    backgroundColor: 'var(--theme-surface-bg)',
+                    borderColor: 'var(--theme-border)',
+                    color: 'var(--theme-text-primary)',
                   }}
                 />
-              );
-            })}
-          </div>
+              </div>
 
-          {showCustomize ? (
-            <div className="pt-2 border-t" style={{ borderColor: 'var(--theme-hairline)' }}>
-              <StyleStudioDrawer
-                section="customize"
-                style={style}
-                onChange={setStyle}
-                eventId={eventId}
-                editKey={editKey}
-              />
+              <div>
+                <label
+                  htmlFor="event-timezone"
+                  className="flex items-center gap-1.5 text-xs font-medium mb-1"
+                  style={{ color: 'var(--theme-text-muted)' }}
+                >
+                  <Globe className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Time zone</span>
+                </label>
+                <select
+                  id="event-timezone"
+                  aria-label="Event time zone"
+                  value={timeZone}
+                  onChange={(e) => {
+                    setTimeZone(e.target.value);
+                    setStartDstConflict(null);
+                    setStartDisambiguation(undefined);
+                    setEndDstConflict(null);
+                    setEndDisambiguation(undefined);
+                  }}
+                  className="w-full rounded-xl border px-3 py-2 text-sm outline-none cursor-pointer"
+                  style={{
+                    backgroundColor: 'var(--theme-surface-bg)',
+                    borderColor: 'var(--theme-border)',
+                    color: 'var(--theme-text-primary)',
+                  }}
+                >
+                  {timeZones.map((tz) => (
+                    <option key={tz} value={tz}>
+                      {tz.replace(/_/g, ' ')}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <label className="flex items-center gap-2.5 text-xs sm:text-sm cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  checked={hideGuestList}
+                  onChange={(e) => setHideGuestList(e.target.checked)}
+                  className="rounded border"
+                />
+                <span className="inline-flex items-center gap-1.5">
+                  <Lock className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
+                  <span>Keep guest list private (only you see names)</span>
+                </span>
+              </label>
+            </div>
+          </details>
+
+          {errorMsg ? (
+            <p role="alert" className="text-xs sm:text-sm font-medium text-rose-400 px-1">
+              {errorMsg}
+            </p>
+          ) : null}
+
+          {savedNotice && eventId ? (
+            <div
+              className="rounded-2xl border px-4 py-3 text-xs sm:text-sm flex items-center justify-between gap-2"
+              style={{
+                backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
+                borderColor: 'var(--theme-accent)',
+              }}
+            >
+              <span className="inline-flex items-center gap-1.5 font-medium">
+                <Check className="h-4 w-4" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+                <span>Saved</span>
+              </span>
+              <Link
+                href={`/e/${eventId}`}
+                className="inline-flex items-center gap-1 font-medium underline underline-offset-2"
+              >
+                <span>View invite</span>
+                <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </Link>
             </div>
           ) : null}
-        </section>
 
-        {/* Closed-By-Default Guest & RSVP Options */}
-        <details
-          className="group rounded-3xl border shadow-lg overflow-hidden"
-          style={{
-            backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
-            borderColor: 'var(--theme-hairline)',
-          }}
-        >
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-5 py-3.5 text-xs sm:text-sm font-medium">
-            <span>More options (RSVP question, guest list, time zone)</span>
-            <ChevronDown
-              className="h-4 w-4 opacity-70 transition-transform group-open:rotate-180"
-              aria-hidden="true"
-            />
-          </summary>
-
-          <div
-            className="border-t p-5 space-y-3"
-            style={{ borderColor: 'var(--theme-hairline)' }}
+          <button
+            type="submit"
+            disabled={submitting}
+            className="invite-cta-btn w-full min-h-[50px] rounded-full py-3.5 px-5 text-sm sm:text-base font-semibold transition active:scale-[0.99] disabled:opacity-60 cursor-pointer shadow-xl"
           >
-            <div>
-              <label
-                htmlFor="event-rsvp-prompt"
-                className="block text-xs font-medium mb-1"
-                style={{ color: 'var(--theme-text-muted)' }}
-              >
-                RSVP note question
-              </label>
-              <input
-                id="event-rsvp-prompt"
-                type="text"
-                maxLength={140}
-                value={rsvpNotePrompt}
-                onChange={(e) => setRsvpNotePrompt(e.target.value)}
-                placeholder="What food, dish, or gift are you bringing?"
-                className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
-                style={{
-                  backgroundColor: 'var(--theme-surface-bg)',
-                  borderColor: 'var(--theme-border)',
-                  color: 'var(--theme-text-primary)',
-                }}
-              />
-            </div>
+            {submitting
+              ? mode === 'create'
+                ? 'Creating invite...'
+                : 'Saving...'
+              : mode === 'create'
+                ? 'Create invite'
+                : 'Save changes'}
+          </button>
+        </form>
+      )}
 
-            <div>
-              <label
-                htmlFor="event-invited-names"
-                className="block text-xs font-medium mb-1"
-                style={{ color: 'var(--theme-text-muted)' }}
-              >
-                Invited guest names (comma-separated, optional)
-              </label>
-              <input
-                id="event-invited-names"
-                type="text"
-                maxLength={1200}
-                value={invitedNamesRaw}
-                onChange={(e) => setInvitedNamesRaw(e.target.value)}
-                placeholder="Alex, Jordan, Sam"
-                className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
-                style={{
-                  backgroundColor: 'var(--theme-surface-bg)',
-                  borderColor: 'var(--theme-border)',
-                  color: 'var(--theme-text-primary)',
-                }}
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="event-timezone"
-                className="flex items-center gap-1.5 text-xs font-medium mb-1"
-                style={{ color: 'var(--theme-text-muted)' }}
-              >
-                <Globe className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>Time zone</span>
-              </label>
-              <select
-                id="event-timezone"
-                aria-label="Event time zone"
-                value={timeZone}
-                onChange={(e) => {
-                  setTimeZone(e.target.value);
-                  setStartDstConflict(null);
-                  setStartDisambiguation(undefined);
-                  setEndDstConflict(null);
-                  setEndDisambiguation(undefined);
-                }}
-                className="w-full rounded-xl border px-3 py-2 text-sm outline-none cursor-pointer"
-                style={{
-                  backgroundColor: 'var(--theme-surface-bg)',
-                  borderColor: 'var(--theme-border)',
-                  color: 'var(--theme-text-primary)',
-                }}
-              >
-                {timeZones.map((tz) => (
-                  <option key={tz} value={tz}>
-                    {tz.replace(/_/g, ' ')}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <label className="flex items-center gap-2.5 text-xs sm:text-sm cursor-pointer pt-1">
-              <input
-                type="checkbox"
-                checked={hideGuestList}
-                onChange={(e) => setHideGuestList(e.target.checked)}
-                className="rounded border"
-              />
-              <span className="inline-flex items-center gap-1.5">
-                <Lock className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
-                <span>Hide guest list from guests</span>
-              </span>
-            </label>
-          </div>
-        </details>
-
-        {errorMsg ? (
-          <p role="alert" className="text-xs sm:text-sm font-medium text-rose-300 px-1">
-            {errorMsg}
-          </p>
-        ) : null}
-
-        {savedNotice && eventId ? (
-          <div
-            className="rounded-2xl border px-4 py-3 text-xs sm:text-sm flex items-center justify-between gap-2"
-            style={{
-              backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
-              borderColor: 'var(--theme-accent)',
-            }}
-          >
-            <span className="inline-flex items-center gap-1.5 font-medium">
-              <Check className="h-4 w-4" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-              <span>Saved</span>
-            </span>
-            <Link
-              href={`/e/${eventId}`}
-              className="inline-flex items-center gap-1 font-medium underline underline-offset-2"
-            >
-              <span>View Invite</span>
-              <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
-            </Link>
-          </div>
-        ) : null}
-
-        {/* Full-Width Live CTA Button Reflecting Custom Gradient / Color */}
-        <button
-          type="submit"
-          disabled={submitting}
-          className="invite-cta-btn w-full min-h-[50px] rounded-full py-3.5 px-5 text-sm sm:text-base font-semibold transition active:scale-[0.99] disabled:opacity-60 cursor-pointer shadow-xl"
-        >
-          {submitting
-            ? mode === 'create'
-              ? 'Creating Invite...'
-              : 'Saving...'
-            : mode === 'create'
-              ? 'Create Invite'
-              : 'Save Changes'}
-        </button>
-      </form>
+      <StyleStudioDrawer
+        open={themeDrawerOpen}
+        initialTab={themeDrawerTab}
+        onClose={() => setThemeDrawerOpen(false)}
+        style={style}
+        onChange={setStyle}
+        eventId={eventId}
+        editKey={editKey}
+      />
 
       <PublishSuccessDialog
         published={publishedResult}

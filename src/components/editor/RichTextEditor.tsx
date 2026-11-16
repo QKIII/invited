@@ -437,7 +437,7 @@ export function RichTextEditor({
       )}
 
       <div
-        className="rounded-xl border transition focus-within:ring-2"
+        className="rounded-xl border transition-shadow focus-within:ring-2"
         style={{
           backgroundColor: 'var(--theme-surface-bg, rgba(15, 23, 42, 0.7))',
           borderColor: 'var(--theme-hairline, rgba(255, 255, 255, 0.14))',

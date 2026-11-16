@@ -200,18 +200,90 @@ export function CoverArt({
               filter={`url(#${shadowId})`}
             />
 
-            {/* Curved playful typography */}
-            <text
-              fill="#111827"
-              fontSize="74"
-              fontWeight="800"
-              fontFamily="system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
-              letterSpacing="-1.5"
-            >
-              <textPath href={`#${curveId}`} startOffset="50%" textAnchor="middle">
-                you are invited
-              </textPath>
-            </text>
+            {/* Balanced playful centerpiece */}
+            <circle cx="400" cy="390" r="64" fill="#fbbf24" filter={`url(#${shadowId})`} />
+            <circle cx="400" cy="390" r="34" fill="#0284c7" />
+          </>
+        );
+
+      case 'graphic-citrus-waves':
+        return (
+          <>
+            <defs>
+              <linearGradient id={bgId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#fff7ed" />
+                <stop offset="55%" stopColor="#fed7aa" />
+                <stop offset="100%" stopColor="#fdba74" />
+              </linearGradient>
+            </defs>
+            <rect width="800" height="800" fill={`url(#${bgId})`} />
+            <circle cx="400" cy="320" r="135" fill="#fb923c" />
+            <circle cx="400" cy="320" r="95" fill="#facc15" opacity="0.92" />
+            <path d="M0,455 Q200,405 400,455 T800,455 L800,800 L0,800 Z" fill="#0284c7" opacity="0.86" />
+            <path d="M0,530 Q200,480 400,530 T800,530 L800,800 L0,800 Z" fill="#0369a1" />
+            <path d="M0,610 Q200,565 400,610 T800,610 L800,800 L0,800 Z" fill="#0c4a6e" opacity="0.88" />
+          </>
+        );
+
+      case 'graphic-moon-clouds':
+        return (
+          <>
+            <defs>
+              <linearGradient id={bgId} x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#0f172a" />
+                <stop offset="55%" stopColor="#1e293b" />
+                <stop offset="100%" stopColor="#312e81" />
+              </linearGradient>
+            </defs>
+            <rect width="800" height="800" fill={`url(#${bgId})`} />
+            <circle cx="515" cy="255" r="78" fill="#fef08a" />
+            <circle cx="548" cy="240" r="66" fill="#1e293b" />
+            <circle cx="205" cy="215" r="5" fill="#ffffff" opacity="0.8" />
+            <circle cx="325" cy="180" r="4" fill="#fde68a" opacity="0.85" />
+            <circle cx="660" cy="195" r="4.5" fill="#ffffff" opacity="0.7" />
+            <g fill="#f8fafc" opacity="0.9">
+              <circle cx="255" cy="510" r="95" />
+              <circle cx="385" cy="465" r="125" />
+              <circle cx="535" cy="515" r="100" />
+              <rect x="140" y="500" width="520" height="140" rx="70" />
+            </g>
+          </>
+        );
+
+      case 'graphic-terracotta-vase':
+        return (
+          <>
+            <rect width="800" height="800" fill="#f7efe5" />
+            <path d="M210,690 L210,360 A190,190 0 0,1 590,360 L590,690 Z" fill="#efe2d2" />
+            <ellipse cx="400" cy="480" rx="88" ry="118" fill="#c2593f" />
+            <rect x="366" y="345" width="68" height="44" rx="12" fill="#a8432b" />
+            <path d="M400,345 C365,260 305,225 275,205 C330,205 375,245 400,320 Z" fill="#4f6d52" />
+            <path d="M400,345 C435,255 495,220 530,195 C475,205 425,245 400,320 Z" fill="#688869" />
+            <circle cx="330" cy="260" r="22" fill="#e9b872" />
+            <circle cx="475" cy="250" r="18" fill="#d97757" />
+          </>
+        );
+
+      case 'graphic-midnight-stars':
+        return (
+          <>
+            <defs>
+              <linearGradient id={bgId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#070913" />
+                <stop offset="100%" stopColor="#171f3b" />
+              </linearGradient>
+            </defs>
+            <rect width="800" height="800" fill={`url(#${bgId})`} />
+            <circle cx="400" cy="400" r="215" fill="none" stroke="#93c5fd" strokeOpacity="0.22" strokeWidth="2" />
+            <circle cx="400" cy="400" r="145" fill="none" stroke="#fde68a" strokeOpacity="0.32" strokeWidth="2" />
+            <polygon points="400,255 418,350 515,370 418,390 400,485 382,390 285,370 382,350" fill="#fef3c7" />
+            <circle cx="245" cy="270" r="6" fill="#93c5fd" />
+            <circle cx="565" cy="260" r="6" fill="#fde68a" />
+            <circle cx="550" cy="525" r="5" fill="#93c5fd" />
+            <circle cx="255" cy="520" r="5" fill="#fde68a" />
+            <line x1="245" y1="270" x2="400" y2="370" stroke="#93c5fd" strokeOpacity="0.35" strokeWidth="2" />
+            <line x1="565" y1="260" x2="400" y2="370" stroke="#fde68a" strokeOpacity="0.35" strokeWidth="2" />
+            <line x1="550" y1="525" x2="400" y2="370" stroke="#93c5fd" strokeOpacity="0.35" strokeWidth="2" />
           </>
         );
 

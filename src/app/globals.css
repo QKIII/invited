@@ -6,10 +6,86 @@
 }
 
 @layer base {
+  :root {
+    --app-bg: #082556;
+    --target-size: 24px;
+  }
+
+  @media (pointer: coarse) {
+    :root {
+      --target-size: 44px;
+    }
+
+    input:not([type="checkbox"], [type="radio"], [type="color"]),
+    textarea,
+    select,
+    [contenteditable="true"] {
+      font-size: max(16px, 1rem);
+    }
+  }
+
   html {
     font-family: var(--font-ui-body), ui-sans-serif, system-ui, -apple-system, sans-serif;
+    background-color: var(--app-bg, #082556);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior-x: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    background-color: var(--app-bg, #082556);
+    min-height: 100dvh;
+    overflow-wrap: anywhere;
+    overscroll-behavior-x: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  @media (display-mode: standalone) {
+    html,
+    body {
+      overscroll-behavior-y: none;
+    }
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  img,
+  video {
+    max-inline-size: 100%;
+  }
+
+  button,
+  summary,
+  [role="tab"],
+  [role="radio"],
+  header,
+  nav,
+  img,
+  svg {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: manipulation;
+  }
+
+  p,
+  h1,
+  h2,
+  h3,
+  h4,
+  li,
+  input,
+  textarea,
+  [contenteditable="true"],
+  .invite-prose,
+  .select-all {
+    user-select: text;
+    -webkit-user-select: text;
   }
 
   dialog:modal {
@@ -52,6 +128,12 @@
   .invite-cta-btn {
     color: contrast-color(var(--theme-cta-mid, #0284c7));
   }
+}
+
+.app-top-bar {
+  padding-top: max(0.5rem, env(safe-area-inset-top, 0px));
+  padding-left: max(0.875rem, env(safe-area-inset-left, 0px));
+  padding-right: max(0.875rem, env(safe-area-inset-right, 0px));
 }
 
 .sticky-rsvp-bar {

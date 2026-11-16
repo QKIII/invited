@@ -432,10 +432,11 @@ describe('GuestList', () => {
     );
 
     expect(container.textContent).toContain('2 Going');
-    expect(container.textContent).toContain('1 Not Coming');
-    expect(container.textContent).toContain('2 Awaiting Reply');
+    expect(container.textContent).toContain('1 Not coming');
+    expect(container.textContent).toContain('2 Waiting on');
     expect(container.textContent).toContain('Spiced cider');
     expect(container.textContent).toContain('+1');
+    expect(container.textContent).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
 
     // Switch to Awaiting Reply tab
     const awaitingTab = container.querySelector<HTMLButtonElement>('#guest-tab-awaiting')!;
@@ -513,11 +514,13 @@ describe('EventWall & SubscribeControl', () => {
     expect(container.textContent).toContain('Host');
     expect(container.textContent).toContain('Doors open at 6pm!');
 
-    // Reaction button click
+    // Reaction button click (renders custom SVG icons without Unicode emojis)
     const partyReactBtn = Array.from(container.querySelectorAll('button')).find((b) =>
-      b.getAttribute('aria-label')?.startsWith('React with 🎉'),
+      b.getAttribute('aria-label')?.startsWith('Celebrate'),
     )!;
     expect(partyReactBtn).toBeDefined();
+    expect(partyReactBtn.getAttribute('data-reaction')).toBe('🎉');
+    expect(container.textContent).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
     await act(async () => {
       partyReactBtn.click();
     });
@@ -574,7 +577,8 @@ describe('EventWall & SubscribeControl', () => {
       />,
     );
 
-    expect(container.textContent).toContain('Get Event Updates (Optional)');
+    expect(container.textContent).toContain('Get reminders');
+    expect(container.textContent).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
     const dialog = container.querySelector('dialog');
     expect(dialog).not.toBeNull();
     expect(dialog?.getAttribute('closedby')).toBe('any');

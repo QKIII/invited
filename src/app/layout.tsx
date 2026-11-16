@@ -58,15 +58,29 @@ const uiBody = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "invited — Free, Account-Free Event Invitations",
+  title: "invited — Simple Event Invites",
   description:
-    "Create expressive, platform-agnostic event invitations with instant RSVPs, guest discussions, and zero accounts required.",
+    "Create warm event invites in seconds and collect RSVPs with a single link. No accounts needed.",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "invited",
+  },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  themeColor: "#082556",
 };
 
 export default function RootLayout({
@@ -86,7 +100,7 @@ export default function RootLayout({
 
   return (
     <html lang="en" className={fontVariables}>
-      <body className="min-h-screen antialiased">
+      <body className="min-h-dvh antialiased">
         <PolyfillBootstrap />
         {children}
       </body>

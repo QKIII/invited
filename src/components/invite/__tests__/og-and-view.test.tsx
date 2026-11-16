@@ -113,9 +113,10 @@ describe('InviteView (post-merge integration)', () => {
 
     expect(container.textContent).toContain('Christmas Eve Candlelight & Cocoa');
     expect(container.textContent).toContain('Hosted by Clara');
-    expect(container.textContent).toContain('Host view');
-    expect(container.textContent).toContain('Edit Invite');
+    expect(container.textContent).toContain('My Invites');
+    expect(container.textContent).toContain('Edit invite');
     expect(container.textContent).toContain('4:00 PM – 7:00 PM PST (your time)');
+    expect(container.textContent).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
     expect(container.querySelector('[data-testid="sticky-rsvp-footer"]')).not.toBeNull();
     expect(container.querySelector('iframe[src^="https://maps.google.com/maps?"]')).not.toBeNull();
 

@@ -9,9 +9,9 @@ import {
   ExternalLink,
   KeyRound,
   Lock,
-  Sparkles,
 } from 'lucide-react';
 import { AmbientBackdrop } from '@/components/effects/AmbientBackdrop';
+import { InviteIcon } from '@/components/icons/InviteIcons';
 import { HostManagementPanel } from '@/components/studio/HostManagementPanel';
 import { InviteStudio } from '@/components/studio/InviteStudio';
 import {
@@ -20,6 +20,7 @@ import {
   rememberHostEvent,
   saveHostKey,
 } from '@/lib/client/recentEvents';
+import { useThemeViewportSync } from '@/lib/client/useThemeViewportSync';
 import { getThemePreset, resolveThemeCssVars } from '@/lib/themes/presets';
 import type { EventDetailResponse, EventMeta, InviteStyleConfig } from '@/types/invite';
 
@@ -65,7 +66,7 @@ export function EditInviteClient({
       if (!cleanedKey) {
         setStatus('needs-key');
         if (!isInitialAttempt) {
-          setAuthError('Please paste your secret host edit link or key.');
+          setAuthError('Please paste your private edit link or key.');
         }
         return;
       }
@@ -90,7 +91,7 @@ export function EditInviteClient({
 
         if (!res.ok) {
           setStatus('error');
-          setAuthError('Could not load event details.');
+          setAuthError('Could not load invite details.');
           return;
         }
 
@@ -100,7 +101,7 @@ export function EditInviteClient({
           setAuthError(
             isInitialAttempt
               ? null
-              : 'That secret host key did not match this event.',
+              : 'That private edit link or key did not match this invite.',
           );
           return;
         }
@@ -122,7 +123,7 @@ export function EditInviteClient({
         setStatus('authorized');
       } catch {
         setStatus(isInitialAttempt ? 'error' : 'needs-key');
-        setAuthError('Network error verifying host key.');
+        setAuthError('Could not check your edit link right now.');
       } finally {
         setVerifying(false);
       }
@@ -176,12 +177,14 @@ export function EditInviteClient({
   const backdropMode =
     themeVars['--theme-backdrop-mode'] === 'light' ? 'light' : 'dark';
 
+  useThemeViewportSync(themeVars['--theme-page-bg'], backdropMode);
+
   if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-[#082556] text-slate-100 flex items-center justify-center px-4">
-        <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-white/[0.06] backdrop-blur-md p-6 text-center space-y-2">
-          <Sparkles className="h-5 w-5 text-sky-300 mx-auto animate-pulse" aria-hidden="true" />
-          <p className="text-sm font-medium text-white">Opening event manager...</p>
+      <div className="min-h-dvh bg-[#082556] text-slate-100 flex items-center justify-center px-4">
+        <div className="w-full max-w-sm rounded-3xl border border-white/15 bg-white/[0.08] backdrop-blur-md p-6 text-center space-y-2.5">
+          <InviteIcon name="brand" className="h-6 w-6 text-sky-200 mx-auto" />
+          <p className="text-sm font-medium text-white">Opening your invite...</p>
         </div>
       </div>
     );
@@ -189,17 +192,17 @@ export function EditInviteClient({
 
   if (status === 'not-found') {
     return (
-      <div className="min-h-screen bg-[#082556] text-slate-100 flex items-center justify-center px-4">
-        <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-white/[0.06] backdrop-blur-md p-6 text-center space-y-4">
-          <h1 className="text-lg font-bold text-white">Invite not found</h1>
+      <div className="min-h-dvh bg-[#082556] text-slate-100 flex items-center justify-center px-4">
+        <div className="w-full max-w-sm rounded-3xl border border-white/15 bg-white/[0.08] backdrop-blur-md p-6 text-center space-y-4">
+          <h1 className="text-xl font-bold text-white">Invite not found</h1>
           <p className="text-sm text-slate-300">
-            This invite may have been deleted or the URL is incomplete.
+            This invite may have been deleted or the link might be incomplete.
           </p>
           <Link
             href="/"
-            className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-slate-100 transition"
+            className="inline-flex items-center justify-center rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-slate-100 transition"
           >
-            Create New Invite
+            Create a new invite
           </Link>
         </div>
       </div>
@@ -208,23 +211,23 @@ export function EditInviteClient({
 
   if (status === 'needs-key' || status === 'error') {
     return (
-      <div className="min-h-screen bg-[#082556] text-slate-100 px-4 py-12 flex items-center justify-center">
-        <div className="w-full max-w-md rounded-2xl border border-white/15 bg-white/[0.08] backdrop-blur-md p-6 space-y-4 shadow-2xl">
+      <div className="min-h-dvh bg-[#082556] text-slate-100 px-4 py-12 flex items-center justify-center">
+        <div className="w-full max-w-md rounded-3xl border border-white/15 bg-white/[0.08] backdrop-blur-md p-6 space-y-4 shadow-2xl">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-sky-400/20 border border-sky-300/30 flex items-center justify-center shrink-0">
+            <div className="h-10 w-10 rounded-2xl bg-sky-400/20 border border-sky-300/30 flex items-center justify-center shrink-0">
               <Lock className="h-4 w-4 text-sky-200" aria-hidden="true" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-white">Host Edit Link Required</h1>
+              <h1 className="text-lg font-bold text-white">Open invite editor</h1>
               <p className="text-xs text-slate-300">
-                Paste your secret edit link or key to manage this event.
+                Paste your private edit link to change details or see who&apos;s going.
               </p>
             </div>
           </div>
 
           <form onSubmit={handleKeySubmit} className="space-y-3">
             <label htmlFor="host-edit-key-input" className="sr-only">
-              Secret host key or full edit link
+              Private edit link or key
             </label>
             <input
               id="host-edit-key-input"
@@ -234,7 +237,7 @@ export function EditInviteClient({
                 setKeyInput(e.target.value);
                 setAuthError(null);
               }}
-              placeholder="Paste ?key=... or full edit URL"
+              placeholder="Paste your edit link or key"
               className="w-full rounded-xl border border-white/15 bg-slate-950/60 px-3.5 py-2.5 text-sm text-white placeholder:text-slate-400 outline-none focus:ring-2"
             />
 
@@ -248,18 +251,18 @@ export function EditInviteClient({
               <button
                 type="submit"
                 disabled={verifying}
-                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-slate-100 transition disabled:opacity-60 cursor-pointer"
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-slate-100 transition disabled:opacity-60 cursor-pointer"
               >
                 <KeyRound className="h-4 w-4" aria-hidden="true" />
-                <span>{verifying ? 'Verifying...' : 'Unlock'}</span>
+                <span>{verifying ? 'Opening...' : 'Unlock'}</span>
               </button>
 
               <Link
                 href={`/e/${eventId}`}
-                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/15 px-3.5 py-2.5 text-sm font-medium text-white hover:bg-white/10 transition"
+                className="inline-flex items-center justify-center gap-1.5 rounded-full border border-white/15 px-4 py-2.5 text-sm font-medium text-white hover:bg-white/10 transition"
               >
                 <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-                <span>View Invite</span>
+                <span>Back to invite</span>
               </Link>
             </div>
           </form>
@@ -276,34 +279,34 @@ export function EditInviteClient({
         color: 'var(--theme-text-primary)',
         fontFamily: 'var(--font-invite-body), var(--font-sans), sans-serif',
       }}
-      className="min-h-screen relative overflow-x-hidden transition-colors duration-300"
+      className="min-h-dvh relative overflow-x-hidden transition-colors duration-300"
     >
       <AmbientBackdrop
+        fixedViewport
         effectId={effectiveStyle.effectId}
         accentColor={themeVars['--theme-accent']}
         colorMode={backdropMode}
-        className="fixed inset-0 z-0"
+        className="z-0"
       />
 
-      {/* Minimal 48px single-row header */}
-      <header className="relative z-10 h-12 max-w-[580px] mx-auto px-3.5 sm:px-6 flex items-center justify-between gap-2">
+      <header className="relative z-10 app-top-bar h-13 max-w-[580px] mx-auto flex items-center justify-between gap-2">
         <Link
           href={`/e/${eventId}`}
           className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-medium hover:opacity-80 transition shrink-0"
           style={{ color: 'var(--theme-outer-text)' }}
         >
           <ArrowLeft className="h-4 w-4 shrink-0" aria-hidden="true" />
-          <span>View Invite</span>
+          <span>View invite</span>
         </Link>
 
         <div className="flex items-center gap-1.5 min-w-0">
           <div
             role="tablist"
-            aria-label="Manage mode"
-            className="inline-flex items-center rounded-full border border-current/20 p-0.5 backdrop-blur-md"
+            aria-label="Invite sections"
+            className="inline-flex items-center rounded-full border p-0.5 backdrop-blur-md"
             style={{
-              backgroundColor:
-                backdropMode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.75)',
+              backgroundColor: 'var(--theme-outer-pill-bg)',
+              borderColor: 'var(--theme-outer-pill-border)',
               color: 'var(--theme-outer-text)',
             }}
           >
@@ -312,19 +315,19 @@ export function EditInviteClient({
               type="button"
               aria-selected={activeTab === 'edit'}
               onClick={() => setActiveTab('edit')}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition cursor-pointer ${
-                activeTab === 'edit' ? 'invite-cta-btn' : 'opacity-75 hover:opacity-100'
+              className={`rounded-full px-3.5 py-1 text-xs font-medium transition cursor-pointer ${
+                activeTab === 'edit' ? 'invite-cta-btn' : 'opacity-80 hover:opacity-100'
               }`}
             >
-              Edit
+              Details
             </button>
             <button
               role="tab"
               type="button"
               aria-selected={activeTab === 'manage'}
               onClick={() => setActiveTab('manage')}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition cursor-pointer whitespace-nowrap ${
-                activeTab === 'manage' ? 'invite-cta-btn' : 'opacity-75 hover:opacity-100'
+              className={`rounded-full px-3.5 py-1 text-xs font-medium transition cursor-pointer whitespace-nowrap ${
+                activeTab === 'manage' ? 'invite-cta-btn' : 'opacity-80 hover:opacity-100'
               }`}
             >
               Guests ({detail?.rsvps.totalHeadcount ?? 0})
@@ -335,10 +338,10 @@ export function EditInviteClient({
             type="button"
             onClick={() => void handleCopyGuestLink()}
             aria-label="Copy guest invite link"
-            className="h-8 inline-flex items-center gap-1 rounded-full border border-current/25 px-2.5 text-xs font-medium backdrop-blur-md transition hover:opacity-90 cursor-pointer shrink-0"
+            className="h-9 inline-flex items-center gap-1.5 rounded-full border px-3 text-xs font-medium backdrop-blur-md transition hover:opacity-90 cursor-pointer shrink-0"
             style={{
-              backgroundColor:
-                backdropMode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.75)',
+              backgroundColor: 'var(--theme-outer-pill-bg)',
+              borderColor: 'var(--theme-outer-pill-border)',
               color: 'var(--theme-outer-text)',
             }}
           >
@@ -347,18 +350,18 @@ export function EditInviteClient({
             ) : (
               <Copy className="h-3.5 w-3.5" aria-hidden="true" />
             )}
-            <span className="hidden sm:inline">{copiedGuest ? 'Copied' : 'Copy Link'}</span>
+            <span className="hidden sm:inline">{copiedGuest ? 'Copied' : 'Copy link'}</span>
           </button>
 
           <Link
             href={`/e/${eventId}`}
             target="_blank"
             rel="noopener noreferrer"
-            aria-label="Open guest page in new tab"
-            className="h-8 w-8 rounded-full border border-current/25 inline-flex items-center justify-center backdrop-blur-md transition hover:opacity-90 shrink-0"
+            aria-label="Open invite in new tab"
+            className="h-9 w-9 rounded-full border inline-flex items-center justify-center backdrop-blur-md transition hover:opacity-90 shrink-0"
             style={{
-              backgroundColor:
-                backdropMode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.75)',
+              backgroundColor: 'var(--theme-outer-pill-bg)',
+              borderColor: 'var(--theme-outer-pill-border)',
               color: 'var(--theme-outer-text)',
             }}
           >
@@ -367,7 +370,7 @@ export function EditInviteClient({
         </div>
       </header>
 
-      <main className="relative z-10 max-w-[580px] mx-auto px-3.5 sm:px-6 pt-1 sm:pt-2 pb-16">
+      <main className="relative z-10 max-w-[580px] mx-auto px-3.5 sm:px-6 pt-2 pb-16">
         {detail && activeTab === 'edit' ? (
           <InviteStudio
             key={`edit-${detail.event.id}`}
@@ -382,10 +385,11 @@ export function EditInviteClient({
 
         {detail && activeTab === 'manage' ? (
           <div
-            className="rounded-3xl border shadow-xl p-5 sm:p-6"
+            className="rounded-3xl border shadow-2xl p-5 sm:p-6"
             style={{
               backgroundColor: 'var(--theme-card-solid, var(--theme-card-bg))',
               borderColor: 'var(--theme-border)',
+              color: 'var(--theme-text-primary)',
             }}
           >
             <HostManagementPanel

@@ -70,7 +70,7 @@ export function GuestList({
 
         {viewerRsvp ? (
           <p className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>
-            Your RSVP: {viewerRsvp.status === 'yes' ? "Going 🎉" : "Can't make it"}
+            Your RSVP: {viewerRsvp.status === 'yes' ? 'Going' : "Can't make it"}
             {viewerRsvp.plusOnes > 0 ? ` (+${viewerRsvp.plusOnes})` : ''}
             {viewerRsvp.bringingNote ? ` · ${viewerRsvp.bringingNote}` : ''}
           </p>
@@ -187,7 +187,7 @@ export function GuestList({
                     }
               }
             >
-              {rsvps.no.length} Not Coming
+              {rsvps.no.length} Not coming
             </button>
           ) : null}
 
@@ -214,7 +214,7 @@ export function GuestList({
                     }
               }
             >
-              {rsvps.awaitingNames.length} Awaiting Reply
+              {rsvps.awaitingNames.length} Waiting on
             </button>
           ) : null}
         </div>

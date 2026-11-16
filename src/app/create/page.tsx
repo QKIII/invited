@@ -3,9 +3,9 @@ import type { Metadata } from 'next';
 import { CreateInviteClient } from '@/components/studio/CreateInviteClient';
 
 export const metadata: Metadata = {
-  title: 'Create Invite — invited',
+  title: 'New Invite — invited',
   description:
-    'Design an account-free event invitation with live preview, rich description, and instant binary RSVPs.',
+    'Create an event invite in seconds and collect RSVPs with a single link.',
 };
 
 interface CreatePageProps {
@@ -20,8 +20,8 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-[#060913] flex items-center justify-center text-slate-300 text-sm">
-          Loading invite studio...
+        <div className="min-h-dvh bg-[#082556] flex items-center justify-center text-slate-200 text-sm">
+          Loading...
         </div>
       }
     >

@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { CoverArt } from '@/components/covers/CoverArt';
 import { AmbientBackdrop } from '@/components/effects/AmbientBackdrop';
+import { InviteIcon } from '@/components/icons/InviteIcons';
+import { RecentEventsDialog } from '@/components/studio/RecentEventsDialog';
 import {
   getCachedGuestRsvp,
   getSavedGuestToken,
@@ -25,6 +27,7 @@ import {
   rememberVisitedEvent,
   saveHostKey,
 } from '@/lib/client/recentEvents';
+import { useThemeViewportSync } from '@/lib/client/useThemeViewportSync';
 import { ensureTemporal, formatEventDateTime, type FormattedEventDateTime } from '@/lib/polyfills/temporal';
 import { stripHtmlToText } from '@/lib/sanitize';
 import { resolveThemeCssVars } from '@/lib/themes/presets';
@@ -63,6 +66,7 @@ export function InviteView({
     initialDetail.viewerRsvp?.guestName ?? '',
   );
   const [isEditingRsvp, setIsEditingRsvp] = useState<boolean>(false);
+  const [recentOpen, setRecentOpen] = useState<boolean>(false);
   const [subscribeSignal, setSubscribeSignal] = useState<number>(0);
   const [shareCopied, setShareCopied] = useState<boolean>(false);
   const shareOrigin = useSyncExternalStore(
@@ -84,6 +88,8 @@ export function InviteView({
   );
   const backdropMode =
     themeVars['--theme-backdrop-mode'] === 'light' ? 'light' : 'dark';
+
+  useThemeViewportSync(themeVars['--theme-page-bg'], backdropMode);
 
   const refreshDetail = useCallback(
     async (overrides?: { editKey?: string | null; guestToken?: string | null }) => {
@@ -346,42 +352,55 @@ export function InviteView({
         color: 'var(--theme-text-primary)',
         fontFamily: 'var(--font-invite-body), var(--font-sans), sans-serif',
       }}
-      className="min-h-screen relative overflow-x-hidden"
+      className="min-h-dvh relative overflow-x-hidden"
     >
       <AmbientBackdrop
+        fixedViewport
         effectId={event.style.effectId}
         accentColor={themeVars['--theme-accent']}
         colorMode={backdropMode}
-        className="fixed inset-0 z-0"
+        className="z-0"
       />
 
-      <main className="relative z-10 max-w-[580px] mx-auto px-3.5 sm:px-6 pt-3 sm:pt-7 pb-28 space-y-4">
-        {/* Compact Host Utility Pill (visible ONLY to hosts with editKey) */}
-        {activeEditHref ? (
-          <div
-            className="flex items-center justify-between gap-2 px-1 text-xs font-medium"
-            style={{ color: 'var(--theme-outer-text)' }}
-          >
-            <span className="opacity-85">Host view</span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void handleShareInvite()}
-                className="rounded-full border border-current/25 px-3 py-1 backdrop-blur-md hover:opacity-85 transition cursor-pointer"
-              >
-                {shareCopied ? 'Copied!' : 'Share'}
-              </button>
-              <Link
-                href={activeEditHref}
-                className="invite-cta-btn inline-flex items-center gap-1 rounded-full px-3.5 py-1 font-semibold shadow-sm hover:opacity-95 transition"
-              >
-                <span>Edit Invite</span>
-                <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
-              </Link>
-            </div>
-          </div>
-        ) : null}
+      {/* Compact PWA-friendly top bar */}
+      <header className="relative z-10 app-top-bar h-13 max-w-[580px] mx-auto flex items-center justify-between gap-2">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-sm font-semibold tracking-tight hover:opacity-80 transition shrink-0"
+          style={{ color: 'var(--theme-outer-text)' }}
+        >
+          <InviteIcon name="brand" className="h-4 w-4" />
+          <span>invited</span>
+        </Link>
 
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => setRecentOpen(true)}
+            className="h-8 inline-flex items-center gap-1.5 rounded-full border px-3 text-xs font-medium backdrop-blur-md transition hover:opacity-90 cursor-pointer"
+            style={{
+              backgroundColor: 'var(--theme-outer-pill-bg)',
+              borderColor: 'var(--theme-outer-pill-border)',
+              color: 'var(--theme-outer-text)',
+            }}
+          >
+            <Calendar className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span>My Invites</span>
+          </button>
+
+          {activeEditHref ? (
+            <Link
+              href={activeEditHref}
+              className="invite-cta-btn h-8 inline-flex items-center gap-1 rounded-full px-3 text-xs font-semibold shadow-sm hover:opacity-95 transition"
+            >
+              <span>Edit invite</span>
+              <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </Link>
+          ) : null}
+        </div>
+      </header>
+
+      <main className="relative z-10 max-w-[580px] mx-auto px-3.5 sm:px-6 pt-1.5 pb-28 space-y-4">
         {/* Primary Uncluttered Invitation Card */}
         <article
           className="rounded-3xl border shadow-2xl overflow-hidden"
@@ -748,6 +767,8 @@ export function InviteView({
         shareCopied={shareCopied}
         nameInputRef={rsvpNameInputRef}
       />
+
+      <RecentEventsDialog open={recentOpen} onClose={() => setRecentOpen(false)} />
     </div>
   );
 }

@@ -83,12 +83,12 @@ export function HostManagementPanel({
       );
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(data.error || 'Could not remove RSVP.');
+        throw new Error(data.error || 'Could not remove guest.');
       }
       await onRefresh();
     } catch (err) {
       setActionError(
-        err instanceof Error ? err.message : 'Failed to remove RSVP.',
+        err instanceof Error ? err.message : 'Could not remove guest.',
       );
     } finally {
       setBusyId(null);
@@ -109,12 +109,12 @@ export function HostManagementPanel({
       );
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(data.error || 'Could not delete comment.');
+        throw new Error(data.error || 'Could not delete note.');
       }
       await onRefresh();
     } catch (err) {
       setActionError(
-        err instanceof Error ? err.message : 'Failed to delete comment.',
+        err instanceof Error ? err.message : 'Could not delete note.',
       );
     } finally {
       setBusyId(null);
@@ -122,31 +122,31 @@ export function HostManagementPanel({
   };
 
   return (
-    <div className="space-y-6 pb-16">
+    <div className="space-y-6 pb-4" style={{ color: 'var(--theme-text-primary)' }}>
       {actionError ? (
         <div
           role="alert"
-          className="rounded-2xl border border-rose-400/40 bg-rose-500/15 px-4 py-3 text-sm text-rose-200"
+          className="rounded-2xl border border-rose-400/40 bg-rose-500/15 px-4 py-3 text-sm text-rose-500"
         >
           {actionError}
         </div>
       ) : null}
 
-      {/* Dual Links Quick Copy Card */}
-      <section
-        aria-labelledby="host-links-heading"
-        className="invite-card rounded-3xl border border-white/12 bg-white/[0.04] p-5 sm:p-6 space-y-4"
-      >
+      {/* Invite Links */}
+      <section aria-labelledby="host-links-heading" className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2
               id="host-links-heading"
-              className="text-lg font-semibold text-white"
+              className="text-lg font-bold"
+              style={{
+                fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
+              }}
             >
-              Event Links
+              Invite links
             </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Share the public invite with guests; keep your edit link private.
+            <p className="text-xs mt-0.5" style={{ color: 'var(--theme-text-muted)' }}>
+              Share the first link with friends and save the private edit link for yourself.
             </p>
           </div>
           <button
@@ -160,62 +160,96 @@ export function HostManagementPanel({
                 timeZone: event.timeZone,
               })
             }
-            className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/[0.06] px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-200 hover:bg-white/[0.12] transition min-h-[44px]"
+            className="inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-medium transition hover:opacity-85 cursor-pointer"
+            style={{
+              backgroundColor: 'var(--theme-surface-bg)',
+              borderColor: 'var(--theme-border)',
+              color: 'var(--theme-text-primary)',
+            }}
           >
-            <Download className="h-4 w-4 text-amber-300" aria-hidden="true" />
-            <span>Download .txt Backup</span>
+            <Download className="h-3.5 w-3.5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+            <span>Save links</span>
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="rounded-2xl border border-emerald-400/25 bg-emerald-500/[0.05] p-4 space-y-2.5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-300">
-              Public Guest Link
-            </p>
-            <p className="rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 font-mono text-xs text-emerald-100 break-all select-all">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div
+            className="rounded-2xl border p-4 space-y-2.5"
+            style={{
+              backgroundColor: 'var(--theme-surface-bg)',
+              borderColor: 'var(--theme-hairline)',
+            }}
+          >
+            <p className="text-xs font-semibold">Link for guests</p>
+            <p
+              className="rounded-xl border px-3 py-2 text-xs break-all select-all"
+              style={{
+                backgroundColor: 'var(--theme-card-bg)',
+                borderColor: 'var(--theme-hairline)',
+                color: 'var(--theme-text-primary)',
+              }}
+            >
               {fullGuestUrl}
             </p>
             <button
               type="button"
               onClick={() => void copyLink('guest', fullGuestUrl)}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-400 px-3.5 py-2 text-xs font-semibold text-slate-950 hover:bg-emerald-300 transition min-h-[44px]"
+              className="invite-cta-btn inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition hover:opacity-95 cursor-pointer"
             >
               {copiedWhich === 'guest' ? (
                 <>
                   <Check className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span>Copied Guest Link</span>
+                  <span>Copied</span>
                 </>
               ) : (
                 <>
                   <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span>Copy Guest Link</span>
+                  <span>Copy link</span>
                 </>
               )}
             </button>
           </div>
 
-          <div className="rounded-2xl border border-amber-400/30 bg-amber-500/[0.06] p-4 space-y-2.5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
-              <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
-              Secret Host Edit Link
+          <div
+            className="rounded-2xl border p-4 space-y-2.5"
+            style={{
+              backgroundColor: 'var(--theme-surface-bg)',
+              borderColor: 'var(--theme-hairline)',
+            }}
+          >
+            <p className="text-xs font-semibold flex items-center gap-1.5">
+              <KeyRound className="h-3.5 w-3.5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+              <span>Private edit link</span>
             </p>
-            <p className="rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 font-mono text-xs text-amber-100 break-all select-all">
+            <p
+              className="rounded-xl border px-3 py-2 text-xs break-all select-all"
+              style={{
+                backgroundColor: 'var(--theme-card-bg)',
+                borderColor: 'var(--theme-hairline)',
+                color: 'var(--theme-text-muted)',
+              }}
+            >
               {fullEditUrl}
             </p>
             <button
               type="button"
               onClick={() => void copyLink('edit', fullEditUrl)}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-amber-300 px-3.5 py-2 text-xs font-semibold text-slate-950 hover:bg-amber-200 transition min-h-[44px]"
+              className="inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-semibold transition hover:opacity-85 cursor-pointer"
+              style={{
+                backgroundColor: 'var(--theme-card-bg)',
+                borderColor: 'var(--theme-border)',
+                color: 'var(--theme-text-primary)',
+              }}
             >
               {copiedWhich === 'edit' ? (
                 <>
                   <Check className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span>Copied Edit Link</span>
+                  <span>Copied</span>
                 </>
               ) : (
                 <>
                   <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span>Copy Edit Link</span>
+                  <span>Copy edit link</span>
                 </>
               )}
             </button>
@@ -224,95 +258,82 @@ export function HostManagementPanel({
       </section>
 
       {/* Headcount Summary Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="invite-card rounded-2xl border border-emerald-400/25 bg-emerald-500/[0.06] p-4">
-          <p className="text-xs font-medium text-emerald-200 flex items-center gap-1.5">
-            <UserCheck className="h-3.5 w-3.5" aria-hidden="true" />
-            Total Headcount
-          </p>
-          <p className="mt-1 text-2xl font-semibold text-white">
-            {rsvps.totalHeadcount}
-          </p>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Across {rsvps.yes.length} Yes RSVP{rsvps.yes.length === 1 ? '' : 's'}
-          </p>
-        </div>
-
-        <div className="invite-card rounded-2xl border border-white/12 bg-white/[0.04] p-4">
-          <p className="text-xs font-medium text-slate-300 flex items-center gap-1.5">
-            <UserX className="h-3.5 w-3.5 text-rose-300" aria-hidden="true" />
-            Can&apos;t Make It
-          </p>
-          <p className="mt-1 text-2xl font-semibold text-white">
-            {rsvps.no.length}
-          </p>
-          <p className="text-xs text-slate-400 mt-0.5">Declined responses</p>
-        </div>
-
-        <div className="invite-card rounded-2xl border border-white/12 bg-white/[0.04] p-4">
-          <p className="text-xs font-medium text-slate-300 flex items-center gap-1.5">
-            <Users className="h-3.5 w-3.5 text-sky-300" aria-hidden="true" />
-            Awaiting Reply
-          </p>
-          <p className="mt-1 text-2xl font-semibold text-white">
-            {rsvps.awaitingNames.length}
-          </p>
-          <p className="text-xs text-slate-400 mt-0.5">From invited list</p>
-        </div>
-
-        <div className="invite-card rounded-2xl border border-white/12 bg-white/[0.04] p-4">
-          <p className="text-xs font-medium text-slate-300 flex items-center gap-1.5">
-            <Bell className="h-3.5 w-3.5 text-amber-300" aria-hidden="true" />
-            Update Subscribers
-          </p>
-          <p className="mt-1 text-2xl font-semibold text-white">
-            {subscriberCount}
-          </p>
-          <p className="text-xs text-slate-400 mt-0.5">
-            {comments.length} wall message{comments.length === 1 ? '' : 's'}
-          </p>
-        </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        {[
+          { icon: UserCheck, label: 'Going', value: rsvps.totalHeadcount },
+          { icon: UserX, label: "Can't make it", value: rsvps.no.length },
+          { icon: Users, label: 'Waiting on', value: rsvps.awaitingNames.length },
+          { icon: Bell, label: 'Reminders', value: subscriberCount },
+        ].map((stat) => {
+          const Icon = stat.icon;
+          return (
+            <div
+              key={stat.label}
+              className="rounded-2xl border p-3.5"
+              style={{
+                backgroundColor: 'var(--theme-surface-bg)',
+                borderColor: 'var(--theme-hairline)',
+              }}
+            >
+              <p
+                className="text-xs font-medium flex items-center gap-1.5"
+                style={{ color: 'var(--theme-text-muted)' }}
+              >
+                <Icon className="h-3.5 w-3.5" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+                <span>{stat.label}</span>
+              </p>
+              <p className="mt-1 text-2xl font-bold">{stat.value}</p>
+            </div>
+          );
+        })}
       </div>
 
       {/* Coming (Yes) RSVPs */}
-      <section
-        aria-labelledby="yes-rsvps-heading"
-        className="invite-card rounded-3xl border border-white/12 bg-white/[0.04] p-5 sm:p-6 space-y-4"
-      >
-        <div className="flex items-center justify-between gap-2">
-          <h2 id="yes-rsvps-heading" className="text-lg font-semibold text-white">
-            Coming ({rsvps.totalHeadcount} total)
-          </h2>
-        </div>
+      <section aria-labelledby="yes-rsvps-heading" className="space-y-3 pt-2 border-t" style={{ borderColor: 'var(--theme-hairline)' }}>
+        <h2
+          id="yes-rsvps-heading"
+          className="text-base font-bold"
+          style={{
+            fontFamily: 'var(--font-invite-display), var(--font-invite-body), sans-serif',
+          }}
+        >
+          Going ({rsvps.totalHeadcount})
+        </h2>
 
         {rsvps.yes.length === 0 ? (
-          <p className="text-sm text-slate-400">
-            No &ldquo;Yes, I&apos;m coming&rdquo; RSVPs yet.
+          <p className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>
+            No one has confirmed yet.
           </p>
         ) : (
-          <ul className="divide-y divide-white/10">
+          <ul className="divide-y" style={{ borderColor: 'var(--theme-hairline)' }}>
             {rsvps.yes.map((rsvp) => (
               <li
                 key={rsvp.id}
-                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 py-3 first:pt-0 last:pb-0"
+                style={{ borderColor: 'var(--theme-hairline)' }}
               >
-                <div className="min-w-0 space-y-1">
+                <div className="min-w-0 space-y-0.5">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold text-white">
-                      {rsvp.guestName}
-                    </span>
+                    <span className="font-semibold text-sm">{rsvp.guestName}</span>
                     {rsvp.plusOnes > 0 ? (
-                      <span className="rounded-full bg-emerald-400/15 border border-emerald-400/30 px-2 py-0.5 text-xs font-semibold text-emerald-200">
-                        +{rsvp.plusOnes} guest{rsvp.plusOnes === 1 ? '' : 's'}
+                      <span
+                        className="rounded-full border px-2 py-0.5 text-[11px] font-medium"
+                        style={{
+                          backgroundColor: 'var(--theme-surface-bg)',
+                          borderColor: 'var(--theme-hairline)',
+                          color: 'var(--theme-accent)',
+                        }}
+                      >
+                        +{rsvp.plusOnes}
                       </span>
                     ) : null}
-                    <span className="text-xs text-slate-500">
+                    <span className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>
                       {formatTimestamp(rsvp.updatedAt)}
                     </span>
                   </div>
                   {rsvp.bringingNote ? (
-                    <p className="text-sm text-emerald-100/90">
-                      🍽️ {rsvp.bringingNote}
+                    <p className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>
+                      {rsvp.bringingNote}
                     </p>
                   ) : null}
                 </div>
@@ -321,12 +342,11 @@ export function HostManagementPanel({
                   type="button"
                   disabled={busyId === `rsvp-${rsvp.id}`}
                   onClick={() => void handleDeleteRsvp(rsvp.id)}
-                  className="inline-flex items-center gap-1.5 self-start sm:self-center rounded-xl border border-white/15 px-3 py-2 text-xs font-medium text-rose-300 hover:bg-rose-500/15 transition min-h-[40px] disabled:opacity-60"
+                  className="inline-flex items-center gap-1.5 self-start sm:self-center rounded-full border px-3 py-1.5 text-xs font-medium text-rose-500 hover:bg-rose-500/10 transition disabled:opacity-60 cursor-pointer"
+                  style={{ borderColor: 'var(--theme-hairline)' }}
                 >
                   <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span>
-                    {busyId === `rsvp-${rsvp.id}` ? 'Removing...' : 'Remove'}
-                  </span>
+                  <span>{busyId === `rsvp-${rsvp.id}` ? 'Removing...' : 'Remove'}</span>
                 </button>
               </li>
             ))}
@@ -334,30 +354,28 @@ export function HostManagementPanel({
         )}
       </section>
 
-      {/* Declined (No) RSVPs + Awaiting */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <section
-          aria-labelledby="no-rsvps-heading"
-          className="invite-card rounded-3xl border border-white/12 bg-white/[0.04] p-5 sm:p-6 space-y-3"
-        >
-          <h2 id="no-rsvps-heading" className="text-base font-semibold text-white">
-            Can&apos;t Make It ({rsvps.no.length})
+      {/* Declined (No) & Waiting on */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t" style={{ borderColor: 'var(--theme-hairline)' }}>
+        <section aria-labelledby="no-rsvps-heading" className="space-y-3">
+          <h2 id="no-rsvps-heading" className="text-base font-bold">
+            Can&apos;t make it ({rsvps.no.length})
           </h2>
           {rsvps.no.length === 0 ? (
-            <p className="text-sm text-slate-400">No declines yet.</p>
+            <p className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>
+              No one has declined.
+            </p>
           ) : (
-            <ul className="divide-y divide-white/10">
+            <ul className="divide-y" style={{ borderColor: 'var(--theme-hairline)' }}>
               {rsvps.no.map((rsvp) => (
                 <li
                   key={rsvp.id}
                   className="flex items-start justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
+                  style={{ borderColor: 'var(--theme-hairline)' }}
                 >
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-200">
-                      {rsvp.guestName}
-                    </p>
+                    <p className="text-sm font-medium">{rsvp.guestName}</p>
                     {rsvp.bringingNote ? (
-                      <p className="text-xs text-slate-400 mt-0.5">
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--theme-text-muted)' }}>
                         {rsvp.bringingNote}
                       </p>
                     ) : null}
@@ -367,7 +385,8 @@ export function HostManagementPanel({
                     disabled={busyId === `rsvp-${rsvp.id}`}
                     onClick={() => void handleDeleteRsvp(rsvp.id)}
                     aria-label={`Remove ${rsvp.guestName} RSVP`}
-                    className="inline-flex items-center justify-center rounded-xl border border-white/10 px-2.5 py-1.5 text-xs text-rose-300 hover:bg-rose-500/15 min-h-[36px] disabled:opacity-60"
+                    className="inline-flex items-center justify-center rounded-full border p-1.5 text-rose-500 hover:bg-rose-500/10 disabled:opacity-60 cursor-pointer"
+                    style={{ borderColor: 'var(--theme-hairline)' }}
                   >
                     <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                   </button>
@@ -377,25 +396,26 @@ export function HostManagementPanel({
           )}
         </section>
 
-        <section
-          aria-labelledby="awaiting-heading"
-          className="invite-card rounded-3xl border border-white/12 bg-white/[0.04] p-5 sm:p-6 space-y-3"
-        >
-          <h2 id="awaiting-heading" className="text-base font-semibold text-white">
-            Awaiting Reply ({rsvps.awaitingNames.length})
+        <section aria-labelledby="awaiting-heading" className="space-y-3">
+          <h2 id="awaiting-heading" className="text-base font-bold">
+            Waiting on ({rsvps.awaitingNames.length})
           </h2>
           {rsvps.awaitingNames.length === 0 ? (
-            <p className="text-sm text-slate-400">
+            <p className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>
               {event.invitedNames.length === 0
-                ? 'No invited names pre-listed. Add names in the Edit tab if you want to track who has replied.'
-                : 'Everyone on your invited list has responded!'}
+                ? 'Add guest names under More options in Details to track replies.'
+                : 'Everyone on your list has replied.'}
             </p>
           ) : (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5">
               {rsvps.awaitingNames.map((name) => (
                 <span
                   key={name}
-                  className="rounded-full border border-white/15 bg-white/[0.05] px-3 py-1 text-xs font-medium text-slate-200"
+                  className="rounded-full border px-3 py-1 text-xs font-medium"
+                  style={{
+                    backgroundColor: 'var(--theme-surface-bg)',
+                    borderColor: 'var(--theme-hairline)',
+                  }}
                 >
                   {name}
                 </span>
@@ -405,69 +425,79 @@ export function HostManagementPanel({
         </section>
       </div>
 
-      {/* Event Wall Comments Moderation */}
-      <section
-        aria-labelledby="wall-mod-heading"
-        className="invite-card rounded-3xl border border-white/12 bg-white/[0.04] p-5 sm:p-6 space-y-4"
-      >
+      {/* Guest Notes */}
+      <section aria-labelledby="wall-mod-heading" className="space-y-3 pt-2 border-t" style={{ borderColor: 'var(--theme-hairline)' }}>
         <div className="flex items-center gap-2">
-          <MessageSquare
-            className="h-4 w-4 text-violet-300"
-            aria-hidden="true"
-          />
-          <h2 id="wall-mod-heading" className="text-lg font-semibold text-white">
-            Event Wall Messages ({comments.length})
+          <MessageSquare className="h-4 w-4" style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+          <h2 id="wall-mod-heading" className="text-base font-bold">
+            Comments ({comments.length})
           </h2>
         </div>
 
         {comments.length === 0 ? (
-          <p className="text-sm text-slate-400">No wall messages yet.</p>
+          <p className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>
+            No comments yet.
+          </p>
         ) : (
-          <ul className="divide-y divide-white/10">
+          <ul className="divide-y" style={{ borderColor: 'var(--theme-hairline)' }}>
             {comments.map((comment) => (
               <li
                 key={comment.id}
-                className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                className="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5 py-3 first:pt-0 last:pb-0"
+                style={{ borderColor: 'var(--theme-hairline)' }}
               >
                 <div className="min-w-0 space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-semibold text-white">
-                      {comment.authorName}
-                    </span>
+                    <span className="text-sm font-semibold">{comment.authorName}</span>
                     {comment.isHost ? (
-                      <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[11px] font-semibold text-amber-200">
+                      <span
+                        className="rounded-full border px-2 py-0.5 text-[11px] font-semibold"
+                        style={{
+                          backgroundColor: 'var(--theme-surface-bg)',
+                          borderColor: 'var(--theme-hairline)',
+                          color: 'var(--theme-accent)',
+                        }}
+                      >
                         Host
                       </span>
                     ) : comment.rsvpStatus === 'yes' ? (
-                      <span className="rounded-full bg-emerald-400/15 px-2 py-0.5 text-[11px] font-medium text-emerald-200">
-                        Going ✓
+                      <span
+                        className="rounded-full border px-2 py-0.5 text-[11px] font-medium"
+                        style={{
+                          backgroundColor: 'var(--theme-surface-bg)',
+                          borderColor: 'var(--theme-hairline)',
+                        }}
+                      >
+                        Going
                       </span>
                     ) : comment.rsvpStatus === 'no' ? (
-                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-medium text-slate-300">
-                        Can&apos;t Go ✕
+                      <span
+                        className="rounded-full border px-2 py-0.5 text-[11px] font-medium"
+                        style={{
+                          backgroundColor: 'var(--theme-surface-bg)',
+                          borderColor: 'var(--theme-hairline)',
+                          color: 'var(--theme-text-muted)',
+                        }}
+                      >
+                        Can&apos;t go
                       </span>
                     ) : null}
-                    <span className="text-xs text-slate-500">
+                    <span className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>
                       {formatTimestamp(comment.createdAt)}
                     </span>
                   </div>
-                  <p className="text-sm text-slate-200 whitespace-pre-wrap break-words">
-                    {comment.body}
-                  </p>
+                  <p className="text-sm whitespace-pre-wrap break-words">{comment.body}</p>
                 </div>
 
                 <button
                   type="button"
                   disabled={busyId === `comment-${comment.id}`}
                   onClick={() => void handleDeleteComment(comment.id)}
-                  className="inline-flex items-center gap-1.5 self-start rounded-xl border border-white/15 px-3 py-2 text-xs font-medium text-rose-300 hover:bg-rose-500/15 transition min-h-[40px] shrink-0 disabled:opacity-60"
+                  className="inline-flex items-center gap-1.5 self-start rounded-full border px-3 py-1.5 text-xs font-medium text-rose-500 hover:bg-rose-500/10 transition shrink-0 disabled:opacity-60 cursor-pointer"
+                  style={{ borderColor: 'var(--theme-hairline)' }}
                 >
                   <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span>
-                    {busyId === `comment-${comment.id}`
-                      ? 'Deleting...'
-                      : 'Delete'}
-                  </span>
+                  <span>{busyId === `comment-${comment.id}` ? 'Deleting...' : 'Delete'}</span>
                 </button>
               </li>
             ))}

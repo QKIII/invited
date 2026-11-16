@@ -309,7 +309,7 @@ export function RsvpPanel({
                     className="text-sm font-bold leading-tight truncate"
                     style={{ color: 'var(--theme-text-primary)' }}
                   >
-                    {viewerRsvp.status === 'yes' ? "You're going! 🎉" : "Can't make it"}
+                    {viewerRsvp.status === 'yes' ? "You're going!" : "Can't make it"}
                   </p>
                   <p
                     className="text-xs leading-tight truncate mt-0.5"
@@ -355,7 +355,7 @@ export function RsvpPanel({
                 onClick={() => openSheetForStatus('yes')}
                 className="invite-cta-btn flex-1 min-h-[46px] rounded-full px-4 text-sm font-semibold shadow-lg transition active:scale-[0.99] cursor-pointer flex items-center justify-center gap-1.5"
               >
-                <span>Count me in! 🎉</span>
+                <span>I&apos;m going</span>
               </button>
 
               <button
@@ -452,7 +452,7 @@ export function RsvpPanel({
                 className="sr-only"
               />
               <Check className="h-4 w-4 shrink-0" aria-hidden="true" />
-              <span>Count me in! 🎉</span>
+              <span>Count me in</span>
             </label>
 
             <label
@@ -483,7 +483,7 @@ export function RsvpPanel({
                 className="sr-only"
               />
               <X className="h-4 w-4 shrink-0" aria-hidden="true" />
-              <span>Can&apos;t Make It</span>
+              <span>Can&apos;t make it</span>
             </label>
           </div>
 
@@ -576,7 +576,7 @@ export function RsvpPanel({
           {status === 'yes' ? (
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs sm:text-sm font-medium" style={{ color: 'var(--theme-text-muted)' }}>
-                Bringing anyone extra? (+1s)
+                Bringing extra guests?
               </span>
               <div className="inline-flex items-center gap-2">
                 <button
@@ -676,9 +676,9 @@ export function RsvpPanel({
                 ? 'Save RSVP'
                 : status === 'yes'
                   ? recognizedName && !manualIdentityEdit
-                    ? `One-Click RSVP as ${firstName}`
-                    : 'Confirm Going 🎉'
-                  : "Send Can't Make It"}
+                    ? `RSVP as ${firstName}`
+                    : "Confirm I'm going"
+                  : "Send can't make it"}
           </button>
 
           {viewerRsvp ? (
